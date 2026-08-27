@@ -1,6 +1,13 @@
 README.md
+__init__.py
 pyproject.toml
 ./__init__.py
+./choices.py
+./models.py
+./navigation.py
+./urls.py
+./views.py
+./templates/network_map/networkelement_list.html
 network_map.egg-info/PKG-INFO
 network_map.egg-info/SOURCES.txt
 network_map.egg-info/dependency_links.txt
