@@ -1,0 +1,73 @@
+Metadata-Version: 2.4
+Name: network_map
+Version: 0.1.0
+Summary: A network_map plugin for netbox
+Author-email: Yannick Wernle <yannick@wernle.net>
+Requires-Python: >=3.12.0
+Description-Content-Type: text/markdown
+
+# NetBox Network Map Plugin
+
+A plugin for NetBox to display machines on a network map.
+
+## Development
+
+The plugin is installed from this directory in editable mode. This means that
+Python code and templates are read from the working tree, but package metadata
+changes still require reinstalling the plugin.
+
+From the plugin directory, run:
+
+```bash
+cd /opt/netbox/network_map_plugin/network_map
+/opt/netbox/venv/bin/python -m pip install --editable . --no-deps
+```
+
+Restart the NetBox service after changing Python code, templates, static files,
+or plugin configuration. For local development, run:
+
+```bash
+cd /opt/netbox/netbox
+/opt/netbox/venv/bin/python manage.py runserver
+```
+
+The plugin is available at `/networkmap/`.
+
+Before restarting NetBox, check that the plugin loads correctly:
+
+```bash
+cd /opt/netbox/netbox
+/opt/netbox/venv/bin/python manage.py check
+```
+
+## Publishing a New Version
+
+When releasing a new version, update the version in both files:
+
+- `pyproject.toml`: the package version used by `pip`
+- `__init__.py`: the NetBox plugin version shown in the UI
+
+For example, change `0.1.0` to `0.2.0` in both files, then reinstall it:
+
+```bash
+cd /opt/netbox/network_map_plugin/network_map
+/opt/netbox/venv/bin/python -m pip install --editable . --no-deps
+```
+
+Run the checks after installation:
+
+```bash
+cd /opt/netbox/netbox
+/opt/netbox/venv/bin/python manage.py check
+```
+
+For a production deployment, install the updated plugin from the same source
+directory and restart NetBox using the service manager used by the deployment,
+for example:
+
+```bash
+sudo systemctl restart netbox
+```
+
+Do not commit generated `*.egg-info/` directories. They are recreated by
+`pip install` and should be ignored by Git.
