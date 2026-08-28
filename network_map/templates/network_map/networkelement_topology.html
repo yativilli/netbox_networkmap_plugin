@@ -1,0 +1,36 @@
+{% extends "base/layout.html" %}
+
+{% block title %}Network Elements{% endblock %}
+
+{% block content %}
+  <div class="network-node-grid">
+    {% for el in elements %}
+      <div class="card network-node" id="node-{{ el.id }}">
+        <div class="card-body">
+          <h5 class="card-title mb-2">{{ el.name }}</h5>
+          <p class="card-text mb-1"><strong>IP:</strong> {{ el.ip_address|default:"—" }}</p>
+          <p class="card-text mb-1"><strong>Type:</strong> {{ el.device_type|default:"—" }}</p>
+          <p class="card-text mb-0"><strong>Location:</strong> {{ el.location|default:"—" }}</p>
+        </div>
+      </div>
+    {% empty %}
+      <p>No network elements matched the current condition.</p>
+    {% endfor %}
+  </div>
+
+  <style>
+    .network-node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .network-node {
+      border-radius: 8px;
+      transition: transform 0.1s ease;
+    }
+    .network-node:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+{% endblock %}
