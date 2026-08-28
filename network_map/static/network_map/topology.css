@@ -1,0 +1,77 @@
+.network-node-grid,
+.network-node-grid * {
+  box-sizing: border-box;
+}
+
+.network-node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+}
+
+.network-node {
+  min-width: 0;
+  border-left: 5px solid var(--location-color, #6c757d);
+  border-radius: 0.5rem;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.network-node:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
+}
+
+.network-node .card-title,
+.network-node .card-text {
+  overflow-wrap: anywhere;
+}
+
+.location-badge {
+  background-color: var(--location-color, #6c757d);
+  color: #fff;
+  white-space: normal;
+}
+
+.location-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.legend-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  background-color: var(--location-color, #6c757d);
+  border-radius: 3px;
+}
+
+.location-color-0 { --location-color: #0072b2; }
+.location-color-1 { --location-color: #d55e00; }
+.location-color-2 { --location-color: #009e73; }
+.location-color-3 { --location-color: #cc79a7; }
+.location-color-4 { --location-color: #e69f00; }
+.location-color-5 { --location-color: #56b4e9; }
+.location-color-6 { --location-color: #882255; }
+.location-color-7 { --location-color: #117733; }
+.location-color-8 { --location-color: #332288; }
+.location-color-9 { --location-color: #aa4499; }
+.location-color-10 { --location-color: #44aa99; }
+.location-color-11 { --location-color: #999933; }
+.location-color-12 { --location-color: #661100; }
+.location-color-13 { --location-color: #6699cc; }
+.location-color-14 { --location-color: #aa4466; }
+.location-color-15 { --location-color: #447744; }
+.location-color-16 { --location-color: #774488; }
+.location-color-17 { --location-color: #cc6677; }
+.location-color-18 { --location-color: #117755; }
+.location-color-19 { --location-color: #ddcc77; }
