@@ -19,9 +19,9 @@
             <div class="card-body">
               <h5 class="card-title mb-2"><a href="{{window.location.origin}}/ipam/vlans/{{ element.id }}/">{{ element.name }}</a></h5>
               <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
+              <p class="card-text mb-1"><strong>Description:</strong> {{ element.description }}</p>
               <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
-              <p class="card-text mb-1"><strong>Site:</strong> {{ element.site }}</p>
-              <p class="card-text mb-3"><strong>Description:</strong> {{ element.description }}</p>
+              <p class="card-text mb-3"><strong>Range:</strong> {{ element.prefix }}</p>
 
               <div class="vlan-child-grid">
                 {% for machine in element.machines %}
@@ -30,8 +30,6 @@
                       <h6 class="card-title mb-2"><a href="{{window.location.origin}}/dcim/devices/{{ machine.id }}/">{{ machine.name }}</a></h6>
                       <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
                       <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
-                      <p class="card-text mb-0"><strong>Device Type:</strong> {{ machine.device_type }}</p>
-                      <p class="card-text mb-0"><strong>Role:</strong> {{ machine.role }}</p>
                     </div>
                   </article>
                 {% empty %}
