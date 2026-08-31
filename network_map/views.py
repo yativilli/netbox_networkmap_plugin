@@ -7,7 +7,7 @@ from utilities.views import register_model_view
 from dcim.models import Device, Interface
 from ipam.models import VLAN
 
-from .models import NetworkElement
+from .models import NetworkElement, VlanElement
 from . import models
 from .colors import color_for_location
 from .tables import NetworkElementTable
@@ -46,15 +46,14 @@ class VlanElementListView(View):
                 continue
 
             device = interface.device
-            ip_address = None
-            if device.primary_ip4:
-                ip_address = str(device.primary_ip4.address)
-
-            machine = {
-                'name': device.name,
-                'ip_address': ip_address or 'No IP',
-                'description': getattr(device, 'description', '') or getattr(interface, 'description', '') or '-',
-            }
+            description = getattr(device, 'description', '') or getattr(interface, 'description', '') or '-'
+            machine = NetworkElement.from_device(device, description=description)
+            if not machine.name:
+                machine.name = 'None'
+            if not machine.ip_address or machine.ip_address == '0.0.0.0':
+                machine.ip_address = 'None'
+            if not machine.description:
+                machine.description = 'None'
 
             vlan_ids = set()
             if interface.untagged_vlan_id:
@@ -63,25 +62,22 @@ class VlanElementListView(View):
 
             for vlan_id in vlan_ids:
                 machines_by_vlan.setdefault(vlan_id, {})
-                key = (machine['name'], machine['ip_address'])
+                key = (machine.name, machine.ip_address)
                 machines_by_vlan[vlan_id][key] = machine
 
         elements = []
         for vlan in queryset:
             machine_list = sorted(
                 machines_by_vlan.get(vlan.pk, {}).values(),
-                key=lambda item: (item['name'], item['ip_address'])
+                key=lambda item: (item.name, item.ip_address)
             )
-            elements.append({
-                'name': vlan.name or f"VLAN {vlan.vid}",
-                'vid': vlan.vid,
-                'group': vlan.group.name if vlan.group else 'None',
-                'status': getattr(vlan.status, 'label', vlan.status),
-                'role': vlan.role.name if vlan.role else 'None',
-                'description': vlan.description or '-',
-                'site': vlan.site.name if vlan.site else 'None',
-                'machines': machine_list,
-            })
+            vlan_element = VlanElement.from_vlan(vlan, machines=machine_list)
+            vlan_element.name = vlan_element.name or 'None'
+            vlan_element.group = vlan_element.group or 'None'
+            vlan_element.status = vlan_element.status or 'None'
+            vlan_element.role = vlan_element.role or 'None'
+            vlan_element.description = vlan_element.description or 'None'
+            elements.append(vlan_element)
         return elements
 
     def get(self, request):
@@ -105,14 +101,14 @@ class NetworkElementTopologyView(View):
             if device.primary_ip4:
                 ip = device.primary_ip4.address.ip
 
-            location = device.site.name if device.site else None
+            location = device.site.name if device.site else "None"
 
             elements.append(NetworkElement(
                 name = device.name,
                 ip_address = ip,
-                device_type = device.device_type.model if device.device_type else None,
+                device_type = device.device_type.model if device.device_type else "None",
                 location = location,
-                role = device.role.name if device.role else None,
+                role = device.role.name if device.role else "None",
                 tags = [tag.name for tag in device.tags.all()],
                 color="location-color-default"
             ))

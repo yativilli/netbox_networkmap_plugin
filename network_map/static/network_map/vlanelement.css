@@ -29,6 +29,10 @@
     font-size: 1rem;
 }
 
+a {
+    color: #533885 !important;
+}
+
 @media (max-width: 768px) {
     .vlan-child-grid {
         display: grid;
