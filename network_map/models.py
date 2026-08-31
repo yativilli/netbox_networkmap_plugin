@@ -52,11 +52,17 @@ class VlanElement(NetBoxModel):
 
     @classmethod
     def from_vlan(cls, vlan, machines=None):
+        prefixes = sorted(
+            {str(prefix.prefix) for prefix in vlan.prefixes.all() if getattr(prefix, 'prefix', None)},
+            key=lambda value: value,
+        )
+        prefix_value = ', '.join(prefixes) if prefixes else 'None'
+
         vlan_element = cls(
             id=vlan.pk,
             name=vlan.name or f"VLAN {vlan.vid}",
             group=vlan.group.name if vlan.group else 'None',
-            prefix=str(vlan.vid) if vlan.vid is not None else 'None',
+            prefix=prefix_value,
             status=getattr(vlan.status, 'label', vlan.status) or 'None',
             role=vlan.role.name if vlan.role else 'None',
             description=vlan.description or 'None',

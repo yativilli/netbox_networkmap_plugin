@@ -1,11 +1,13 @@
-from django.db.models import Count, Q
+import ipaddress
+
+from django.db.models import Count
 from django.shortcuts import render
 from django.views import View
 from netbox.views import generic
 from typing import List, Dict
 from utilities.views import register_model_view
 from dcim.models import Device, Interface
-from ipam.models import VLAN
+from ipam.models import VLAN, IPAddress
 
 from .models import NetworkElement, VlanElement
 from . import models
@@ -26,44 +28,88 @@ class VlanElementListView(View):
 
     def get_queryset(self):
         return (
-            VLAN.objects.filter(status='active')
+            VLAN.objects
             .select_related('group', 'role', 'site')
+            .prefetch_related('prefixes')
             .order_by('group__name', 'vid')
         )
 
-    def build_elements(self, queryset):
-        machines_by_vlan = {}
-        interface_queryset = Interface.objects.filter(
-            Q(untagged_vlan__in=queryset) | Q(tagged_vlans__in=queryset)
-        ).select_related(
-            'device',
-            'device__primary_ip4',
-            'untagged_vlan',
-        ).prefetch_related('tagged_vlans').distinct()
+    def get_vlan_networks(self, vlan):
+        networks = []
+        for prefix in vlan.prefixes.all():
+            if prefix.prefix:
+                try:
+                    networks.append(ipaddress.ip_network(prefix.prefix, strict=False))
+                except ValueError:
+                    continue
+        return networks
 
-        for interface in interface_queryset:
-            if not interface.device:
+    def get_vlan_ip_assignments(self, vlan):
+        networks = self.get_vlan_networks(vlan)
+        if not networks:
+            return []
+
+        assignments = []
+        for ip_address in IPAddress.objects.filter(address__isnull=False):
+            if not ip_address.address:
                 continue
 
-            device = interface.device
-            description = getattr(device, 'description', '') or getattr(interface, 'description', '') or '-'
-            machine = NetworkElement.from_device(device, description=description)
-            if not machine.name:
-                machine.name = 'None'
-            if not machine.ip_address or machine.ip_address == '0.0.0.0':
-                machine.ip_address = 'None'
-            if not machine.description:
-                machine.description = 'None'
+            ip_value = str(ip_address.address.ip)
+            try:
+                ip_obj = ipaddress.ip_address(ip_value)
+            except ValueError:
+                continue
 
-            vlan_ids = set()
-            if interface.untagged_vlan_id:
-                vlan_ids.add(interface.untagged_vlan_id)
-            vlan_ids.update(interface.tagged_vlans.values_list('id', flat=True))
+            if not any(ip_obj in network for network in networks):
+                continue
 
-            for vlan_id in vlan_ids:
-                machines_by_vlan.setdefault(vlan_id, {})
-                key = (machine.name, machine.ip_address)
-                machines_by_vlan[vlan_id][key] = machine
+            assigned_object = getattr(ip_address, 'assigned_object', None)
+            if assigned_object is None:
+                continue
+
+            name = 'None'
+            description = getattr(ip_address, 'description', None) or 'None'
+
+            if hasattr(assigned_object, 'device') and assigned_object.device:
+                device = assigned_object.device
+                name = getattr(device, 'name', None) or 'None'
+                if not description or description == 'None':
+                    description = getattr(device, 'description', None) or 'None'
+            elif hasattr(assigned_object, 'name') and assigned_object.name:
+                name = assigned_object.name
+            elif hasattr(assigned_object, 'interface') and assigned_object.interface:
+                name = getattr(assigned_object.interface, 'name', None) or 'None'
+                if not description or description == 'None':
+                    description = getattr(assigned_object.interface, 'description', None) or 'None'
+
+            assignments.append({
+                'name': name,
+                'ip_address': ip_value,
+                'description': description,
+                'id': getattr(assigned_object, 'pk', 0),
+            })
+
+        return assignments
+
+    def build_elements(self, queryset):
+        machines_by_vlan = {}
+
+        for vlan in queryset:
+            assignments = self.get_vlan_ip_assignments(vlan)
+            for assignment in assignments:
+                machine = NetworkElement(
+                    id=assignment['id'],
+                    name=assignment['name'] or 'None',
+                    ip_address=assignment['ip_address'] or 'None',
+                    device_type='None',
+                    location='None',
+                    role='None',
+                    tags='',
+                    color='location-color-default',
+                    description=assignment['description'] or 'None',
+                )
+                machines_by_vlan.setdefault(vlan.pk, {})
+                machines_by_vlan[vlan.pk][(machine.name, machine.ip_address)] = machine
 
         elements = []
         for vlan in queryset:
