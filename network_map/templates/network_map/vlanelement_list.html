@@ -1,6 +1,10 @@
 {% extends 'generic/_base.html' %}
 {% load i18n %}
 
+{% block head %}
+  <link rel="stylesheet" href="/static/network_map/vlanelement.css">
+{% endblock %}
+
 {% block title %}{% trans "VLAN Elements" %}{% endblock %}
 
 {% block content %}
@@ -8,45 +12,38 @@
     <div class="card-header">
       <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
     </div>
-    <div class="table-responsive">
-      <table class="table table-hover table-vcenter">
-        <thead>
-          <tr>
-            <th>{% trans "Name" %}</th>
-            <th>{% trans "VID" %}</th>
-            <th>{% trans "Group" %}</th>
-            <th>{% trans "Status" %}</th>
-            <th>{% trans "Role" %}</th>
-            <th>{% trans "Site" %}</th>
-            <th>{% trans "Machines" %}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for element in elements %}
-            <tr>
-              <td>{{ element.name }}</td>
-              <td>{{ element.vid }}</td>
-              <td>{{ element.group }}</td>
-              <td>{{ element.status }}</td>
-              <td>{{ element.role }}</td>
-              <td>{{ element.site }}</td>
-              <td>
-                {% if element.machines %}
-                  {{ element.machines|join:", " }}
-                {% else %}
-                  {% trans "No machines" %}
-                {% endif %}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="7" class="text-center text-secondary">
-                {% trans "No VLAN elements found." %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-body">
+      <div class="network-node-grid vlan-grid">
+        {% for element in elements %}
+          <article class="card network-node vlan-parent-card">
+            <div class="card-body">
+              <h5 class="card-title mb-2">{{ element.name }}</h5>
+              <p class="card-text mb-1"><strong>VID:</strong> {{ element.vid }}</p>
+              <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
+              <p class="card-text mb-1"><strong>Status:</strong> {{ element.status }}</p>
+              <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
+              <p class="card-text mb-1"><strong>Site:</strong> {{ element.site }}</p>
+              <p class="card-text mb-3"><strong>Description:</strong> {{ element.description }}</p>
+
+              <div class="vlan-child-grid">
+                {% for machine in element.machines %}
+                  <article class="card vlan-child-card">
+                    <div class="card-body p-2">
+                      <h6 class="card-title mb-2">{{ machine.name }}</h6>
+                      <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
+                      <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
+                    </div>
+                  </article>
+                {% empty %}
+                  <div class="text-muted">{% trans "No machines" %}</div>
+                {% endfor %}
+              </div>
+            </div>
+          </article>
+        {% empty %}
+          <p>{% trans "No VLAN elements found." %}</p>
+        {% endfor %}
+      </div>
     </div>
   </div>
 {% endblock content %}

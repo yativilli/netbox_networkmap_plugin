@@ -35,11 +35,26 @@ class VlanElementListView(View):
         machines_by_vlan = {}
         interface_queryset = Interface.objects.filter(
             Q(untagged_vlan__in=queryset) | Q(tagged_vlans__in=queryset)
-        ).select_related('device', 'untagged_vlan').prefetch_related('tagged_vlans').distinct()
+        ).select_related(
+            'device',
+            'device__primary_ip4',
+            'untagged_vlan',
+        ).prefetch_related('tagged_vlans').distinct()
 
         for interface in interface_queryset:
             if not interface.device:
                 continue
+
+            device = interface.device
+            ip_address = None
+            if device.primary_ip4:
+                ip_address = str(device.primary_ip4.address)
+
+            machine = {
+                'name': device.name,
+                'ip_address': ip_address or 'No IP',
+                'description': getattr(device, 'description', '') or getattr(interface, 'description', '') or '-',
+            }
 
             vlan_ids = set()
             if interface.untagged_vlan_id:
@@ -47,19 +62,25 @@ class VlanElementListView(View):
             vlan_ids.update(interface.tagged_vlans.values_list('id', flat=True))
 
             for vlan_id in vlan_ids:
-                machines_by_vlan.setdefault(vlan_id, set()).add(f"-{interface.device.name} ({interface.device.primary_ip4.address if interface.device.primary_ip4 else 'No IP'  })")
+                machines_by_vlan.setdefault(vlan_id, {})
+                key = (machine['name'], machine['ip_address'])
+                machines_by_vlan[vlan_id][key] = machine
 
         elements = []
         for vlan in queryset:
+            machine_list = sorted(
+                machines_by_vlan.get(vlan.pk, {}).values(),
+                key=lambda item: (item['name'], item['ip_address'])
+            )
             elements.append({
                 'name': vlan.name or f"VLAN {vlan.vid}",
                 'vid': vlan.vid,
                 'group': vlan.group.name if vlan.group else 'None',
                 'status': getattr(vlan.status, 'label', vlan.status),
                 'role': vlan.role.name if vlan.role else 'None',
-                'description': vlan.description or '',
+                'description': vlan.description or '-',
                 'site': vlan.site.name if vlan.site else 'None',
-                'machines': sorted(machines_by_vlan.get(vlan.pk, set())),
+                'machines': machine_list,
             })
         return elements
 
