@@ -24,7 +24,16 @@
         <div class="card-body">
           <h5 class="card-title mb-2">{{ el.name }}</h5>
           <p class="card-text mb-1"><strong>IP:</strong> {{ el.ip_address|default:"-" }}</p>
+          <p class="card-text mb-1"><strong>Role:</strong> {{ el.role|default:"-" }}</p>
           <p class="card-text mb-1"><strong>Type:</strong> {{ el.device_type|default:"-" }}</p>
+          <p class="card-text mb-1">
+            <strong>Tags:</strong>
+            {% for tag in el.tags %}
+              {{ tag }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+              -
+            {% endfor %}
+          </p>
           <p class="card-text mb-0">
             <strong>Location:</strong>
             <span class="badge location-badge {{ el.color|default:'location-color-default' }}">{{ el.location|default:"-" }}</span>

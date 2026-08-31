@@ -1,0 +1,52 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "VLAN Elements" %}{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-vcenter">
+        <thead>
+          <tr>
+            <th>{% trans "Name" %}</th>
+            <th>{% trans "VID" %}</th>
+            <th>{% trans "Group" %}</th>
+            <th>{% trans "Status" %}</th>
+            <th>{% trans "Role" %}</th>
+            <th>{% trans "Site" %}</th>
+            <th>{% trans "Machines" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for element in elements %}
+            <tr>
+              <td>{{ element.name }}</td>
+              <td>{{ element.vid }}</td>
+              <td>{{ element.group }}</td>
+              <td>{{ element.status }}</td>
+              <td>{{ element.role }}</td>
+              <td>{{ element.site }}</td>
+              <td>
+                {% if element.machines %}
+                  {{ element.machines|join:", " }}
+                {% else %}
+                  {% trans "No machines" %}
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-secondary">
+                {% trans "No VLAN elements found." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock content %}
