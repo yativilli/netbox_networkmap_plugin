@@ -17,10 +17,8 @@
         {% for element in elements %}
           <article class="card network-node vlan-parent-card">
             <div class="card-body">
-              <h5 class="card-title mb-2">{{ element.name }}</h5>
-              <p class="card-text mb-1"><strong>VID:</strong> {{ element.vid }}</p>
+              <h5 class="card-title mb-2"><a href="{{window.location.origin}}/ipam/vlans/{{ element.id }}/">{{ element.name }}</a></h5>
               <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
-              <p class="card-text mb-1"><strong>Status:</strong> {{ element.status }}</p>
               <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
               <p class="card-text mb-1"><strong>Site:</strong> {{ element.site }}</p>
               <p class="card-text mb-3"><strong>Description:</strong> {{ element.description }}</p>
@@ -29,9 +27,11 @@
                 {% for machine in element.machines %}
                   <article class="card vlan-child-card">
                     <div class="card-body p-2">
-                      <h6 class="card-title mb-2">{{ machine.name }}</h6>
+                      <h6 class="card-title mb-2"><a href="{{window.location.origin}}/dcim/devices/{{ machine.id }}/">{{ machine.name }}</a></h6>
                       <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
                       <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
+                      <p class="card-text mb-0"><strong>Device Type:</strong> {{ machine.device_type }}</p>
+                      <p class="card-text mb-0"><strong>Role:</strong> {{ machine.role }}</p>
                     </div>
                   </article>
                 {% empty %}
