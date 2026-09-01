@@ -30,7 +30,7 @@
 
 .vlan-overview-grid {
     display: grid;
-    grid-gap: 2rem;
+    grid-gap: 0.2rem;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
@@ -39,6 +39,14 @@
     background: #ffffff;
     min-width: 150px;
     width: auto;
+}
+
+.page-body .vlan-overview-grid .card {
+    margin-bottom: 0;
+}
+
+.vlan-child-grid>* {
+    margin-bottom: 0 !important;
 }
 
 .vlan-overview-card .card-body {

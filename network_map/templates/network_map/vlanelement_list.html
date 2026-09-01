@@ -9,16 +9,24 @@
 
 {% block content %}
 <div>
-  <div class="vlan-overview-grid">
-    {% for element in elements %}
-    <article class="card vlan-overview-card">
-      <div class="card-body p-2">
-        <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{% trans "VLAN Overview" %}</h2>
+    </div>
+    <div class="card-body">
+      <p>{% trans "Overview of machines per VLAN" %}</p>
+      <div class="vlan-overview-grid">
+        {% for element in elements %}
+        <article class="card vlan-overview-card">
+          <div class="card-body p-2">
+            <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
+          </div>
+        </article>
+        {% empty %}
+        <div class="text-muted">{% trans "No machines" %}</div>
+        {% endfor %}
       </div>
-    </article>
-    {% empty %}
-    <div class="text-muted">{% trans "No machines" %}</div>
-    {% endfor %}
+    </div>
   </div>
 </div>
 
@@ -31,7 +39,7 @@
       {% for element in elements %}
       <article class="card network-node vlan-parent-card">
         <div class="card-body">
-          <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{ element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
+          <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
           <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
           <p class="card-text mb-1"><strong>Description:</strong> {{ element.description }}</p>
           <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
@@ -42,7 +50,7 @@
             {% for machine in element.machines %}
             <article class="card vlan-child-card">
               <div class="card-body p-2">
-                <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{                    machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
+                <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
                 <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
                 <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
               </div>
