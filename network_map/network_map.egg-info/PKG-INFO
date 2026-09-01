@@ -3,6 +3,7 @@ Name: network_map
 Version: 0.1.0
 Summary: A network_map plugin for netbox
 Author-email: Yannick Wernle <yannick@wernle.net>
+Project-URL: Repository, https://github.com/yativilli/netbox_networkmap_plugin
 Requires-Python: >=3.12.0
 Description-Content-Type: text/markdown
 

@@ -100,8 +100,8 @@ class VlanElementListView(View):
                 machine.description = 'None'
 
             vlan_ids = set()
-            if interface.untagged_vlan_id:
-                vlan_ids.add(interface.untagged_vlan_id)
+            if interface.untagged_vlan:
+                vlan_ids.add(interface.untagged_vlan.id)
             vlan_ids.update(interface.tagged_vlans.values_list('id', flat=True))
 
             for vlan_id in vlan_ids:
@@ -180,17 +180,12 @@ class VlanElementListView(View):
             color_map = location_color_map([m.location or 'None' for m in machine_list])
             for machine in machine_list:
                 machine.color = color_map.get(machine.location or 'None', 'location-color-default')
-
             vlan_element = VlanElement.from_vlan(vlan, machines=machine_list)
             vlan_element.name = vlan_element.name or 'None'
             vlan_element.group = vlan_element.group or 'None'
             vlan_element.status = vlan_element.status or 'None'
             vlan_element.role = vlan_element.role or 'None'
             vlan_element.description = vlan_element.description or 'None'
-            vlan_element.color = next(
-                (machine.color for machine in machine_list if getattr(machine, 'color', None)),
-                'location-color-default',
-            )
             elements.append(vlan_element)
         return elements
 
