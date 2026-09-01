@@ -1,27 +1,15 @@
 import ipaddress
 
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.shortcuts import render
 from django.views import View
-from netbox.views import generic
 from typing import List, Dict
-from utilities.views import register_model_view
 from dcim.models import Device, Interface
 from ipam.models import VLAN, IPAddress
 
 from .models import NetworkElement, VlanElement
-from . import models
 from .colors import color_for_location
-from .tables import NetworkElementTable
 
-@register_model_view(models.NetworkElement, name='list', path='', detail=False)
-class NetworkElementListView(generic.ObjectListView):
-    queryset = models.NetworkElement.objects.annotate(
-        device_count=Count('device_type')
-    )
-    filterset = None  # Add your filterset if needed
-    table = NetworkElementTable
-    template_name = 'network_map/networkelement_list.html'
 
 class VlanElementListView(View):
     template_name = 'network_map/vlanelement_list.html'
