@@ -1,0 +1,246 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/network_map/vlanelement.css">
+{% endblock %}
+
+{% block title %}{% trans "VLAN Topology" %}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 class="card-title mb-0">{% trans "VLAN Topology" %}</h2>
+    <div class="vlan-topology-controls" aria-label="Diagram controls">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="in">+</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="out">-</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="reset">Reset</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="vlan-topology-viewport">
+      <div class="vlan-topology-stage" id="vlan-topology-stage">
+        <div class="vlan-topology-center">
+          <article class="card vlan-topology-core">
+            <div class="card-body p-3">
+              <div class="text-center mb-2">
+                <span class="mdi mdi-router-network" style="font-size:2rem;"></span>
+              </div>
+              <h4 class="text-center mb-1">
+                {% if center_device %}
+                  {{ center_device.name }}
+                {% else %}
+                  Main Gateway / Firewall
+                {% endif %}
+              </h4>
+              <p class="text-center mb-0">
+                {% if center_device %}
+                  {{ center_device.ip_address }}
+                {% else %}
+                  Central Hub
+                {% endif %}
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <div class="vlan-topology-radial">
+          {% for element in elements %}
+          <div class="vlan-topology-spoke" data-angle="{{ forloop.counter0 }}">
+            <article id="vlan-{{ element.id }}" class="card vlan-topology-vlan {{ element.color|default:'location-color-default' }}">
+              <div class="card-body p-2">
+                <h5 class="card-title mb-2">
+                  {% if element.url %}<a href="{{ element.url }}" target="_blank">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}
+                </h5>
+                <p class="mb-1"><strong>Group:</strong> {{ element.group }}</p>
+                <p class="mb-1"><strong>Role:</strong> {{ element.role }}</p>
+                <p class="mb-1"><strong>Machines:</strong> {{ element.machine_count }}</p>
+                <p class="mb-2"><strong>Prefix:</strong> {{ element.prefix }}</p>
+
+                <div class="vlan-machine-collapse">
+                  <button class="btn btn-sm btn-outline-secondary vlan-machine-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#vlan-machines-{{ element.id }}" aria-expanded="false">
+                    Show machines
+                  </button>
+                  <div class="collapse" id="vlan-machines-{{ element.id }}">
+                    {% for machine in element.machines %}
+                    <div class="vlan-topology-machine">
+                      {% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{ machine.name }}</a>{% else %}{{ machine.name }}{% endif %}
+                      <span class="text-muted">{{ machine.ip_address }}</span>
+                    </div>
+                    {% empty %}
+                    <div class="text-muted">No machines</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+          {% empty %}
+          <p>No VLAN topology data available.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    const stage = document.getElementById('vlan-topology-stage');
+    const viewport = document.querySelector('.vlan-topology-viewport');
+    const spokes = Array.from(document.querySelectorAll('.vlan-topology-spoke'));
+    const controls = Array.from(document.querySelectorAll('[data-zoom]'));
+
+    const state = {
+        scale: 1,
+        tx: 0,
+        ty: 0,
+        dragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+        startTx: 0,
+        startTy: 0,
+    };
+
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    function applyTransform() {
+        if (!stage) return;
+        stage.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+    }
+
+    function fitToViewport() {
+        if (!stage || !viewport) return;
+        const stageWidth = stage.offsetWidth;
+        const stageHeight = stage.offsetHeight;
+        const viewWidth = viewport.clientWidth;
+        const viewHeight = viewport.clientHeight;
+
+        state.tx = (viewWidth - stageWidth * state.scale) / 2;
+        state.ty = (viewHeight - stageHeight * state.scale) / 2;
+        applyTransform();
+    }
+
+    function placeSpokes() {
+        if (!stage || spokes.length === 0) return;
+
+        const cardWidth = 260;
+        const count = spokes.length;
+        const circumference = count * (cardWidth * 0.85);
+        const baseRadius = Math.max(460, circumference / (Math.PI * 2));
+        const stageSize = Math.max(1200, baseRadius * 2 + 280);
+
+        stage.style.width = stageSize + 'px';
+        stage.style.height = stageSize + 'px';
+
+        const centerX = stageSize / 2;
+        const centerY = stageSize / 2;
+
+        spokes.forEach((spoke, index) => {
+            const angle = (Math.PI * 2 * index) / count - (Math.PI / 2);
+            const stagger = (index % 2 === 0 ? 1 : -1) * Math.min(36, count * 1.2);
+            const radius = baseRadius + stagger;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+            const lineLength = Math.hypot(x - centerX, y - centerY);
+            const card = spoke.querySelector('.vlan-topology-vlan');
+
+            spoke.style.left = centerX + 'px';
+            spoke.style.top = centerY + 'px';
+            spoke.style.setProperty('--angle', (angle + Math.PI / 2) + 'rad');
+            spoke.style.setProperty('--line-length', lineLength + 'px');
+            spoke.style.transform = 'translate(0, 0)';
+
+            if (card) {
+                card.style.position = 'absolute';
+                card.style.left = '0';
+                card.style.top = '0';
+                card.style.transform = `translate(${Math.cos(angle) * radius}px, ${Math.sin(angle) * radius}px)`;
+            }
+        });
+
+        fitToViewport();
+    }
+
+    function zoomAt(clientX, clientY, direction) {
+        if (!viewport || !stage) return;
+
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = clientX - rect.left;
+        const mouseY = clientY - rect.top;
+
+        const worldX = (mouseX - state.tx) / state.scale;
+        const worldY = (mouseY - state.ty) / state.scale;
+
+        const nextScale = clamp(state.scale * (direction > 0 ? 1.12 : 0.88), 0.6, 1.8);
+
+        state.scale = nextScale;
+        state.tx = mouseX - worldX * nextScale;
+        state.ty = mouseY - worldY * nextScale;
+
+        applyTransform();
+    }
+
+    controls.forEach((button) => {
+        button.addEventListener('click', () => {
+            const centerX = viewport.clientWidth / 2;
+            const centerY = viewport.clientHeight / 2;
+            const action = button.dataset.zoom;
+            if (action === 'in') zoomAt(centerX, centerY, 1);
+            if (action === 'out') zoomAt(centerX, centerY, -1);
+            if (action === 'reset') {
+                state.scale = 1;
+                fitToViewport();
+            }
+        });
+    });
+
+    if (viewport) {
+        viewport.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return;
+            const hit = event.target.closest('.vlan-topology-vlan, .vlan-topology-core, .vlan-topology-machine, .vlan-machine-toggle, a, button');
+            if (hit) return;
+
+            state.dragging = true;
+            state.dragStartX = event.clientX;
+            state.dragStartY = event.clientY;
+            state.startTx = state.tx;
+            state.startTy = state.ty;
+            viewport.setPointerCapture(event.pointerId);
+        });
+
+        viewport.addEventListener('pointermove', (event) => {
+            if (!state.dragging) return;
+            const dx = event.clientX - state.dragStartX;
+            const dy = event.clientY - state.dragStartY;
+            state.tx = state.startTx + dx;
+            state.ty = state.startTy + dy;
+            applyTransform();
+        });
+
+        viewport.addEventListener('pointerup', (event) => {
+            state.dragging = false;
+            if (viewport.hasPointerCapture(event.pointerId)) {
+                viewport.releasePointerCapture(event.pointerId);
+            }
+        });
+
+        viewport.addEventListener('pointerleave', () => {
+            state.dragging = false;
+        });
+
+        viewport.addEventListener('wheel', (event) => {
+            const activeCard = event.target.closest('.vlan-topology-vlan, .vlan-topology-core, .vlan-topology-machine, .vlan-machine-toggle, a, button');
+            if (activeCard) return;
+            event.preventDefault();
+            zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
+        }, { passive: false });
+    }
+
+    placeSpokes();
+    window.addEventListener('resize', placeSpokes);
+})();
+</script>
+{% endblock %}
