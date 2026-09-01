@@ -14,6 +14,7 @@ class NetworkElement(NetBoxModel):
 
     def __init__(self, *args, **kwargs):
         self.description = kwargs.pop('description', None)
+        self.url = kwargs.pop('url', None)
         super().__init__(*args, **kwargs)
 
     def __str__(self):
@@ -25,6 +26,13 @@ class NetworkElement(NetBoxModel):
         if device.primary_ip4:
             ip_address = str(device.primary_ip4.address)
 
+        url = None
+        if hasattr(device, 'get_absolute_url'):
+            try:
+                url = device.get_absolute_url()
+            except Exception:
+                url = None
+
         return cls(
             id=device.pk,
             name=device.name or 'None',
@@ -35,6 +43,7 @@ class NetworkElement(NetBoxModel):
             tags='',
             color='location-color-default',
             description=description or 'None',
+            url=url,
         )
 
 class VlanElement(NetBoxModel):
@@ -48,6 +57,7 @@ class VlanElement(NetBoxModel):
 
     def __init__(self, *args, **kwargs):
         self.machines = kwargs.pop('machines', [])
+        self.url = kwargs.pop('url', None)
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -58,6 +68,13 @@ class VlanElement(NetBoxModel):
         )
         prefix_value = ', '.join(prefixes) if prefixes else 'None'
 
+        url = None
+        if hasattr(vlan, 'get_absolute_url'):
+            try:
+                url = vlan.get_absolute_url()
+            except Exception:
+                url = None
+
         vlan_element = cls(
             id=vlan.pk,
             name=vlan.name or f"VLAN {vlan.vid}",
@@ -67,5 +84,6 @@ class VlanElement(NetBoxModel):
             role=vlan.role.name if vlan.role else 'None',
             description=vlan.description or 'None',
             machines=machines or [],
+            url=url,
         )
         return vlan_element
