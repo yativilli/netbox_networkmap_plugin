@@ -2,46 +2,62 @@
 {% load i18n %}
 
 {% block head %}
-  <link rel="stylesheet" href="/static/network_map/vlanelement.css">
+<link rel="stylesheet" href="/static/network_map/vlanelement.css">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Elements" %}{% endblock %}
 
 {% block content %}
-  <div class="card">
-    <div class="card-header">
-      <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
-    </div>
-    <div class="card-body">
-      <div class="network-node-grid vlan-grid">
-        {% for element in elements %}
-          <article class="card network-node vlan-parent-card">
-            <div class="card-body">
-              <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}</h5>
-              <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
-              <p class="card-text mb-1"><strong>Description:</strong> {{ element.description }}</p>
-              <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
-              <p class="card-text mb-3"><strong>Range:</strong> {{ element.prefix }}</p>
-
-              <div class="vlan-child-grid">
-                {% for machine in element.machines %}
-                  <article class="card vlan-child-card">
-                    <div class="card-body p-2">
-                      <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{ machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
-                      <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
-                      <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
-                    </div>
-                  </article>
-                {% empty %}
-                  <div class="text-muted">{% trans "No machines" %}</div>
-                {% endfor %}
-              </div>
-            </div>  
-          </article>
-        {% empty %}
-          <p>{% trans "No VLAN elements found." %}</p>
-        {% endfor %}
+<div>
+  <div class="vlan-overview-grid">
+    {% for element in elements %}
+    <article class="card vlan-overview-card">
+      <div class="card-body p-2">
+        <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
       </div>
+    </article>
+    {% empty %}
+    <div class="text-muted">{% trans "No machines" %}</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
+  </div>
+  <div class="card-body">
+    <div class="network-node-grid vlan-grid">
+      {% for element in elements %}
+      <article class="card network-node vlan-parent-card">
+        <div class="card-body">
+          <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{ element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
+          <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
+          <p class="card-text mb-1"><strong>Description:</strong> {{ element.description }}</p>
+          <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
+          <p class="card-text mb-1"><strong>Machines:</strong> {{ element.machine_count }}</p>
+          <p class="card-text mb-3"><strong>Range:</strong> {{ element.prefix }}</p>
+
+          <div class="vlan-child-grid">
+            {% for machine in element.machines %}
+            <article class="card vlan-child-card">
+              <div class="card-body p-2">
+                <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{                    machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
+                <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
+                <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
+              </div>
+            </article>
+            {% empty %}
+            <div class="text-muted">{% trans "No machines" %}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </article>
+      {% empty %}
+      <p>{% trans "No VLAN elements found." %}</p>
+      {% endfor %}
     </div>
   </div>
+</div>
+</div>
 {% endblock content %}
