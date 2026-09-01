@@ -72,59 +72,7 @@ class VlanElementListView(View):
 
         return deduped
 
-    def get_vlan_ip_assignments(self, vlan):
-        networks = self.get_vlan_networks(vlan)
-        if not networks:
-            return []
 
-        assignments = []
-        for ip_address in IPAddress.objects.filter(address__isnull=False):
-            if not ip_address.address:
-                continue
-
-            ip_value = str(ip_address.address.ip)
-            try:
-                ip_obj = ipaddress.ip_address(ip_value)
-            except ValueError:
-                continue
-
-            if not any(ip_obj in network for network in networks):
-                continue
-
-            assigned_object = getattr(ip_address, 'assigned_object', None)
-            if assigned_object is None:
-                continue
-
-            name = 'None'
-            description = getattr(ip_address, 'description', None) or 'None'
-
-            if hasattr(assigned_object, 'device') and assigned_object.device:
-                device = assigned_object.device
-                name = getattr(device, 'name', None) or 'None'
-                if not description or description == 'None':
-                    description = getattr(device, 'description', None) or 'None'
-            elif hasattr(assigned_object, 'name') and assigned_object.name:
-                name = assigned_object.name
-            elif hasattr(assigned_object, 'interface') and assigned_object.interface:
-                name = getattr(assigned_object.interface, 'name', None) or 'None'
-                if not description or description == 'None':
-                    description = getattr(assigned_object.interface, 'description', None) or 'None'
-
-            assignments.append({
-                'name': name,
-                'ip_address': ip_value,
-                'description': description,
-                'id': getattr(assigned_object, 'pk', 0),
-            })
-
-        return assignments
-
-    def build_location_color_map(self, machines):
-        locations = [
-            getattr(machine, 'location', None) or 'None'
-            for machine in machines
-        ]
-        return location_color_map(locations)
 
     def build_elements(self, queryset):
         machines_by_vlan = {}
@@ -229,9 +177,9 @@ class VlanElementListView(View):
             machine_list = self.dedupe_machines(machines_by_vlan.get(vlan.pk, []))
             machine_list = sorted(machine_list, key=lambda item: (item.name, item.ip_address))
 
-            location_color_map = self.build_location_color_map(machine_list)
+            color_map = location_color_map([m.location or 'None' for m in machine_list])
             for machine in machine_list:
-                machine.color = location_color_map.get(machine.location or 'None', 'location-color-default')
+                machine.color = color_map.get(machine.location or 'None', 'location-color-default')
 
             vlan_element = VlanElement.from_vlan(vlan, machines=machine_list)
             vlan_element.name = vlan_element.name or 'None'
