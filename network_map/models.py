@@ -52,6 +52,7 @@ class VlanElement(NetBoxModel):
     prefix = models.CharField(max_length=60)
     status = models.CharField(max_length=20)
     role = models.CharField(max_length=50)
+    machine_count = models.IntegerField(default=0)
     description = models.TextField(max_length=500, blank=True)
 
     def __init__(self, *args, **kwargs):
@@ -74,6 +75,8 @@ class VlanElement(NetBoxModel):
             except Exception:
                 url = None
 
+        machine_count = len(machines or [])
+
         vlan_element = cls(
             id=vlan.pk,
             name=vlan.name or f"VLAN {vlan.vid}",
@@ -81,6 +84,7 @@ class VlanElement(NetBoxModel):
             prefix=prefix_value,
             status=getattr(vlan.status, 'label', vlan.status) or 'None',
             role=vlan.role.name if vlan.role else 'None',
+            machine_count=machine_count,
             description=vlan.description or 'None',
             machines=machines or [],
             url=url,

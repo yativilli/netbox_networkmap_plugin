@@ -28,6 +28,27 @@
     font-size: 1rem;
 }
 
+.vlan-overview-grid {
+    display: grid;
+    grid-gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.vlan-overview-card {
+    border-left: 5px solid #2f6fba;
+    background: #ffffff;
+    min-width: 150px;
+    width: auto;
+}
+
+.vlan-overview-card .card-body {
+    width: fit-content;
+}
+
+.vlan-overview-card .card-title {
+    font-size: 1rem;
+}
+
 a {
     color: #533885 !important;
 }
@@ -40,6 +61,18 @@ a {
 
     .vlan-child-card,
     .vlan-child-card .card-body {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .vlan-overview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .vlan-overview-card,
+    .vlan-overview-card .card-body {
         width: 100%;
         max-width: 100%;
         min-width: 0;
