@@ -95,7 +95,7 @@ html {
 
 .location-color-default { --location-color: 108, 117, 125; }
 
-a {
+.vlan-element-list a {
     color: #533885 !important;
 }
 

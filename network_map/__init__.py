@@ -8,5 +8,8 @@ class NetworkMapConfig(PluginConfig):
     base_url = 'networkmap'
     min_version = '4.5.0'
     max_version = '4.7.99'
+    author = "Yannick Wernle"
+    author_email = "yannick@wernle.net"
+    url = 'https://github.com/yativilli/netbox_networkmap_plugin'
 
 config = NetworkMapConfig

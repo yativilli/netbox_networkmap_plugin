@@ -12,6 +12,9 @@ authors = [
 description = "A network_map plugin for netbox"
 readme = { file = "README.md", content-type = "text/markdown"}
 
+[project.urls]
+Repository = "https://github.com/yativilli/netbox_networkmap_plugin"
+
 [tool.setuptools]
 include-package-data = true
 packages = ["network_map"]
