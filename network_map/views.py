@@ -1,6 +1,6 @@
 import ipaddress
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.views import View
 from netbox.views import generic
@@ -43,6 +43,46 @@ class VlanElementListView(View):
                 except ValueError:
                     continue
         return networks
+
+    def dedupe_machines(self, machines):
+        deduped = []
+        by_name = {}
+        by_ip = {}
+
+        for machine in machines:
+            name = (machine.name or 'None').strip()
+            ip_value = (machine.ip_address or 'None').strip()
+            if name == 'None':
+                name = None
+            if ip_value == 'None':
+                ip_value = None
+
+            name_key = name.lower() if name else None
+            ip_key = ip_value if ip_value else None
+
+            if name_key and name_key in by_name:
+                existing = by_name[name_key]
+                if ip_key and existing.ip_address in (None, 'None'):
+                    existing.ip_address = ip_key
+                if ip_key and existing.description in (None, 'None', '-') and machine.description not in (None, 'None', '-'):
+                    existing.description = machine.description
+                continue
+
+            if ip_key and ip_key in by_ip:
+                existing = by_ip[ip_key]
+                if name_key and (existing.name in (None, 'None') or existing.name == '-'):
+                    existing.name = name
+                if existing.description in (None, 'None', '-') and machine.description not in (None, 'None', '-'):
+                    existing.description = machine.description
+                continue
+
+            deduped.append(machine)
+            if name_key:
+                by_name[name_key] = machine
+            if ip_key:
+                by_ip[ip_key] = machine
+
+        return deduped
 
     def get_vlan_ip_assignments(self, vlan):
         networks = self.get_vlan_networks(vlan)
@@ -94,29 +134,101 @@ class VlanElementListView(View):
     def build_elements(self, queryset):
         machines_by_vlan = {}
 
+        interface_queryset = Interface.objects.filter(
+            Q(untagged_vlan__in=queryset) | Q(tagged_vlans__in=queryset)
+        ).select_related(
+            'device',
+            'device__primary_ip4',
+            'untagged_vlan',
+        ).prefetch_related('tagged_vlans', 'ip_addresses').distinct()
+
+        for interface in interface_queryset:
+            if not interface.device:
+                continue
+
+            device = interface.device
+            description = getattr(device, 'description', '') or getattr(interface, 'description', '') or '-'
+            machine = NetworkElement.from_device(device, description=description)
+            if not machine.name:
+                machine.name = 'None'
+            if not machine.ip_address or machine.ip_address == '0.0.0.0':
+                machine.ip_address = 'None'
+            if not machine.description:
+                machine.description = 'None'
+
+            vlan_ids = set()
+            if interface.untagged_vlan_id:
+                vlan_ids.add(interface.untagged_vlan_id)
+            vlan_ids.update(interface.tagged_vlans.values_list('id', flat=True))
+
+            for vlan_id in vlan_ids:
+                machines_by_vlan.setdefault(vlan_id, [])
+                machines_by_vlan[vlan_id].append(machine)
+
         for vlan in queryset:
-            assignments = self.get_vlan_ip_assignments(vlan)
-            for assignment in assignments:
+            networks = self.get_vlan_networks(vlan)
+            if not networks:
+                continue
+
+            for ip_address in IPAddress.objects.filter(address__isnull=False):
+                if not ip_address.address:
+                    continue
+
+                ip_value = str(ip_address.address.ip)
+                try:
+                    ip_obj = ipaddress.ip_address(ip_value)
+                except ValueError:
+                    continue
+
+                if not any(ip_obj in network for network in networks):
+                    continue
+
+                assigned_object = getattr(ip_address, 'assigned_object', None)
+                if assigned_object is None:
+                    continue
+
+                name = 'None'
+                description = getattr(ip_address, 'description', None) or 'None'
+
+                if hasattr(assigned_object, 'device') and assigned_object.device:
+                    device = assigned_object.device
+                    name = getattr(device, 'name', None) or 'None'
+                    if not description or description == 'None':
+                        description = getattr(device, 'description', None) or 'None'
+                elif hasattr(assigned_object, 'name') and assigned_object.name:
+                    name = assigned_object.name
+                elif hasattr(assigned_object, 'interface') and assigned_object.interface:
+                    name = getattr(assigned_object.interface, 'name', None) or 'None'
+                    if not description or description == 'None':
+                        description = getattr(assigned_object.interface, 'description', None) or 'None'
+
+                machine_url = None
+                if hasattr(assigned_object, 'get_absolute_url'):
+                    try:
+                        machine_url = assigned_object.get_absolute_url()
+                    except Exception:
+                        machine_url = None
+
                 machine = NetworkElement(
-                    id=assignment['id'],
-                    name=assignment['name'] or 'None',
-                    ip_address=assignment['ip_address'] or 'None',
+                    id=getattr(assigned_object, 'pk', 0),
+                    name=name or 'None',
+                    ip_address=ip_value or 'None',
                     device_type='None',
                     location='None',
                     role='None',
                     tags='',
                     color='location-color-default',
-                    description=assignment['description'] or 'None',
+                    description=description or 'None',
+                    url=machine_url,
                 )
-                machines_by_vlan.setdefault(vlan.pk, {})
-                machines_by_vlan[vlan.pk][(machine.name, machine.ip_address)] = machine
+                machines_by_vlan.setdefault(vlan.pk, [])
+                machines_by_vlan[vlan.pk].append(machine)
 
         elements = []
         for vlan in queryset:
-            machine_list = sorted(
-                machines_by_vlan.get(vlan.pk, {}).values(),
-                key=lambda item: (item.name, item.ip_address)
-            )
+            machine_list = self.dedupe_machines(machines_by_vlan.get(vlan.pk, []))
+            machine_list = sorted(machine_list, key=lambda item: (item.name, item.ip_address))
+
             vlan_element = VlanElement.from_vlan(vlan, machines=machine_list)
             vlan_element.name = vlan_element.name or 'None'
             vlan_element.group = vlan_element.group or 'None'
