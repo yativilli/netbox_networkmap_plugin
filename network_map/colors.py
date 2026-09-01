@@ -24,3 +24,22 @@ LOCATION_COLORS = (
 
 def color_for_location(index: int) -> str:
     return LOCATION_COLORS[index % len(LOCATION_COLORS)][0]
+
+
+def location_color_map(locations) -> dict[str, str]:
+    normalized_locations = []
+    for location in locations:
+        value = str(location or 'None').strip() or 'None'
+        if value in {'None', 'Unknown'}:
+            continue
+        normalized_locations.append(value)
+
+    ordered_locations = sorted(set(normalized_locations))
+    mapping = {
+        location: color_for_location(index)
+        for index, location in enumerate(ordered_locations)
+    }
+
+    mapping['None'] = 'location-color-default'
+    mapping['Unknown'] = 'location-color-default'
+    return mapping

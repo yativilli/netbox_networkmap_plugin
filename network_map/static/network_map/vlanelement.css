@@ -3,8 +3,8 @@
 }
 
 .vlan-parent-card {
-    border-left: 5px solid #2f6fba;
-    background: #f8fbff;
+    border-left: 5px solid #c6cccb;
+    background: #ffff;
 }
 
 .vlan-child-grid {
@@ -14,8 +14,8 @@
 }
 
 .vlan-child-card {
-    border-left: 5px solid #2f6fba;
-    background: #ffffff;
+    border-left: 5px solid rgb(var(--location-color));
+    background: rgba(var(--location-color), 0.07) !important;
     min-width: 150px;
     width: auto;
 }
@@ -35,8 +35,8 @@
 }
 
 .vlan-overview-card {
-    border-left: 5px solid #2f6fba;
-    background: #ffffff;
+    border-left: 5px solid #c6cccb;
+    background: #ffff;
     min-width: 150px;
     width: auto;
 }
@@ -71,6 +71,29 @@ html {
     scroll-behavior: smooth;
     scroll-padding-top: 120px;
 }  
+
+.location-color-0 { --location-color: 0, 114, 178; }
+.location-color-1 { --location-color: 213, 94, 0; }
+.location-color-2 { --location-color: 0, 158, 115; }
+.location-color-3 { --location-color: 204, 121, 167; }
+.location-color-4 { --location-color: 230, 159, 0; }
+.location-color-5 { --location-color: 86, 180, 233; }
+.location-color-6 { --location-color: 136, 34, 85; }
+.location-color-7 { --location-color: 17, 119, 51; }
+.location-color-8 { --location-color: 51, 34, 136; }
+.location-color-9 { --location-color: 170, 68, 153; }
+.location-color-10 { --location-color: 68, 170, 153; }
+.location-color-11 { --location-color: 153, 153, 51; }
+.location-color-12 { --location-color: 102, 17, 0; }
+.location-color-13 { --location-color: 102, 153, 204; }
+.location-color-14 { --location-color: 170, 68, 102; }
+.location-color-15 { --location-color: 68, 119, 68; }
+.location-color-16 { --location-color: 119, 68, 136; }
+.location-color-17 { --location-color: 204, 102, 119; }
+.location-color-18 { --location-color: 17, 119, 85; }
+.location-color-19 { --location-color: 221, 204, 119; }
+
+.location-color-default { --location-color: 108, 117, 125; }
 
 a {
     color: #533885 !important;

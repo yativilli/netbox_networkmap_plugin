@@ -8,7 +8,7 @@ from dcim.models import Device, Interface
 from ipam.models import VLAN, IPAddress
 
 from .models import NetworkElement, VlanElement
-from .colors import color_for_location
+from .colors import color_for_location, location_color_map
 
 
 class VlanElementListView(View):
@@ -119,6 +119,13 @@ class VlanElementListView(View):
 
         return assignments
 
+    def build_location_color_map(self, machines):
+        locations = [
+            getattr(machine, 'location', None) or 'None'
+            for machine in machines
+        ]
+        return location_color_map(locations)
+
     def build_elements(self, queryset):
         machines_by_vlan = {}
 
@@ -177,18 +184,23 @@ class VlanElementListView(View):
 
                 name = 'None'
                 description = getattr(ip_address, 'description', None) or 'None'
+                location = 'None'
 
                 if hasattr(assigned_object, 'device') and assigned_object.device:
                     device = assigned_object.device
                     name = getattr(device, 'name', None) or 'None'
+                    location = getattr(device.site, 'name', None) or 'None'
                     if not description or description == 'None':
                         description = getattr(device, 'description', None) or 'None'
                 elif hasattr(assigned_object, 'name') and assigned_object.name:
                     name = assigned_object.name
                 elif hasattr(assigned_object, 'interface') and assigned_object.interface:
-                    name = getattr(assigned_object.interface, 'name', None) or 'None'
+                    interface = assigned_object.interface
+                    name = getattr(interface, 'name', None) or 'None'
+                    location = getattr(getattr(interface, 'device', None), 'site', None)
+                    location = getattr(location, 'name', None) or 'None'
                     if not description or description == 'None':
-                        description = getattr(assigned_object.interface, 'description', None) or 'None'
+                        description = getattr(interface, 'description', None) or 'None'
 
                 machine_url = None
                 if hasattr(assigned_object, 'get_absolute_url'):
@@ -202,7 +214,7 @@ class VlanElementListView(View):
                     name=name or 'None',
                     ip_address=ip_value or 'None',
                     device_type='None',
-                    location='None',
+                    location=location or 'None',
                     role='None',
                     tags='',
                     color='location-color-default',
@@ -217,12 +229,20 @@ class VlanElementListView(View):
             machine_list = self.dedupe_machines(machines_by_vlan.get(vlan.pk, []))
             machine_list = sorted(machine_list, key=lambda item: (item.name, item.ip_address))
 
+            location_color_map = self.build_location_color_map(machine_list)
+            for machine in machine_list:
+                machine.color = location_color_map.get(machine.location or 'None', 'location-color-default')
+
             vlan_element = VlanElement.from_vlan(vlan, machines=machine_list)
             vlan_element.name = vlan_element.name or 'None'
             vlan_element.group = vlan_element.group or 'None'
             vlan_element.status = vlan_element.status or 'None'
             vlan_element.role = vlan_element.role or 'None'
             vlan_element.description = vlan_element.description or 'None'
+            vlan_element.color = next(
+                (machine.color for machine in machine_list if getattr(machine, 'color', None)),
+                'location-color-default',
+            )
             elements.append(vlan_element)
         return elements
 
@@ -262,14 +282,12 @@ class NetworkElementTopologyView(View):
 
     def build_legend(self, elements: List[NetworkElement]) -> Dict[str, str]:
         locations = sorted({element.location or "Unknown" for element in elements})
-        location_colors = {}
-        for location in locations:
-            location_colors[location] = color_for_location(len(location_colors))
+        location_colors = location_color_map(locations)
         legend = {}
         for element in elements:
             key = element.location or "Unknown"
-            element.color = location_colors[key]
-            legend[key] = location_colors[key]
+            element.color = location_colors.get(key, 'location-color-default')
+            legend[key] = element.color
         return legend
 
     def get(self, request):
