@@ -1,13 +1,12 @@
 from django.db import models
 from netbox.models import NetBoxModel
-from .choices import LocationChoices, DeviceChoices
 
 class NetworkElement(NetBoxModel):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100)
     ip_address = models.GenericIPAddressField()
-    device_type = models.CharField(max_length=50, choices=DeviceChoices)
-    location = models.CharField(max_length=100, choices=LocationChoices)
+    device_type = models.CharField(max_length=100)
+    location = models.CharField(max_length=100)
     role = models.CharField(max_length=50)
     tags = models.CharField(max_length=200, blank=True)
     color = models.CharField(max_length=20)
