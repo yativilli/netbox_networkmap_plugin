@@ -18,7 +18,7 @@
       <div class="vlan-overview-grid">
         {% for element in elements %}
         <a href="#vlan-{{ element.id }}" class="vlan-overview-link">
-          <article class="card vlan-overview-card">
+          <article class="card vlan-overview-card {{ element.color|default:'location-color-default' }}">
             <div class="card-body p-2">
               <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
             </div>
@@ -39,7 +39,7 @@
   <div class="card-body">
     <div class="network-node-grid vlan-grid">
       {% for element in elements %}
-      <article id="vlan-{{ element.id }}" class="card network-node vlan-parent-card">
+      <article id="vlan-{{ element.id }}" class="card network-node vlan-parent-card {{ element.color|default:'location-color-default' }}">
         <div class="card-body">
           <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
           <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
@@ -50,9 +50,10 @@
 
           <div class="vlan-child-grid">
             {% for machine in element.machines %}
-            <article class="card vlan-child-card">
+            <article class="card vlan-child-card {{ machine.color|default:'location-color-default' }}">
               <div class="card-body p-2">
                 <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
+                <p class="card-text mb-1"><strong>Location:</strong> {{ machine.location }}</p>
                 <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
                 <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
               </div>
