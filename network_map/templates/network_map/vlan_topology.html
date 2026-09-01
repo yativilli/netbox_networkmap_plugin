@@ -28,18 +28,21 @@
               </div>
               <h4 class="text-center mb-1">
                 {% if center_device %}
-                  {{ center_device.name }}
+                  {% if center_device.get_absolute_url %}<a href="{{ center_device.get_absolute_url }}" target="_blank" rel="noopener">{{ center_device.name }}</a>{% else %}{{ center_device.name }}{% endif %}
                 {% else %}
                   Main Gateway / Firewall
                 {% endif %}
               </h4>
-              <p class="text-center mb-0">
+              <p class="text-center mb-1">
                 {% if center_device %}
-                  {{ center_device.ip_address }}
+                  {{ center_device.primary_ip4.address|default:'No IP' }}
                 {% else %}
                   Central Hub
                 {% endif %}
               </p>
+              {% if center_device and center_device.site %}
+                <p class="text-center mb-0 text-muted small">{{ center_device.site.name }}</p>
+              {% endif %}
             </div>
           </article>
         </div>
@@ -50,12 +53,17 @@
             <article id="vlan-{{ element.id }}" class="card vlan-topology-vlan {{ element.color|default:'location-color-default' }}">
               <div class="card-body p-2">
                 <h5 class="card-title mb-2">
-                  {% if element.url %}<a href="{{ element.url }}" target="_blank">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}
+                  {% if element.url %}<a href="{{ element.url }}" target="_blank" rel="noopener">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}
                 </h5>
                 <p class="mb-1"><strong>Group:</strong> {{ element.group }}</p>
                 <p class="mb-1"><strong>Role:</strong> {{ element.role }}</p>
                 <p class="mb-1"><strong>Machines:</strong> {{ element.machine_count }}</p>
-                <p class="mb-2"><strong>Prefix:</strong> {{ element.prefix }}</p>
+                <p class="mb-1"><strong>Prefix:</strong> {{ element.prefix }}</p>
+                {% if center_device %}
+                  <p class="mb-2"><strong>Gateway:</strong>
+                    {% if center_device.get_absolute_url %}<a href="{{ center_device.get_absolute_url }}" target="_blank" rel="noopener">{{ center_device.name }}</a>{% else %}{{ center_device.name }}{% endif %}
+                  </p>
+                {% endif %}
 
                 <div class="vlan-machine-collapse">
                   <button class="btn btn-sm btn-outline-secondary vlan-machine-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#vlan-machines-{{ element.id }}" aria-expanded="false">
@@ -64,7 +72,7 @@
                   <div class="collapse" id="vlan-machines-{{ element.id }}">
                     {% for machine in element.machines %}
                     <div class="vlan-topology-machine">
-                      {% if machine.url %}<a href="{{ machine.url }}" target="_blank">{{ machine.name }}</a>{% else %}{{ machine.name }}{% endif %}
+                      {% if machine.url %}<a href="{{ machine.url }}" target="_blank" rel="noopener">{{ machine.name }}</a>{% else %}{{ machine.name }}{% endif %}
                       <span class="text-muted">{{ machine.ip_address }}</span>
                     </div>
                     {% empty %}
@@ -126,39 +134,92 @@
     function placeSpokes() {
         if (!stage || spokes.length === 0) return;
 
-        const cardWidth = 260;
-        const count = spokes.length;
-        const circumference = count * (cardWidth * 0.85);
-        const baseRadius = Math.max(460, circumference / (Math.PI * 2));
-        const stageSize = Math.max(1200, baseRadius * 2 + 280);
+        const defaultCardWidth = 260;
+        const defaultCardHeight = 220;
+        const minGap = 10;
+        const ringSize = 10;
+        const cardsPerRing = ringSize;
+        const ringSpacing = 180;
+        const baseRadius = 280;
 
+        const cards = spokes.map((spoke) => {
+            const card = spoke.querySelector('.vlan-topology-vlan');
+            const width = card ? card.offsetWidth || defaultCardWidth : defaultCardWidth;
+            const height = card ? card.offsetHeight || defaultCardHeight : defaultCardHeight;
+            return { spoke, card, width, height };
+        });
+
+        const ringCount = Math.max(1, Math.ceil(cards.length / cardsPerRing));
+        const stageSize = Math.max(1400, (ringCount * ringSpacing) + 700);
         stage.style.width = stageSize + 'px';
         stage.style.height = stageSize + 'px';
 
         const centerX = stageSize / 2;
         const centerY = stageSize / 2;
 
-        spokes.forEach((spoke, index) => {
-            const angle = (Math.PI * 2 * index) / count - (Math.PI / 2);
-            const stagger = (index % 2 === 0 ? 1 : -1) * Math.min(36, count * 1.2);
-            const radius = baseRadius + stagger;
-            const x = centerX + Math.cos(angle) * radius;
-            const y = centerY + Math.sin(angle) * radius;
-            const lineLength = Math.hypot(x - centerX, y - centerY);
-            const card = spoke.querySelector('.vlan-topology-vlan');
+        const placed = [];
 
-            spoke.style.left = centerX + 'px';
-            spoke.style.top = centerY + 'px';
-            spoke.style.setProperty('--angle', (angle + Math.PI / 2) + 'rad');
-            spoke.style.setProperty('--line-length', lineLength + 'px');
-            spoke.style.transform = 'translate(0, 0)';
+        cards.forEach((item, index) => {
+            const ringIndex = Math.floor(index / cardsPerRing);
+            const ringPosition = index % cardsPerRing;
+            const angleStep = (Math.PI * 2) / cardsPerRing;
+            const angle = angleStep * ringPosition - (Math.PI / 2) + (ringIndex % 2) * (angleStep / 2);
 
-            if (card) {
-                card.style.position = 'absolute';
-                card.style.left = '0';
-                card.style.top = '0';
-                card.style.transform = `translate(${Math.cos(angle) * radius}px, ${Math.sin(angle) * radius}px)`;
+            const halfWidth = item.width / 2;
+            const halfHeight = item.height / 2;
+            const baseRingRadius = baseRadius + ringIndex * ringSpacing;
+            let ringRadius = baseRingRadius;
+
+            while (true) {
+                const candidateCenterX = Math.cos(angle) * ringRadius;
+                const candidateCenterY = Math.sin(angle) * ringRadius;
+
+                const candidateRect = {
+                    left: candidateCenterX - halfWidth,
+                    right: candidateCenterX + halfWidth,
+                    top: candidateCenterY - halfHeight,
+                    bottom: candidateCenterY + halfHeight,
+                };
+
+                const overlap = placed.some((other) => {
+                    const pad = minGap;
+                    return !(candidateRect.right + pad < other.left || candidateRect.left - pad > other.right || candidateRect.bottom + pad < other.top || candidateRect.top - pad > other.bottom);
+                });
+
+                if (!overlap) {
+                    break;
+                }
+
+                ringRadius += 10;
             }
+
+            const hubRadius = 110;
+            const startX = Math.cos(angle) * hubRadius;
+            const startY = Math.sin(angle) * hubRadius;
+            const endX = candidateCenterX = Math.cos(angle) * ringRadius;
+            const endY = candidateCenterY = Math.sin(angle) * ringRadius;
+            const lineAngle = Math.atan2(endY - startY, endX - startX);
+            const lineLength = Math.hypot(endX - startX, endY - startY);
+
+            item.spoke.style.left = centerX + 'px';
+            item.spoke.style.top = centerY + 'px';
+            item.spoke.style.setProperty('--angle', lineAngle + 'rad');
+            item.spoke.style.setProperty('--line-length', lineLength + 'px');
+            item.spoke.style.transform = 'translate(0, 0)';
+
+            if (item.card) {
+                item.card.style.position = 'absolute';
+                item.card.style.left = '0';
+                item.card.style.top = '0';
+                item.card.style.transform = `translate(${candidateCenterX - halfWidth}px, ${candidateCenterY - halfHeight}px)`;
+            }
+
+            placed.push({
+                left: candidateCenterX - halfWidth,
+                right: candidateCenterX + halfWidth,
+                top: candidateCenterY - halfHeight,
+                bottom: candidateCenterY + halfHeight,
+            });
         });
 
         fitToViewport();
@@ -183,6 +244,12 @@
         applyTransform();
     }
 
+    function setActiveSpoke(targetSpoke) {
+        spokes.forEach((spoke) => {
+            spoke.classList.toggle('is-focused', targetSpoke && spoke === targetSpoke);
+        });
+    }
+
     controls.forEach((button) => {
         button.addEventListener('click', () => {
             const centerX = viewport.clientWidth / 2;
@@ -193,6 +260,17 @@
             if (action === 'reset') {
                 state.scale = 1;
                 fitToViewport();
+            }
+        });
+    });
+
+    document.querySelectorAll('.vlan-topology-vlan').forEach((card) => {
+        card.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const spoke = card.closest('.vlan-topology-spoke');
+            if (spoke) {
+                setActiveSpoke(spoke);
             }
         });
     });
