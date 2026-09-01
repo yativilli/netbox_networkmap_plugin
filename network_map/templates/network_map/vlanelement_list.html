@@ -17,11 +17,13 @@
       <p>{% trans "Overview of machines per VLAN" %}</p>
       <div class="vlan-overview-grid">
         {% for element in elements %}
-        <article class="card vlan-overview-card">
-          <div class="card-body p-2">
-            <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
-          </div>
-        </article>
+        <a href="#vlan-{{ element.id }}" class="vlan-overview-link">
+          <article class="card vlan-overview-card">
+            <div class="card-body p-2">
+              <p class="card-text mb-1"><strong>{{ element.name }}:</strong> {{ element.machine_count }}</p>
+            </div>
+          </article>
+        </a>
         {% empty %}
         <div class="text-muted">{% trans "No machines" %}</div>
         {% endfor %}
@@ -37,7 +39,7 @@
   <div class="card-body">
     <div class="network-node-grid vlan-grid">
       {% for element in elements %}
-      <article class="card network-node vlan-parent-card">
+      <article id="vlan-{{ element.id }}" class="card network-node vlan-parent-card">
         <div class="card-body">
           <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}" target="_blank">{{element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
           <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
