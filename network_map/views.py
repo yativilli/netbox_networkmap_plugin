@@ -197,6 +197,44 @@ class VlanElementListView(View):
         return render(request, self.template_name, context)
 
 
+class VlanTopologyView(VlanElementListView):
+    template_name = 'network_map/vlan_topology.html'
+
+    def get_center_device(self):
+        queryset = (
+            Device.objects.filter(status='active', primary_ip4__isnull=False)
+            .select_related('device_type', 'site', 'primary_ip4', 'role')
+            .order_by('site__name', 'name')
+        )
+
+        for candidate in queryset:
+            role_name = getattr(getattr(candidate, 'role', None), 'name', '') or ''
+            device_model = getattr(getattr(candidate, 'device_type', None), 'model', '') or ''
+            device_name = getattr(candidate, 'name', '') or ''
+
+            if any(token in (role_name + ' ' + device_model + ' ' + device_name).lower() for token in ('firewall', 'fw')):
+                return candidate
+
+        for candidate in queryset:
+            role_name = getattr(getattr(candidate, 'role', None), 'name', '') or ''
+            device_model = getattr(getattr(candidate, 'device_type', None), 'model', '') or ''
+            device_name = getattr(candidate, 'name', '') or ''
+
+            if any(token in (role_name + ' ' + device_model + ' ' + device_name).lower() for token in ('gateway', 'router', 'edge')):
+                return candidate
+
+        return queryset.first()
+
+    def get(self, request):
+        queryset = self.get_queryset()
+        center_device = self.get_center_device()
+        context = {
+            'elements': self.build_elements(queryset),
+            'center_device': center_device,
+        }
+        return render(request, self.template_name, context)
+
+
 class NetworkElementTopologyView(View):
     template_name = 'network_map/networkelement_topology.html'
 

@@ -47,6 +47,7 @@
     position: absolute;
     inset: 0;
     z-index: 1;
+    pointer-events: none;
 }
 
 .vlan-topology-spoke {
@@ -58,6 +59,7 @@
     left: 50%;
     top: 50%;
     z-index: 2;
+    pointer-events: none;
 }
 
 .vlan-topology-spoke::before {
@@ -73,17 +75,52 @@
     z-index: 0;
     display: block;
     opacity: 0.8;
+    pointer-events: none;
+}
+
+.vlan-topology-spoke.is-focused {
+    z-index: 30;
 }
 
 .vlan-topology-vlan {
     position: absolute;
-    z-index: 2;
+    z-index: 3;
     border-left: 5px solid #c6cccb;
     background: #ffff;
     min-height: 180px;
     width: 260px;
     box-shadow: 0 12px 25px rgba(0, 0, 0, 0.08);
     transform-origin: 0 0;
+    cursor: default;
+    pointer-events: auto;
+    transition: box-shadow 0.18s ease, filter 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
+}
+
+.vlan-topology-spoke.is-focused .vlan-topology-vlan,
+.vlan-topology-vlan:hover {
+    box-shadow: 0 18px 30px rgba(0, 0, 0, 0.14);
+    z-index: 40;
+}
+
+.vlan-topology-spoke:not(.is-focused) .vlan-topology-vlan {
+    opacity: 0.88;
+    filter: saturate(0.84);
+}
+
+.vlan-topology-core,
+.vlan-topology-vlan,
+.vlan-topology-vlan a,
+.vlan-topology-vlan button,
+.vlan-topology-core a,
+.vlan-topology-core button {
+    cursor: default;
+}
+
+.vlan-topology-vlan a,
+.vlan-topology-vlan button,
+.vlan-topology-core a,
+.vlan-topology-core button {
+    cursor: pointer;
 }
 
 .vlan-machine-collapse {
