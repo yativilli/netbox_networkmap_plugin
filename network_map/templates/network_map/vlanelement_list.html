@@ -56,9 +56,9 @@
               <article class="card vlan-child-card {{ machine.color|default:'location-color-default' }}">
                 <div class="card-body p-2">
                   <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}"
-                      target="_blank">{{machine.name }}</a>{% else %}{{ machine.name }}{% endif %}</h6>
+                      target="_blank">{{machine.dns_name }}</a>{% else %}{{ machine.dns_name }}{% endif %}</h6>
                   <p class="card-text mb-1"><strong>Location:</strong> {{ machine.location }}</p>
-                  <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip_address }}</p>
+                  <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip }}</p>
                   <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
                 </div>
               </article>

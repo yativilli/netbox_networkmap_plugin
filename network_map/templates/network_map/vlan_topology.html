@@ -266,6 +266,10 @@
 
     document.querySelectorAll('.vlan-topology-vlan').forEach((card) => {
         card.addEventListener('click', (event) => {
+            // Allow links to work (target="_blank" will open in new tab)
+            if (event.target.tagName === 'A' || event.target.closest('a')) {
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
             const spoke = card.closest('.vlan-topology-spoke');
