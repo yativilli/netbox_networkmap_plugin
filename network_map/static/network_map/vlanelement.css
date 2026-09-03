@@ -169,12 +169,16 @@
     width: auto;
 }
 
+
 .vlan-child-card .card-body {
     width: fit-content;
 }
 
 .vlan-child-card .card-title {
-    font-size: 1rem;
+    max-width: inherit;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
 }
 
 .vlan-overview-grid {
