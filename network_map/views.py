@@ -28,6 +28,7 @@ class VlanElementListView(View):
         Build VLAN elements without machine data.
         """
         elements = []
+        locations = set()
         for vlan in queryset:
             machines = []
             vlan_element = VlanElement.from_vlan(vlan, machines=[])
@@ -36,7 +37,6 @@ class VlanElementListView(View):
             vlan_element.status = vlan_element.status or 'None'
             vlan_element.role = vlan_element.role or 'None'
             vlan_element.description = vlan_element.description or 'None'
-            
             related_prefixes = list(vlan.prefixes.all())
             machine_count = 0
             for prefix in related_prefixes:
@@ -47,7 +47,6 @@ class VlanElementListView(View):
                 ).order_by("address")
 
                 for ip in active_ips:
-                    if ip.dns_name:
                         assigned_object = getattr(ip, "assigned_object", None)
                         device = getattr(assigned_object, "device", None)
                         vm = getattr(assigned_object, "virtual_machine", None)
@@ -55,7 +54,7 @@ class VlanElementListView(View):
                         if device:
                             location = device.site.name if device.site else 'None'
                             url = device.get_absolute_url()
-                            description = device.description or device.device_type.model or ip.comments or 'None'
+                            description = device.description or device.role or ip.comments or 'None'
                             
                         elif vm:
                             location = vm.site.name if vm.site else 'None'
@@ -65,13 +64,17 @@ class VlanElementListView(View):
                             location = 'None'
                             url = None
                             description = getattr(assigned_object, "description", None) or 'None'
+                            
+                        locations.add(location)
+                        color_index = list(locations).index(location)
 
                         machines.append({
                             "ip": str(ip.address.ip),
-                            "dns_name": ip.dns_name or 'None',
+                            "dns_name": ip.dns_name or device or 'None',
                             "location": location,
                             "url": url,
-                            "description": description
+                            "description": description,
+                            "color": color_for_location(color_index),
                         })
                         machine_count += 1
                         
