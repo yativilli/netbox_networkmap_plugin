@@ -1,50 +1,6 @@
 from django.db import models
 from netbox.models import NetBoxModel
 
-class NetworkElement(NetBoxModel):
-    id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=100)
-    ip_address = models.GenericIPAddressField()
-    device_type = models.CharField(max_length=100)
-    location = models.CharField(max_length=100)
-    role = models.CharField(max_length=50)
-    tags = models.CharField(max_length=200, blank=True)
-    color = models.CharField(max_length=20)
-
-    def __init__(self, *args, **kwargs):
-        self.description = kwargs.pop('description', None)
-        self.url = kwargs.pop('url', None)
-        super().__init__(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.name} ({self.ip_address})"
-
-    @classmethod
-    def from_device(cls, device, description='-'):
-        ip_address = None
-        if device.primary_ip4:
-            ip_address = str(device.primary_ip4.address)
-
-        url = None
-        if hasattr(device, 'get_absolute_url'):
-            try:
-                url = device.get_absolute_url()
-            except Exception:
-                url = None
-
-        return cls(
-            id=device.pk,
-            name=device.name or 'None',
-            ip_address=ip_address or 'None',
-            device_type=getattr(device.device_type, 'model', None) or 'None',
-            location=getattr(device.site, 'name', None) or 'None',
-            role=getattr(device.role, 'name', None) or 'None',
-            tags='',
-            color='location-color-default',
-            description=description or 'None',
-            url=url,
-        )
-
 class VlanElement(NetBoxModel):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100)

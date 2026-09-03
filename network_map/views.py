@@ -26,7 +26,7 @@ class VlanElementListView(View):
         Build VLAN elements without machine data.
         """
         elements = []
-        locations = set()
+        locations = []
         for vlan in queryset:
             machines = []
             vlan_element = VlanElement.from_vlan(vlan, machines=[])
@@ -63,16 +63,17 @@ class VlanElementListView(View):
                             url = None
                             description = getattr(assigned_object, "description", None) or 'None'
                             
-                        locations.add(location)
-                        color_index = list(locations).index(location)
+                        if location not in locations:
+                            locations.append(location)
+                        color = color_for_location(locations.index(location))
 
                         machines.append({
                             "ip": str(ip.address.ip),
-                            "dns_name": ip.dns_name or device or 'None',
+                            "dns_name": ip.dns_name or device or ip.description or 'None',
                             "location": location,
                             "url": url,
                             "description": description,
-                            "color": color_for_location(color_index),
+                            "color": color
                         })
                         machine_count += 1
                         
