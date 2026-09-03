@@ -15,7 +15,6 @@ views.py
 ./views.py
 ./static/network_map/topology.css
 ./static/network_map/vlanelement.css
-./templates/network_map/networkelement_topology.html
 ./templates/network_map/vlan_topology.html
 ./templates/network_map/vlanelement_list.html
 network_map.egg-info/PKG-INFO
@@ -24,5 +23,4 @@ network_map.egg-info/dependency_links.txt
 network_map.egg-info/top_level.txt
 static/network_map/topology.css
 static/network_map/vlanelement.css
-templates/network_map/networkelement_topology.html
 templates/network_map/vlanelement_list.html
