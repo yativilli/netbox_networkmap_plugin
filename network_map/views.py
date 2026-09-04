@@ -11,7 +11,7 @@ from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
 class VlanElementListView(View):
-    template_name = 'network_map/vlanelement_list.html'
+    template_name = 'network_map/vlan_element_list.html'
 
     def get_queryset(self):
         queryset = (
