@@ -1,0 +1,31 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/network_map/vlan_connection.css">
+{% endblock %}
+
+{% block title %}{% trans "VLAN Connections" %}{% endblock %}
+
+{% block content %}
+<div>
+    {{ center_device}}
+    {% for element in elements %}
+        <p style="text-indent: 50px">{{ element.address}} ({{element.dns_name}} - {{element.description}})
+             ID: {{element.prefix.id}} Prefix: {{element.prefix.prefix}}</p>
+        {% for prefix in element.prefix.ip_addresses %}
+            <p style="text-indent: 100px;">
+                Name: {{prefix.dns_name}}
+                Address: {{prefix.address}}
+                Description: {{prefix.description}}
+            </p>
+            <p style="text-indent: 150px;">
+                Name: {{prefix.details.name}}
+                Description: {{prefix.details.description}}
+                Location: {{prefix.details.location}}
+
+            </p>
+        {% endfor %}
+    {% endfor %}
+</div>
+{% endblock content %}

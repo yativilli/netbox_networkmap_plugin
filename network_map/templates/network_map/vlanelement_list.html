@@ -15,7 +15,7 @@
         <h2 class="card-title">{% trans "VLAN Overview" %}</h2>
       </div>
       <div class="card-body">
-        <p>{% trans "Overview of machines per VLAN" %}</p>
+        <p>{% trans "Overview of machines per VLAN. Press on a VLAN to scroll to the details. The individual machines are colored according to their locations." %}</p>
         <div class="vlan-overview-grid">
           {% for element in elements %}
           <a href="#vlan-{{ element.id }}" class="vlan-overview-link">
