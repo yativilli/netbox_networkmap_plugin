@@ -34,7 +34,8 @@
 
         <summary>
             <span class="summary-title">
-                {{ center_device }}
+                {{ center_device }} -
+                <a href="{{ center_device.get_absolute_url }}" target="_blank">Link &#128279; </a>
             </span>
 
             <span class="summary-subtitle">
@@ -192,7 +193,8 @@
                                         <div class="info-item">
                                             <span class="info-label">Name</span>
                                             <span class="info-value">
-                                                <a href="{{ prefix.details.url }}" target="_blank">{{ prefix.details.name }}
+                                                <a href="{{ prefix.details.url }}" target="_blank">{{
+                                                    prefix.details.name }}
                                                     &#128279;
                                                 </a>
                                             </span>

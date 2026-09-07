@@ -248,34 +248,86 @@ class VlanConnectionView(View):
     
     def get_center_device(self):
         queryset = (
-            Device.objects.filter(status='active', primary_ip4__isnull=False)
-            .select_related('device_type', 'site', 'primary_ip4', 'role')
+            Device.objects
+            .filter(status='active', primary_ip4__isnull=False)
+            .select_related(
+                'device_type',
+                'site',
+                'primary_ip4',
+                'role',
+            )
             .order_by('site__name', 'name')
         )
 
         for candidate in queryset:
-            role_name = getattr(getattr(candidate, 'role', None), 'name', '') or ''
-            device_model = getattr(getattr(candidate, 'device_type', None), 'model', '') or ''
+            role_name = getattr(
+                getattr(candidate, 'role', None),
+                'name',
+                ''
+            ) or ''
+
+            device_model = getattr(
+                getattr(candidate, 'device_type', None),
+                'model',
+                ''
+            ) or ''
+
             device_name = getattr(candidate, 'name', '') or ''
 
-            if any(token in (role_name + ' ' + device_model + ' ' + device_name).lower() for token in ('firewall', 'fw')):
-                return device_name
+            search_text = (
+                f"{role_name} "
+                f"{device_model} "
+                f"{device_name}"
+            ).lower()
+
+            if any(token in search_text for token in ('firewall', 'fw')):
+                return candidate
 
         for candidate in queryset:
-            role_name = getattr(getattr(candidate, 'role', None), 'name', '') or ''
-            device_model = getattr(getattr(candidate, 'device_type', None), 'model', '') or ''
+            role_name = getattr(
+                getattr(candidate, 'role', None),
+                'name',
+                ''
+            ) or ''
+
+            device_model = getattr(
+                getattr(candidate, 'device_type', None),
+                'model',
+                ''
+            ) or ''
+
             device_name = getattr(candidate, 'name', '') or ''
 
-            if any(token in (role_name + ' ' + device_model + ' ' + device_name).lower() for token in ('gateway', 'router', 'edge')):
+            search_text = (
+                f"{role_name} "
+                f"{device_model} "
+                f"{device_name}"
+            ).lower()
+
+            if any(token in search_text for token in ('gateway', 'router', 'edge')):
                 return candidate
 
         return queryset.first()
+
     
     def get(self, request):
         queryset = self.get_queryset()
         elements = self.build_elements(queryset)
+
+        center_device = self.get_center_device()
+
         context = {
             "elements": elements,
-            "center_device": self.get_center_device()
+            "center_device": center_device,
+            "center_device_url": (
+                center_device.get_absolute_url()
+                if center_device
+                else None
+            ),
         }
-        return render(request, 'network_map/vlan_connection.html', context)
+
+        return render(
+            request,
+            'network_map/vlan_connection.html',
+            context
+        )
