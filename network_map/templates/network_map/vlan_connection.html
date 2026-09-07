@@ -2,30 +2,94 @@
 {% load i18n %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/network_map/vlan_connection.css">
+<link rel="stylesheet" href="/static/network_map/vlan_connections.css">
 {% endblock %}
 
-{% block title %}{% trans "VLAN Connections" %}{% endblock %}
+{% block title %}
+{% trans "VLAN Connections" %}
+{% endblock %}
 
 {% block content %}
-<div>
-    {{ center_device}}
-    {% for element in elements %}
-        <p style="text-indent: 50px">{{ element.address}} ({{element.dns_name}} - {{element.description}})
-             ID: {{element.prefix.id}} Prefix: {{element.prefix.prefix}}</p>
-        {% for prefix in element.prefix.ip_addresses %}
-            <p style="text-indent: 100px;">
-                Name: {{prefix.dns_name}}
-                Address: {{prefix.address}}
-                Description: {{prefix.description}}
-            </p>
-            <p style="text-indent: 150px;">
-                Name: {{prefix.details.name}}
-                Description: {{prefix.details.description}}
-                Location: {{prefix.details.location}}
+<div class="vlan-connections">
 
-            </p>
-        {% endfor %}
-    {% endfor %}
+    <div class="vlan-connection-controls" aria-label="Diagram controls" style="position: static;">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = false)">
+            Collapse All
+        </button>
+
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = true)">
+            Unfold All
+        </button>
+    </div>
+
+    <!-- Stage 1: Center device -->
+    <details class="stage-1">
+        <summary>
+            <span class="summary-text">{{ center_device }} - Main Gateway</span>
+        </summary>
+
+        <div>
+
+            {% for element in elements %}
+
+            <!-- Stage 2: Device -->
+            <details class="stage-2">
+                <summary>
+                    <span class="summary-text">
+                        {{ element.description }} ({{element.address}}) - {{element.dns_name}}
+                    </span>
+                </summary>
+
+                <p class="stage-2-content">
+                    {{ element.address }}
+                    ({{ element.dns_name }} - {{ element.description }})
+                    ID: {{ element.prefix.id }}
+                    Prefix: {{ element.prefix.prefix }}
+                </p>
+
+                {% for prefix in element.prefix.ip_addresses %}
+
+                <!-- Stage 3: IP address -->
+                <details class="stage-3">
+                    <summary>
+                        <span class="summary-text">
+                            {{ prefix.dns_name }}
+                        </span>
+                    </summary>
+
+                    <p class="stage-3-content">
+                        Name: {{ prefix.dns_name }}<br>
+                        Address: {{ prefix.address }}<br>
+                        Description: {{ prefix.description }}
+                    </p>
+
+                    <!-- Stage 4: Prefix details -->
+                    <details class="stage-4">
+                        <summary>
+                            <span class="summary-text">
+                                {{ prefix.details.name }}
+                            </span>
+                        </summary>
+
+                        <p class="stage-4-content">
+                            Name: {{ prefix.details.name }}<br>
+                            Description: {{ prefix.details.description }}<br>
+                            Location: {{ prefix.details.location }}
+                        </p>
+                    </details>
+
+                </details>
+                {% endfor %}
+
+            </details>
+            {% endfor %}
+
+        </div>
+    </details>
+
 </div>
 {% endblock content %}
