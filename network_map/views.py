@@ -168,6 +168,7 @@ class VlanConnectionView(View):
 
             for ip in prefix.get_child_ips():
                 details = {}
+                origin = "IP-Add    ress"
 
                 ip_query = IPAddress.objects.filter(
                     address=ip.address
@@ -189,6 +190,7 @@ class VlanConnectionView(View):
                             or ip.comments
                             or "None"
                         )
+                        origin = "Device"
 
                     elif vm:
                         pk = vm.pk
@@ -196,6 +198,7 @@ class VlanConnectionView(View):
                         location = vm.site.name if vm.site else "None"
                         url = vm.get_absolute_url()
                         description = vm.description or vm.comments or "None"
+                        origin = "Virtual Machine"
 
                     else:
                         pk = ip.pk
@@ -203,6 +206,7 @@ class VlanConnectionView(View):
                         location = "None"
                         url = ip.get_absolute_url()
                         description = ip.description or "None"
+                        origin = "IP-Address"
 
                     details = {
                         "pk": pk,
@@ -210,6 +214,7 @@ class VlanConnectionView(View):
                         "location": location,
                         "url": url,
                         "description": description,
+                        "origin": origin
                     }
 
                 child_ips.append({
@@ -220,6 +225,8 @@ class VlanConnectionView(View):
                     "comments": ip.comments or "None",
                     "role": ip.role or "None",
                     "details": details,
+                    "url": ip.get_absolute_url(),
+                    "origin": origin
                 })
 
             element_obj.append({
@@ -231,6 +238,8 @@ class VlanConnectionView(View):
                     "prefix": str(prefix.prefix),
                     "ip_addresses": child_ips,
                 },
+                "url": prefix.get_absolute_url(),
+                "origin": "Prefixes"
             })
 
         return element_obj

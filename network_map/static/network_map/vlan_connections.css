@@ -1,97 +1,230 @@
-/* Light styling for presentation */
-details {
+/* =========================================================
+   General
+   ========================================================= */
+
+.vlan-connections {
+    width: 100%;
+}
+
+.vlan-connection-controls {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+
+
+/* =========================================================
+   Details
+   ========================================================= */
+
+.vlan-connections details {
     border-block-end: 1px solid #000;
     margin-block: .5rem;
     padding-block: .5rem;
 }
 
-summary {
-    /* Pin the custom marker to the container */
-    position: relative;
 
-    /* Register summary as an anchor element */
+/* =========================================================
+   Summary
+   ========================================================= */
+
+.vlan-connections summary {
+    position: relative;
     anchor-name: --summary;
 
-    &::marker {
-        content: "";
-    }
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
 
-    &::before,
-    &::after {
-        /* Custom marker dimensions */
-        content: "";
-        border-block-start: 3px solid orangered;
-        height: 0;
-        width: 1rem;
+    min-height: 1.5rem;
 
-        /* Positions the lines */
-        inset-block-start: 50%;
-        inset-inline-end: 0;
+    padding-right: 2rem;
 
-        /* Anchor the shape to the summary */
-        position: absolute;
-        position-anchor: --summary;
-        position-area: top end;
-    }
+    cursor: pointer;
 
-    /* Rotate just the ::after line to create a "+" shape */
-    &::after {
-        transform: rotate(90deg);
-        transform-origin: 50%;
-    }
+    list-style: none;
 }
 
-/* Rotate ONLY the marker belonging to the opened details */
-details[open]>summary::after {
+.vlan-connections summary::marker {
+    content: "";
+}
+
+.vlan-connections summary::-webkit-details-marker {
+    display: none;
+}
+
+
+/* =========================================================
+   + / - marker
+   ========================================================= */
+
+.vlan-connections summary::before,
+.vlan-connections summary::after {
+    content: "";
+
+    border-block-start: 3px solid orangered;
+
+    height: 0;
+    width: 1rem;
+
+    inset-block-start: 50%;
+    inset-inline-end: 0;
+
+    position: absolute;
+    position-anchor: --summary;
+    position-area: top end;
+}
+
+.vlan-connections summary::after {
+    transform: rotate(90deg);
+    transform-origin: 50%;
+}
+
+
+/* Only affect the marker belonging to this details */
+.vlan-connections details[open] > summary::after {
     transform: rotate(0deg);
 }
 
 
-/* ---------------------------------------------------------
-   Different marker colors for each nesting level
-   --------------------------------------------------------- */
+/* =========================================================
+   Summary text
+   ========================================================= */
 
-.stage-1>summary::before,
-.stage-1>summary::after {
+.summary-title {
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.summary-subtitle {
+    margin-top: .1rem;
+
+    font-size: .85rem;
+    font-weight: 400;
+
+    opacity: .75;
+}
+
+
+/* =========================================================
+   Content inside details
+   ========================================================= */
+
+.details-content {
+    padding-top: .35rem;
+}
+
+
+/* =========================================================
+   Information layout
+   ========================================================= */
+
+.info-grid {
+    display: grid;
+
+    grid-template-columns:
+        max-content minmax(150px, 1fr);
+
+    column-gap: 1rem;
+    row-gap: .25rem;
+
+    margin-block: .5rem;
+
+    font-size: .9rem;
+}
+
+.info-item {
+    display: contents;
+}
+
+.info-label {
+    font-weight: 600;
+    opacity: .7;
+    white-space: nowrap;
+}
+
+.info-value {
+    min-width: 0;
+}
+
+
+/* =========================================================
+   Stage 1
+   ========================================================= */
+
+.stage-1 > summary::before,
+.stage-1 > summary::after {
     border-block-start-color: #0d6efd;
 }
 
-.stage-2>summary::before,
-.stage-2>summary::after {
+.stage-1 {
+    color: #174a8b;
+}
+
+
+/* =========================================================
+   Stage 2
+   ========================================================= */
+
+.stage-2 {
+    margin-left: 5%;
+    width: 95%;
+
+    color: #19583b;
+}
+
+.stage-2 > summary::before,
+.stage-2 > summary::after {
     border-block-start-color: #198754;
 }
 
-.stage-3>summary::before,
-.stage-3>summary::after {
+
+/* =========================================================
+   Stage 3
+   ========================================================= */
+
+.stage-3 {
+    margin-left: 10%;
+    width: 90%;
+
+    color: #9e4904;
+}
+
+.stage-3 > summary::before,
+.stage-3 > summary::after {
     border-block-start-color: #fd7e14;
 }
 
-.stage-4>summary::before,
-.stage-4>summary::after {
+
+/* =========================================================
+   Stage 4
+   ========================================================= */
+
+.stage-4 {
+    margin-left: 15%;
+    width: 85%;
+
+    color: #412477;
+}
+
+.stage-4 > summary::before,
+.stage-4 > summary::after {
     border-block-start-color: #6f42c1;
 }
 
-.stage-2 {
-    text-indent: 25px;
-    color: #19583b;
-    margin-left: 5%;
-    width: 95%;
+
+/* =========================================================
+   Stage-specific content indentation
+   ========================================================= */
+
+.stage-2 > .details-content {
+    padding-left: 25px;
 }
 
-.stage-3 {
-    text-indent: 75px;
-    color: #9e4904;
-    margin-left: 10%;
-    width: 90%;
+.stage-3 > .details-content {
+    padding-left: 25px;
 }
 
-.stage-4 {
-    text-indent: 125px;
-    color: #412477;
-    margin-left: 15%;
-    width: 85%;
-}
-
-.stage-5 {
-    text-indent: 175px;
+.stage-4 > .details-content {
+    padding-left: 25px;
 }
