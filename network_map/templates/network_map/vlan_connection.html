@@ -14,235 +14,234 @@
 <div class="vlan-connections">
 
     <div class="vlan-connection-controls" aria-label="Diagram controls">
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-            onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = false)">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = false)">
             Collapse All
         </button>
 
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-            onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = true)">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = true)">
             Unfold All
         </button>
     </div>
 
-
-    <!-- =====================================================
-         Stage 1: Main / Gateway
-         ===================================================== -->
-
+    <!-- Gateway -->
     <details class="stage-1">
-
         <summary>
             <span class="summary-title">
-                {{ center_device }} -
-                <a href="{{ center_device.get_absolute_url }}" target="_blank">Link &#128279; </a>
+                {{ center_device }}
+                -
+                <a href="{{ center_device.get_absolute_url }}" target="_blank">
+                    Link &#128279;
+                </a>
             </span>
-
-            <span class="summary-subtitle">
-                Main Gateway
-            </span>
+            <span class="summary-subtitle">Main Gateway</span>
         </summary>
-
 
         <div class="details-content">
 
             {% for element in elements %}
 
-            <!-- =================================================
-                 Stage 2: Device
-                 ================================================= -->
-
+            <!-- VLAN -->
             <details class="stage-2">
-
                 <summary>
                     <span class="summary-title">
+                        VLAN {{ element.vlan.vid }} - {{ element.vlan.name }}
+                    </span>
+                    <span class="summary-subtitle">
                         {{ element.description }}
                     </span>
-
-                    <span class="summary-subtitle">
-                        {{ element.address }} · {{ element.dns_name }}
-                    </span>
                 </summary>
-
 
                 <div class="details-content">
 
                     <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">VLAN</span>
+                            <span class="info-value">
+                                <a href="{{ element.vlan.get_absolute_url }}" target="_blank">
+                                    {{ element.vlan.vid }} &#128279;
+                                </a>
+                            </span>
+                        </div>
 
                         <div class="info-item">
-                            <span class="info-label">Address </a></span>
+                            <span class="info-label">Name</span>
+                            <span class="info-value">{{ element.vlan.name }}</span>
+                        </div>
+
+                        <div class="info-item">
+                            <span class="info-label">Gateway</span>
                             <span class="info-value">
-                                <a href="{{ element.url }}" target="_blank">{{ element.address }} &#128279;</a>
+                                <a href="{{ element.url }}" target="_blank">
+                                    {{ element.address }} &#128279;
+                                </a>
                             </span>
                         </div>
 
                         <div class="info-item">
                             <span class="info-label">DNS Name</span>
-                            <span class="info-value">
-                                {{ element.dns_name }}
-                            </span>
+                            <span class="info-value">{{ element.dns_name }}</span>
                         </div>
 
                         <div class="info-item">
                             <span class="info-label">Description</span>
-                            <span class="info-value">
-                                {{ element.description }}
-                            </span>
+                            <span class="info-value">{{ element.description }}</span>
                         </div>
 
-                        <div class="info-item">
-                            <span class="info-label">Prefix ID</span>
-                            <span class="info-value">
-                                {{ element.prefix.id }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Prefix</span>
-                            <span class="info-value">
-                                {{ element.prefix.prefix }}
-                            </span>
-                        </div>
                         <div class="info-item">
                             <span class="info-label">Origin</span>
-                            <span class="info-value">
-                                {{ element.origin }}
-                            </span>
+                            <span class="info-value">{{ element.origin }}</span>
                         </div>
-
                     </div>
 
+                    {% for prefix in element.prefixes %}
 
-                    {% for prefix in element.prefix.ip_addresses %}
-
-                    <!-- =============================================
-                         Stage 3: IP Address
-                         ============================================= -->
-
+                    <!-- Prefix -->
                     <details class="stage-3">
-
                         <summary>
                             <span class="summary-title">
-                                {{ prefix.dns_name }}
+                                {{ prefix.prefix }}
                             </span>
-
-                            <span class="summary-subtitle">
-                                {{ prefix.address }}
-                            </span>
+                            <span class="summary-subtitle">Prefix</span>
                         </summary>
-
 
                         <div class="details-content">
 
                             <div class="info-grid">
-
                                 <div class="info-item">
-                                    <span class="info-label">Address</span>
+                                    <span class="info-label">Prefix</span>
                                     <span class="info-value">
-                                        <a href="{{ prefix.url }}" target="_blank">{{ prefix.address }} &#128279;
+                                        <a href="{{ prefix.url }}" target="_blank">
+                                            {{ prefix.prefix }} &#128279;
                                         </a>
                                     </span>
                                 </div>
 
                                 <div class="info-item">
-                                    <span class="info-label">DNS Name</span>
-                                    <span class="info-value">
-                                        {{ prefix.dns_name }}
-                                    </span>
+                                    <span class="info-label">ID</span>
+                                    <span class="info-value">{{ prefix.id }}</span>
                                 </div>
-
-                                <div class="info-item">
-                                    <span class="info-label">Description</span>
-                                    <span class="info-value">
-                                        {{ prefix.description }}
-                                    </span>
-                                </div>
-
-                                <div class="info-item">
-                                    <span class="info-label">Origin</span>
-                                    <span class="info-value">
-                                        {{ prefix.origin }}
-                                    </span>
-                                </div>
-
                             </div>
 
+                            {% for ip in prefix.ip_addresses %}
 
-                            <!-- =====================================
-                                 Stage 4: Assigned Object
-                                 ===================================== -->
-
-                            {% if prefix.details %}
-
+                            <!-- IP Address -->
                             <details class="stage-4">
-
                                 <summary>
                                     <span class="summary-title">
-                                        {{ prefix.details.name }}
+                                        {{ ip.dns_name }}
                                     </span>
-
                                     <span class="summary-subtitle">
-                                        {{ prefix.details.origin }}
+                                        {{ ip.address }}
                                     </span>
                                 </summary>
-
 
                                 <div class="details-content">
 
                                     <div class="info-grid">
-
                                         <div class="info-item">
-                                            <span class="info-label">Name</span>
+                                            <span class="info-label">Address</span>
                                             <span class="info-value">
-                                                <a href="{{ prefix.details.url }}" target="_blank">{{
-                                                    prefix.details.name }}
-                                                    &#128279;
+                                                <a href="{{ ip.url }}" target="_blank">
+                                                    {{ ip.address }} &#128279;
                                                 </a>
                                             </span>
                                         </div>
 
                                         <div class="info-item">
+                                            <span class="info-label">DNS Name</span>
+                                            <span class="info-value">{{ ip.dns_name }}</span>
+                                        </div>
+
+                                        <div class="info-item">
                                             <span class="info-label">Description</span>
-                                            <span class="info-value">
-                                                {{ prefix.details.description }}
-                                            </span>
+                                            <span class="info-value">{{ ip.description }}</span>
                                         </div>
 
                                         <div class="info-item">
-                                            <span class="info-label">Location</span>
-                                            <span class="info-value">
-                                                {{ prefix.details.location }}
-                                            </span>
+                                            <span class="info-label">Comments</span>
+                                            <span class="info-value">{{ ip.comments }}</span>
                                         </div>
 
                                         <div class="info-item">
-                                            <span class="info-label">Type</span>
-                                            <span class="info-value">
-                                                {{ prefix.details.origin }}
-                                            </span>
+                                            <span class="info-label">Role</span>
+                                            <span class="info-value">{{ ip.role }}</span>
                                         </div>
 
+                                        <div class="info-item">
+                                            <span class="info-label">Origin</span>
+                                            <span class="info-value">{{ ip.origin }}</span>
+                                        </div>
                                     </div>
 
-                                </div>
+                                    {% if ip.details %}
 
+                                    <!-- Assigned Object -->
+                                    <details class="stage-5">
+                                        <summary>
+                                            <span class="summary-title">
+                                                {{ ip.details.name }}
+                                            </span>
+                                            <span class="summary-subtitle">
+                                                {{ ip.details.origin }}
+                                            </span>
+                                        </summary>
+
+                                        <div class="details-content">
+
+                                            <div class="info-grid">
+                                                <div class="info-item">
+                                                    <span class="info-label">Name</span>
+                                                    <span class="info-value">
+                                                        <a href="{{ ip.details.url }}" target="_blank">
+                                                            {{ ip.details.name }} &#128279;
+                                                        </a>
+                                                    </span>
+                                                </div>
+
+                                                <div class="info-item">
+                                                    <span class="info-label">Description</span>
+                                                    <span class="info-value">
+                                                        {{ ip.details.description }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="info-item">
+                                                    <span class="info-label">Location</span>
+                                                    <span class="info-value">
+                                                        {{ ip.details.location }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="info-item">
+                                                    <span class="info-label">Type</span>
+                                                    <span class="info-value">
+                                                        {{ ip.details.origin }}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </details>
+
+                                    {% endif %}
+
+                                </div>
                             </details>
 
-                            {% endif %}
-
+                            {% endfor %}
                         </div>
-
                     </details>
 
                     {% endfor %}
-
                 </div>
-
             </details>
 
             {% endfor %}
-
         </div>
-
     </details>
 
 </div>
