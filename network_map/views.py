@@ -149,100 +149,117 @@ class VlanConnectionView(View):
         )
 
         for res in results:
-            res_obj = res.object.__dict__.copy()
-            res_obj.pop("_state", None)
+            res_obj = res.object
 
-            address = res_obj.get("address")
+            if hasattr(res_obj, "address"):
+                address = res_obj.address
 
-            if not address:
-                continue
+                if not address:
+                    continue
 
-            prefix = Prefix.objects.filter(
-                prefix__net_contains_or_equals=address
-            ).first()
+                current_prefix = (
+                    Prefix.objects
+                    .filter(prefix__net_contains_or_equals=address)
+                    .select_related("vlan")
+                    .first()
+                )
 
-            if prefix is None:
-                continue
+                if current_prefix is None or current_prefix.vlan is None:
+                    continue
 
-            child_ips = []
+                # Get the VLAN associated with the IP/prefix
+                vlan = current_prefix.vlan
 
-            for ip in prefix.get_child_ips():
-                details = {}
-                origin = "IP-Add    ress"
+                # Get ALL prefixes belonging to this VLAN
+                prefix = Prefix.objects.filter(vlan=vlan)
 
-                ip_query = IPAddress.objects.filter(
-                    address=ip.address
-                ).first()
+                prefixes = []
+                for pref in prefix:
+                    if pref is None:
+                        continue
+                    
+                    child_ips = []
 
-                if ip_query is not None:
-                    assigned_object = getattr(ip, "assigned_object", None)
-                    device = getattr(assigned_object, "device", None)
-                    vm = getattr(assigned_object, "virtual_machine", None)
-
-                    if device:
-                        pk = device.pk
-                        name = device.name
-                        location = device.site.name if device.site else "None"
-                        url = device.get_absolute_url()
-                        description = str(
-                            device.description
-                            or device.role
-                            or ip.comments
-                            or "None"
-                        )
-                        origin = "Device"
-
-                    elif vm:
-                        pk = vm.pk
-                        name = vm.name
-                        location = vm.site.name if vm.site else "None"
-                        url = vm.get_absolute_url()
-                        description = vm.description or vm.comments or "None"
-                        origin = "Virtual Machine"
-
-                    else:
-                        pk = ip.pk
-                        name = ip.dns_name
-                        location = "None"
-                        url = ip.get_absolute_url()
-                        description = ip.description or "None"
+                    for ip in pref.get_child_ips():
+                        details = {}
                         origin = "IP-Address"
 
-                    details = {
-                        "pk": pk,
-                        "name": name,
-                        "location": location,
-                        "url": url,
-                        "description": description,
-                        "origin": origin
-                    }
+                        ip_query = IPAddress.objects.filter(
+                            address=ip.address
+                        ).first()
 
-                child_ips.append({
-                    "pk": ip.pk,
-                    "address": str(ip.address.ip),
-                    "dns_name": ip.dns_name or "None",
-                    "description": ip.description or "None",
-                    "comments": ip.comments or "None",
-                    "role": ip.role or "None",
-                    "details": details,
-                    "url": ip.get_absolute_url(),
-                    "origin": origin
+                        if ip_query is not None:
+                            assigned_object = getattr(ip, "assigned_object", None)
+                            device = getattr(assigned_object, "device", None)
+                            vm = getattr(assigned_object, "virtual_machine", None)
+
+                            if device:
+                                pk = device.pk
+                                name = device.name
+                                location = device.site.name if device.site else "None"
+                                url = device.get_absolute_url()
+                                description = str(
+                                    device.description
+                                    or device.role
+                                    or ip.comments
+                                    or "None"
+                                )
+                                origin = "Device"
+
+                            elif vm:
+                                pk = vm.pk
+                                name = vm.name
+                                location = vm.site.name if vm.site else "None"
+                                url = vm.get_absolute_url()
+                                description = vm.description or vm.comments or "None"
+                                origin = "Virtual Machine"
+
+                            else:
+                                pk = ip.pk
+                                name = ip.dns_name
+                                location = "None"
+                                url = ip.get_absolute_url()
+                                description = ip.description or "None"
+                                origin = "IP-Address"
+
+                            details = {
+                                "pk": pk,
+                                "name": name,
+                                "location": location,
+                                "url": url,
+                                "description": description,
+                                "origin": origin
+                            }
+
+                        child_ips.append({
+                            "pk": ip.pk,
+                            "address": str(ip.address.ip),
+                            "dns_name": ip.dns_name or "None",
+                            "description": ip.description or "None",
+                            "comments": ip.comments or "None",
+                            "role": ip.role or "None",
+                            "details": details,
+                            "url": ip.get_absolute_url(),
+                            "origin": origin
+                        })
+                        
+                    prefixes.append({
+                        "id": pref.pk,
+                        "prefix": str(pref.prefix),
+                        "ip_addresses": child_ips,
+                    })
+
+                element_obj.append({
+                    "address": address,
+                    "dns_name": res_obj.dns_name,
+                    "description": res_obj.description,
+                    "vlan": vlan,
+                    "prefixes": prefixes,
+                    "url": res_obj.get_absolute_url(),
+                    "origin": "Search-Query by Center Device"
                 })
-
-            element_obj.append({
-                "address": address,
-                "dns_name": res_obj.get("dns_name"),
-                "description": res_obj.get("description"),
-                "prefix": {
-                    "id": prefix.pk,
-                    "prefix": str(prefix.prefix),
-                    "ip_addresses": child_ips,
-                },
-                "url": prefix.get_absolute_url(),
-                "origin": "Prefixes"
-            })
-
         return element_obj
+
 
         
     
