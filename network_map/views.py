@@ -182,7 +182,6 @@ class VlanConnectionView(View):
 
                     for ip in pref.get_child_ips():
                         details = {}
-                        origin = "IP-Address"
 
                         ip_query = IPAddress.objects.filter(
                             address=ip.address
@@ -240,13 +239,14 @@ class VlanConnectionView(View):
                             "role": ip.role or "None",
                             "details": details,
                             "url": ip.get_absolute_url(),
-                            "origin": origin
+                            "origin": "IP-Address"
                         })
                         
                     prefixes.append({
                         "id": pref.pk,
                         "prefix": str(pref.prefix),
                         "ip_addresses": child_ips,
+                        "origin": "Prefix"
                     })
 
                 element_obj.append({

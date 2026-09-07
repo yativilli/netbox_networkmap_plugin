@@ -167,8 +167,8 @@
    ========================================================= */
 
 .stage-2 {
-    margin-left: 5%;
-    width: 95%;
+    margin-left: 3%;
+    width: 97%;
 
     color: #19583b;
 }
@@ -184,8 +184,8 @@
    ========================================================= */
 
 .stage-3 {
-    margin-left: 10%;
-    width: 90%;
+    margin-left: 6%;
+    width: 94%;
 
     color: #9e4904;
 }
@@ -201,8 +201,8 @@
    ========================================================= */
 
 .stage-4 {
-    margin-left: 15%;
-    width: 85%;
+    margin-left: 9%;
+    width: 91%;
 
     color: #412477;
 }
@@ -212,6 +212,22 @@
     border-block-start-color: #6f42c1;
 }
 
+
+/* =========================================================
+   Stage 5
+   ========================================================= */
+
+.stage-5{
+    margin-left: 12%;
+    width: 88%;
+
+    color: #a5003f;
+}
+
+.stage-4 > summary::before,
+.stage-4 > summary::after {
+    border-block-start-color: #f32574;
+}
 
 /* =========================================================
    Stage-specific content indentation
@@ -226,5 +242,9 @@
 }
 
 .stage-4 > .details-content {
+    padding-left: 25px;
+}
+
+.stage-5 > .details-content {
     padding-left: 25px;
 }
