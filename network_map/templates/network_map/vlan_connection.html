@@ -59,6 +59,15 @@
                 </div>
 
                 <div class="info-item">
+                    <span class="info-label">IP-Address</span>
+                    <span class="info-value">
+                        <a href="{{ center_device.primary_ip4.get_absolute_url }}" target="_blank">
+                            {{ center_device.primary_ip4.address }} &#128279;
+                        </a>
+                    </span>
+                </div>
+
+                <div class="info-item">
                     <span class="info-label">Type</span>
                     <span class="info-value">
                         {{ center_device.role }}
