@@ -30,13 +30,42 @@
         <summary>
             <span class="summary-title">
                 {{ center_device }}
-                -
-                <a href="{{ center_device.get_absolute_url }}" target="_blank">
-                    Link &#128279;
-                </a>
             </span>
-            <span class="summary-subtitle">Main Gateway</span>
+            <span class="summary-subtitle">{{ center_device.role}}</span>
         </summary>
+        <div class="details-content">
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Name</span>
+                    <span class="info-value">
+                        <a href="{{ center_device.get_absolute_url }}" target="_blank">
+                            {{ center_device.name }} &#128279;
+                        </a>
+                    </span>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-label">Description</span>
+                    <span class="info-value">
+                        {{ center_device.description }}
+                    </span>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-label">Location</span>
+                    <span class="info-value">
+                        {{ center_device.site }}
+                    </span>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-label">Type</span>
+                    <span class="info-value">
+                        {{ center_device.role }}
+                    </span>
+                </div>
+            </div>
+        </div>
 
         <div class="details-content">
 
