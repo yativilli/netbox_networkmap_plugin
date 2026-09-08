@@ -10,7 +10,7 @@ class NetworkMapConfig(PluginConfig):
     max_version = '4.7.99'
     author = "Yannick Wernle"
     author_email = "yannick@wernle.net"
-    license = 'GPL-3.0'   # <--- Make sure this is a string
+    license = 'GPL-3.0' 
     author_url = 'https://github.com/yativilli/netbox_networkmap_plugin' 
 
 config = NetworkMapConfig
