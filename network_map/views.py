@@ -227,7 +227,7 @@ class VlanConnectionView(View):
                                 "location": location,
                                 "url": url,
                                 "description": description,
-                                "origin": origin
+                                "type": origin
                             }
 
                         child_ips.append({
@@ -239,14 +239,14 @@ class VlanConnectionView(View):
                             "role": ip.role or "None",
                             "details": details,
                             "url": ip.get_absolute_url(),
-                            "origin": "IP-Address"
+                            "type": "IP-Address"
                         })
                         
                     prefixes.append({
                         "id": pref.pk,
                         "prefix": str(pref.prefix),
                         "ip_addresses": child_ips,
-                        "origin": "Prefix"
+                        "type": "Prefix"
                     })
 
                 element_obj.append({
@@ -256,7 +256,7 @@ class VlanConnectionView(View):
                     "vlan": vlan,
                     "prefixes": prefixes,
                     "url": res_obj.get_absolute_url(),
-                    "origin": "Search-Query by Center Device"
+                    "type": "VLAN / IP-Address"
                 })
         return element_obj
 

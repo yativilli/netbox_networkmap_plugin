@@ -14,15 +14,13 @@
 <div class="vlan-connections">
 
     <div class="vlan-connection-controls" aria-label="Diagram controls">
-        <button type="button"
-                class="btn btn-sm btn-outline-secondary"
-                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = false)">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+            onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = false)">
             Collapse All
         </button>
 
-        <button type="button"
-                class="btn btn-sm btn-outline-secondary"
-                onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = true)">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+            onclick="document.querySelectorAll('.vlan-connections details').forEach(d => d.open = true)">
             Unfold All
         </button>
     </div>
@@ -92,8 +90,8 @@
                         </div>
 
                         <div class="info-item">
-                            <span class="info-label">Origin</span>
-                            <span class="info-value">{{ element.origin }}</span>
+                            <span class="info-label">Type</span>
+                            <span class="info-value">{{ element.type }}</span>
                         </div>
                     </div>
 
@@ -123,6 +121,11 @@
                                 <div class="info-item">
                                     <span class="info-label">ID</span>
                                     <span class="info-value">{{ prefix.id }}</span>
+                                </div>
+
+                                <div class="info-item">
+                                    <span class="info-label">Type</span>
+                                    <span class="info-value">{{ prefix.type }}</span>
                                 </div>
                             </div>
 
@@ -172,8 +175,8 @@
                                         </div>
 
                                         <div class="info-item">
-                                            <span class="info-label">Origin</span>
-                                            <span class="info-value">{{ ip.origin }}</span>
+                                            <span class="info-label">Type</span>
+                                            <span class="info-value">{{ ip.type }}</span>
                                         </div>
                                     </div>
 
@@ -186,7 +189,7 @@
                                                 {{ ip.details.name }}
                                             </span>
                                             <span class="summary-subtitle">
-                                                {{ ip.details.origin }}
+                                                {{ ip.details.type }}
                                             </span>
                                         </summary>
 
@@ -219,7 +222,7 @@
                                                 <div class="info-item">
                                                     <span class="info-label">Type</span>
                                                     <span class="info-value">
-                                                        {{ ip.details.origin }}
+                                                        {{ ip.details.type }}
                                                     </span>
                                                 </div>
                                             </div>

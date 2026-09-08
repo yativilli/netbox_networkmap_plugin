@@ -224,8 +224,8 @@
     color: #a5003f;
 }
 
-.stage-4 > summary::before,
-.stage-4 > summary::after {
+.stage-5 > summary::before,
+.stage-5 > summary::after {
     border-block-start-color: #f32574;
 }
 
