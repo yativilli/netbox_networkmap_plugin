@@ -62,15 +62,18 @@ class VlanElementListView(View):
                         description = (
                             device.description or device.role or ip.comments or "None"
                         )
+                        role = device.role or "None"
 
                     elif vm:
                         location = vm.site.name if vm.site else "None"
                         url = vm.get_absolute_url()
                         description = vm.description or vm.comments or "None"
+                        role = vm.role or "None"
                     else:
                         location = "None"
                         url = ip.get_absolute_url()
                         description = ip.description or "None"
+                        role = ip.role or "None"
 
                     if location not in locations:
                         locations.append(location)
@@ -87,6 +90,7 @@ class VlanElementListView(View):
                             "url": url,
                             "description": description,
                             "color": color,
+                            "role": role,
                         }
                     )
                     machine_count += 1
