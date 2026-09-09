@@ -59,7 +59,8 @@
                       target="_blank">{{machine.dns_name }}</a>{% else %}{{ machine.dns_name }}{% endif %}</h6>
                   <p class="card-text mb-1"><strong>Location:</strong> {{ machine.location }}</p>
                   <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip }}</p>
-                  <p class="card-text mb-0"><strong>Description:</strong> {{ machine.description }}</p>
+                  <p class="card-text mb-1"><strong>Role:</strong> {{ machine.role  }}</p>
+                  <p class="card-text mb-1"><strong>Description:</strong> {{ machine.description }}</p>
                 </div>
               </article>
               {% empty %}
