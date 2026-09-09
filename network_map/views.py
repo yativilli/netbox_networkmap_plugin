@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.views import View
+from django.db.models import QuerySet
 from dcim.models import Device
 from ipam.models import VLAN, IPAddress, Prefix
 
@@ -11,7 +12,6 @@ from .models import (
     GatewayElement,
 )
 from .colors import color_for_location
-
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
@@ -114,33 +114,28 @@ class VlanTopologyView(VlanElementListView):
             .order_by("site__name", "name")
         )
 
-        for candidate in queryset:
-            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
-            device_model = (
-                getattr(getattr(candidate, "device_type", None), "model", "") or ""
+        if self._search_for_center_device(queryset, ["firewall", "fw"]):
+            return self._search_for_center_device(queryset, ["firewall", "fw"])
+
+        if self._search_for_center_device(queryset, ["gateway", "router", "edge"]):
+            return self._search_for_center_device(
+                queryset, ["gateway", "router", "edge"]
             )
-            device_name = getattr(candidate, "name", "") or ""
-
-            if any(
-                token in (role_name + " " + device_model + " " + device_name).lower()
-                for token in ("firewall", "fw")
-            ):
-                return candidate
-
-        for candidate in queryset:
-            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
-            device_model = (
-                getattr(getattr(candidate, "device_type", None), "model", "") or ""
-            )
-            device_name = getattr(candidate, "name", "") or ""
-
-            if any(
-                token in (role_name + " " + device_model + " " + device_name).lower()
-                for token in ("gateway", "router", "edge")
-            ):
-                return candidate
 
         return queryset.first()
+
+    def _search_for_center_device(self, queryset: QuerySet[Device], params: list[str]):
+        for candidate in queryset:
+            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
+            device_model = (
+                getattr(getattr(candidate, "device_type", None), "model", "") or ""
+            )
+            device_name = getattr(candidate, "name", "") or ""
+            if any(
+                token in (role_name + " " + device_model + " " + device_name).lower()
+                for token in params
+            ):
+                return candidate
 
     def get(self, request):
         queryset = self.get_queryset()
@@ -290,35 +285,29 @@ class VlanConnectionView(View):
             .order_by("site__name", "name")
         )
 
-        for candidate in queryset:
-            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
+        if self._search_for_center_device(queryset, ["firewall", "fw"]):
+            return self._search_for_center_device(queryset, ["firewall", "fw"])
 
-            device_model = (
-                getattr(getattr(candidate, "device_type", None), "model", "") or ""
+        if self._search_for_center_device(queryset, ["gateway", "router", "edge"]):
+            return self._search_for_center_device(
+                queryset, ["gateway", "router", "edge"]
             )
-
-            device_name = getattr(candidate, "name", "") or ""
-
-            search_text = (f"{role_name} " f"{device_model} " f"{device_name}").lower()
-
-            if any(token in search_text for token in ("firewall", "fw")):
-                return candidate
-
-        for candidate in queryset:
-            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
-
-            device_model = (
-                getattr(getattr(candidate, "device_type", None), "model", "") or ""
-            )
-
-            device_name = getattr(candidate, "name", "") or ""
-
-            search_text = (f"{role_name} " f"{device_model} " f"{device_name}").lower()
-
-            if any(token in search_text for token in ("gateway", "router", "edge")):
-                return candidate
 
         return queryset.first()
+
+    def _search_for_center_device(self, queryset: QuerySet[Device], params: list[str]):
+        for candidate in queryset:
+            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
+            device_model = (
+                getattr(getattr(candidate, "device_type", None), "model", "") or ""
+            )
+            device_name = getattr(candidate, "name", "") or ""
+
+            if any(
+                token in (role_name + " " + device_model + " " + device_name).lower()
+                for token in params
+            ):
+                return candidate
 
     def get(self, request):
         elements = self.build_elements()
