@@ -1,0 +1,8 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks: 
+      - id: ruff
+        args: [network_map]
+      - id: ruff-format
+        args: [network_map]
