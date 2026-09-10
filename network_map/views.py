@@ -152,7 +152,6 @@ class VlanTopologyView(VlanElementListView):
 
 
 class VlanConnectionView(View):
-
     def build_elements(self) -> list[dict]:
         element_obj = []
 
@@ -165,7 +164,6 @@ class VlanConnectionView(View):
             res_obj = res.object
 
             if hasattr(res_obj, "address"):
-
                 if not res_obj.address:
                     continue
 
