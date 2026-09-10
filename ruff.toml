@@ -1,0 +1,8 @@
+[lint]
+ignore = [
+    "E501"
+]
+
+exclude = [
+    "network_map/migrations/*"
+]

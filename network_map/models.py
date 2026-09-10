@@ -31,10 +31,7 @@ class VlanElement(NetBoxModel):
 
         url = None
         if hasattr(vlan, "get_absolute_url"):
-            try:
-                url = vlan.get_absolute_url()
-            except Exception:
-                url = None
+            url = vlan.get_absolute_url()
 
         machine_count = len(machines or [])
 

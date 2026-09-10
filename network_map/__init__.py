@@ -1,5 +1,6 @@
 from netbox.plugins import PluginConfig
 
+
 class NetworkMapConfig(PluginConfig):
     name = "network_map"
     verbose_name = "Netbox Network Map"
@@ -10,7 +11,8 @@ class NetworkMapConfig(PluginConfig):
     max_version = '4.7.99'
     author = "Yannick Wernle"
     author_email = "yannick@wernle.net"
-    license = 'GPL-3.0' 
-    author_url = 'https://github.com/yativilli/netbox_networkmap_plugin' 
+    license = 'GPL-3.0'
+    author_url = 'https://github.com/yativilli/netbox_networkmap_plugin'
+
 
 config = NetworkMapConfig
