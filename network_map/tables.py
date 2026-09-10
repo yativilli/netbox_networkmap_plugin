@@ -1,4 +1,3 @@
-from django.utils.translation import gettext_lazy as _
 from netbox.tables import NetBoxTable
 
 from .models import NetworkElement, VlanElement

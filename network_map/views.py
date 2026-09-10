@@ -1,19 +1,19 @@
+from dcim.models import Device
+from django.db.models import QuerySet
 from django.shortcuts import render
 from django.views import View
-from django.db.models import QuerySet
-from dcim.models import Device
 from ipam.models import VLAN, IPAddress, Prefix
-
-from .models import (
-    VlanElement,
-    DetailsElement,
-    IpDetailsElement,
-    PrefixElement,
-    GatewayElement,
-)
-from .colors import color_for_location
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
+
+from .colors import color_for_location
+from .models import (
+    DetailsElement,
+    GatewayElement,
+    IpDetailsElement,
+    PrefixElement,
+    VlanElement,
+)
 
 
 class VlanElementListView(View):
