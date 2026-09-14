@@ -63,3 +63,18 @@ sudo systemctl restart netbox
 
 Do not commit generated `*.egg-info/` directories. They are recreated by
 `pip install` and should be ignored by Git.
+
+## Configuration
+
+Optional entry in NetBox's `configuration.py`:
+
+```python
+PLUGINS_CONFIG = {
+    "network_map": {
+        "gateway_search_tag": "GATEWAY-TAG",
+    },
+}
+```
+
+`gateway_search_tag` is the device tag (or other exact-match search term)
+the Vlan-Connections view uses to locate the central gateway object.

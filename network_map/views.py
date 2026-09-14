@@ -5,6 +5,7 @@ from django.db.models import QuerySet
 from django.shortcuts import render
 from django.views import View
 from ipam.models import VLAN, IPAddress, Prefix
+from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
@@ -308,7 +309,7 @@ class VlanConnectionView(View):
         element_obj = []
 
         results = search_backend.search(
-            "GATEWAY-TAG",
+            get_plugin_config("network_map", "gateway_search_tag", "GATEWAY-TAG"),
             lookup=LookupTypes.EXACT,
         )
 
