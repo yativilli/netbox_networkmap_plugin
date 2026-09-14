@@ -2,327 +2,420 @@
 {% load i18n %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/network_map/vlan_topology.css">
+    <link rel="stylesheet" href="/static/network_map/vlan_topology.css">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Topology" %}{% endblock %}
 
 {% block content %}
-<div class="card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h2 class="card-title mb-0">{% trans "VLAN Topology" %}</h2>
-    <div class="vlan-topology-controls" aria-label="Diagram controls">
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="in">+</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="out">-</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="reset">Reset</button>
-    </div>
-  </div>
-  <div class="card-body">
-    <div class="vlan-topology-viewport">
-      <div class="vlan-topology-stage" id="vlan-topology-stage">
-        <div class="vlan-topology-center">
-          <article class="card vlan-topology-core">
-            <div class="card-body p-3">
-              <div class="text-center mb-2">
-                <span class="mdi mdi-router-network" style="font-size:2rem;"></span>
-              </div>
-              <h4 class="text-center mb-1">
-                {% if center_device %}
-                  {% if center_device.get_absolute_url %}<a href="{{ center_device.get_absolute_url }}" target="_blank" rel="noopener">{{ center_device.name }}</a>{% else %}{{ center_device.name }}{% endif %}
-                {% else %}
-                  Main Gateway / Firewall
-                {% endif %}
-              </h4>
-              <p class="text-center mb-1">
-                {% if center_device %}
-                  {{ center_device.primary_ip4.address|default:'No IP' }}
-                {% else %}
-                  Central Hub
-                {% endif %}
-              </p>
-              {% if center_device and center_device.site %}
-                <p class="text-center mb-0 text-muted small">{{ center_device.site.name }}</p>
-              {% endif %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="card-title mb-0">{% trans "VLAN Topology" %}</h2>
+
+            <div class="vlan-topology-legend" aria-label="Legend">
+                <span class="legend-item"><span class="legend-swatch legend-swatch-hub"></span> {% trans "Gateway / Firewall" %}</span>
+                <span class="legend-item"><span class="legend-swatch legend-swatch-subnet"></span> {% trans "Subnet" %}</span>
+                <span class="legend-item"><span class="legend-swatch legend-swatch-machine"></span> {% trans "Machine" %}</span>
             </div>
-          </article>
+
+            <div class="vlan-topology-controls" aria-label="Diagram controls">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="in" title="{% trans 'Zoom in' %}">+</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="out" title="{% trans 'Zoom out' %}">&minus;</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="reset">{% trans "Fit" %}</button>
+            </div>
         </div>
 
-        <div class="vlan-topology-radial">
-          {% for element in elements %}
-          <div class="vlan-topology-spoke" data-angle="{{ forloop.counter0 }}">
-            <article id="vlan-{{ element.id }}" class="card vlan-topology-vlan {{ element.color|default:'location-color-default' }}">
-              <div class="card-body p-2">
-                <h5 class="card-title mb-2">
-                  {% if element.url %}<a href="{{ element.url }}" target="_blank" rel="noopener">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}
-                </h5>
-                <p class="mb-1"><strong>Group:</strong> {{ element.group }}</p>
-                <p class="mb-1"><strong>Role:</strong> {{ element.role }}</p>
-                <p class="mb-1"><strong>Machines:</strong> {{ element.machine_count }}</p>
-                <p class="mb-1"><strong>Prefix:</strong> {{ element.prefix }}</p>
-                {% if center_device %}
-                  <p class="mb-2"><strong>Gateway:</strong>
-                    {% if center_device.get_absolute_url %}<a href="{{ center_device.get_absolute_url }}" target="_blank" rel="noopener">{{ center_device.name }}</a>{% else %}{{ center_device.name }}{% endif %}
-                  </p>
-                {% endif %}
-
-                <div class="vlan-machine-collapse">
-                  <button class="btn btn-sm btn-outline-secondary vlan-machine-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#vlan-machines-{{ element.id }}" aria-expanded="false">
-                    Show machines
-                  </button>
-                  <div class="collapse" id="vlan-machines-{{ element.id }}">
-                    {% for machine in element.machines %}
-                    <div class="vlan-topology-machine">
-                      {% if machine.url %}<a href="{{ machine.url }}" target="_blank" rel="noopener">{{ machine.name }}</a>{% else %}{{ machine.name }}{% endif %}
-                      <span class="text-muted">{{ machine.ip_address }}</span>
-                    </div>
-                    {% empty %}
-                    <div class="text-muted">No machines</div>
-                    {% endfor %}
-                  </div>
+        <div class="card-body">
+            <div class="vlan-topology-viewport">
+                <div class="vlan-topology-stage" id="vlan-topology-stage">
+                    {% if elements %}
+                        {{ topology_data|json_script:"vlan-topology-data" }}
+                    {% else %}
+                        <p class="vlan-topology-empty">{% trans "No VLAN topology data available." %}</p>
+                    {% endif %}
                 </div>
-              </div>
-            </article>
-          </div>
-          {% empty %}
-          <p>No VLAN topology data available.</p>
-          {% endfor %}
+            </div>
         </div>
-      </div>
     </div>
-  </div>
-</div>
 
-<script>
-(function () {
-    const stage = document.getElementById('vlan-topology-stage');
-    const viewport = document.querySelector('.vlan-topology-viewport');
-    const spokes = Array.from(document.querySelectorAll('.vlan-topology-spoke'));
-    const controls = Array.from(document.querySelectorAll('[data-zoom]'));
+    <script>
+        (function () {
+            const stage = document.getElementById('vlan-topology-stage');
+            const viewport = document.querySelector('.vlan-topology-viewport');
+            const controls = Array.from(document.querySelectorAll('[data-zoom]'));
 
-    const state = {
-        scale: 1,
-        tx: 0,
-        ty: 0,
-        dragging: false,
-        dragStartX: 0,
-        dragStartY: 0,
-        startTx: 0,
-        startTy: 0,
-    };
+            const state = { scale: 1, tx: 0, ty: 0, dragging: false, dragStartX: 0, dragStartY: 0, startTx: 0, startTy: 0 };
 
-    function clamp(value, min, max) {
-        return Math.min(Math.max(value, min), max);
-    }
+            const SVG_NS = 'http://www.w3.org/2000/svg';
 
-    function applyTransform() {
-        if (!stage) return;
-        stage.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
-    }
+            const HUB_R = 60;
+            const SUB_W = 150;
+            const SUB_H = 110;
+            const SUB_DIAG = Math.hypot(SUB_W / 2, SUB_H / 2);
+            const MACH_R = 42;
+            const GAP = 2.5;
+            const MIN_SEP = MACH_R * 2 + GAP * 2;
+            const R0 = 140;
+            const RING_STEP = 95;
+            const MIN_HUB_DIST = 265;
+            const PAD = 40;
 
-    function fitToViewport() {
-        if (!stage || !viewport) return;
-        const stageWidth = stage.offsetWidth;
-        const stageHeight = stage.offsetHeight;
-        const viewWidth = viewport.clientWidth;
-        const viewHeight = viewport.clientHeight;
+            function clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
 
-        state.tx = (viewWidth - stageWidth * state.scale) / 2;
-        state.ty = (viewHeight - stageHeight * state.scale) / 2;
-        applyTransform();
-    }
+            function svgEl(name, attrs) {
+                const el = document.createElementNS(SVG_NS, name);
+                Object.entries(attrs || {}).forEach(([key, value]) => el.setAttribute(key, value));
+                return el;
+            }
 
-    function placeSpokes() {
-        if (!stage || spokes.length === 0) return;
-
-        const defaultCardWidth = 260;
-        const defaultCardHeight = 220;
-        const minGap = 10;
-        const ringSize = 10;
-        const cardsPerRing = ringSize;
-        const ringSpacing = 180;
-        const baseRadius = 280;
-
-        const cards = spokes.map((spoke) => {
-            const card = spoke.querySelector('.vlan-topology-vlan');
-            const width = card ? card.offsetWidth || defaultCardWidth : defaultCardWidth;
-            const height = card ? card.offsetHeight || defaultCardHeight : defaultCardHeight;
-            return { spoke, card, width, height };
-        });
-
-        const ringCount = Math.max(1, Math.ceil(cards.length / cardsPerRing));
-        const stageSize = Math.max(1400, (ringCount * ringSpacing) + 700);
-        stage.style.width = stageSize + 'px';
-        stage.style.height = stageSize + 'px';
-
-        const centerX = stageSize / 2;
-        const centerY = stageSize / 2;
-
-        const placed = [];
-
-        cards.forEach((item, index) => {
-            const ringIndex = Math.floor(index / cardsPerRing);
-            const ringPosition = index % cardsPerRing;
-            const angleStep = (Math.PI * 2) / cardsPerRing;
-            const angle = angleStep * ringPosition - (Math.PI / 2) + (ringIndex % 2) * (angleStep / 2);
-
-            const halfWidth = item.width / 2;
-            const halfHeight = item.height / 2;
-            const baseRingRadius = baseRadius + ringIndex * ringSpacing;
-            let ringRadius = baseRingRadius;
-
-            while (true) {
-                const candidateCenterX = Math.cos(angle) * ringRadius;
-                const candidateCenterY = Math.sin(angle) * ringRadius;
-
-                const candidateRect = {
-                    left: candidateCenterX - halfWidth,
-                    right: candidateCenterX + halfWidth,
-                    top: candidateCenterY - halfHeight,
-                    bottom: candidateCenterY + halfHeight,
-                };
-
-                const overlap = placed.some((other) => {
-                    const pad = minGap;
-                    return !(candidateRect.right + pad < other.left || candidateRect.left - pad > other.right || candidateRect.bottom + pad < other.top || candidateRect.top - pad > other.bottom);
+            function wrapLines(text, maxChars, maxLines) {
+                const source = String(text || '');
+                const words = source.split(/\s+/).filter(Boolean);
+                const lines = [];
+                let current = '';
+                words.forEach((word) => {
+                    const candidate = current ? `${current} ${word}` : word;
+                    if (candidate.length <= maxChars) {
+                        current = candidate;
+                        return;
+                    }
+                    if (current) lines.push(current);
+                    current = word.length > maxChars ? `${word.slice(0, maxChars - 1)}\u2026` : word;
                 });
+                if (current) lines.push(current);
+                if (!lines.length) lines.push(source || '');
+                if (lines.length > maxLines) {
+                    const kept = lines.slice(0, maxLines);
+                    kept[maxLines - 1] = `${kept[maxLines - 1].replace(/\u2026$/, '')}\u2026`;
+                    return kept;
+                }
+                return lines;
+            }
 
-                if (!overlap) {
-                    break;
+            function addText(parent, cls, x, y, lines, lineHeight) {
+                const text = svgEl('text', { x, 'text-anchor': 'middle', class: cls });
+                const first = y - ((lines.length - 1) * lineHeight) / 2;
+                lines.forEach((line, index) => {
+                    const span = svgEl('tspan', { x, y: first + index * lineHeight });
+                    span.textContent = line;
+                    text.appendChild(span);
+                });
+                parent.appendChild(text);
+            }
+
+            function machineRings(count) {
+                if (!count) return [];
+                const rings = [];
+                let radius = R0;
+                let capacity = 0;
+                while (capacity < count) {
+                    const cap = Math.max(1, Math.floor((2 * Math.PI * radius) / MIN_SEP));
+                    rings.push({ radius, cap, count: 0 });
+                    capacity += cap;
+                    radius += RING_STEP;
+                }
+                let assigned = 0;
+                let index = 0;
+                while (assigned < count) {
+                    const ring = rings[index % rings.length];
+                    if (ring.count < ring.cap) {
+                        ring.count += 1;
+                        assigned += 1;
+                    }
+                    index += 1;
+                }
+                return rings.filter((ring) => ring.count > 0);
+            }
+
+            function clusterFootprint(plan) {
+                const machineReach = plan.length ? plan[plan.length - 1].radius + MACH_R + GAP : 0;
+                return Math.max(machineReach, SUB_DIAG + GAP);
+            }
+
+            function buildGraph() {
+                if (!stage) return;
+                const dataEl = document.getElementById('vlan-topology-data');
+                if (!dataEl) return;
+                const data = JSON.parse(dataEl.textContent);
+                const subnets = data.subnets || [];
+
+                stage.querySelectorAll('svg').forEach((node) => node.remove());
+                if (!subnets.length) return;
+
+                // Place the biggest clusters along the golden angle so comparably
+                // sized clusters never sit adjacent; smaller clusters fill the gaps
+                // evenly around the circle.
+                const bySize = subnets
+                    .map((subnet, index) => index)
+                    .sort((a, b) => subnets[b].machines.length - subnets[a].machines.length);
+                const slots = new Array(subnets.length).fill(null);
+                bySize.forEach((subnetIndex, rank) => {
+                    let slot = Math.floor((((rank + 1) * 0.6180339887) % 1) * subnets.length);
+                    while (slots[slot] !== null) slot = (slot + 1) % subnets.length;
+                    slots[slot] = subnets[subnetIndex];
+                });
+                const ordered = slots;
+
+                const plans = ordered.map((subnet) => machineRings(subnet.machines.length));
+                const footprints = plans.map(clusterFootprint);
+
+                const count = ordered.length;
+                const angleAt = (index) => -Math.PI / 2 + (index * 2 * Math.PI) / count;
+
+                // Every subnet shares one common ring, including the ones without any
+                // machines. Clusters bigger than the median never fit on that ring;
+                // they are pushed out only as far as needed to keep PUSH_CLEARANCE of
+                // free space to everything else.
+                const PUSH_CLEARANCE = 50;
+                const sortedFootprints = [...footprints].sort((a, b) => a - b);
+                const medianFootprint = sortedFootprints[Math.floor(sortedFootprints.length / 2)];
+                const halfChord = Math.sin(Math.PI / Math.max(count, 2));
+
+                let ringSum = 0;
+                for (let i = 0; i < count; i += 1) {
+                    const neighbour = (i + 1) % count;
+                    if (footprints[i] <= medianFootprint + 1e-6 && footprints[neighbour] <= medianFootprint + 1e-6) {
+                        ringSum = Math.max(ringSum, footprints[i] + footprints[neighbour] + 2 * GAP);
+                    }
+                }
+                const ringRadius = Math.max(MIN_HUB_DIST, ringSum / (2 * halfChord));
+                const radii = footprints.map(() => ringRadius);
+                const pushedOut = footprints.map((fp) => fp > medianFootprint + 1e-6);
+
+                for (let pass = 0; pass < 500; pass += 1) {
+                    let moved = false;
+                    for (let i = 0; i < count; i += 1) {
+                        for (let j = i + 1; j < count; j += 1) {
+                            if (!pushedOut[i] && !pushedOut[j]) continue;
+                            const reach = footprints[i] + footprints[j] + PUSH_CLEARANCE;
+                            const delta = angleAt(i) - angleAt(j);
+                            const da = Math.cos(delta);
+                            const sa = Math.sin(delta);
+                            const di = radii[i];
+                            const dj = radii[j];
+                            const dist2 = di * di + dj * dj - 2 * di * dj * da;
+                            if (dist2 >= reach * reach) continue;
+                            if (pushedOut[i] && pushedOut[j] && Math.abs(footprints[i] - footprints[j]) < 1e-6) {
+                                const scale = (reach + 0.01) / Math.sqrt(Math.max(dist2, 1));
+                                radii[i] = di * scale;
+                                radii[j] = dj * scale;
+                            } else if (pushedOut[i] && (!pushedOut[j] || footprints[i] >= footprints[j])) {
+                                radii[i] = Math.max(di, dj * da + Math.sqrt(Math.max(0, reach * reach - dj * dj * sa * sa)) + 0.01);
+                            } else {
+                                radii[j] = Math.max(dj, di * da + Math.sqrt(Math.max(0, reach * reach - di * di * sa * sa)) + 0.01);
+                            }
+                            moved = true;
+                        }
+                    }
+                    if (!moved) break;
                 }
 
-                ringRadius += 10;
+                let minX = -HUB_R;
+                let minY = -HUB_R;
+                let maxX = HUB_R;
+                let maxY = HUB_R;
+
+                const layout = ordered.map((subnet, index) => {
+                    const angle = angleAt(index);
+                    const x = radii[index] * Math.cos(angle);
+                    const y = radii[index] * Math.sin(angle);
+                    minX = Math.min(minX, x - SUB_W / 2);
+                    maxX = Math.max(maxX, x + SUB_W / 2);
+                    minY = Math.min(minY, y - SUB_H / 2);
+                    maxY = Math.max(maxY, y + SUB_H / 2);
+
+                    let next = 0;
+                    const machines = [];
+                    plans[index].forEach((ring, ringIndex) => {
+                        const step = (2 * Math.PI) / ring.count;
+                        for (let k = 0; k < ring.count; k += 1) {
+                            const a = ring.count === 1
+                                ? angle
+                                : angle + (ringIndex * Math.PI) / ring.count + k * step;
+                            const mx = x + ring.radius * Math.cos(a);
+                            const my = y + ring.radius * Math.sin(a);
+                            minX = Math.min(minX, mx - MACH_R);
+                            maxX = Math.max(maxX, mx + MACH_R);
+                            minY = Math.min(minY, my - MACH_R);
+                            maxY = Math.max(maxY, my + MACH_R);
+                            machines.push({ pos: { x: mx, y: my }, machine: subnet.machines[next] });
+                            next += 1;
+                        }
+                    });
+
+                    return { subnet, pos: { x, y }, machines };
+                });
+
+                const offsetX = -minX + PAD;
+                const offsetY = -minY + PAD;
+                const width = maxX - minX + PAD * 2;
+                const height = maxY - minY + PAD * 2;
+
+                const svg = svgEl('svg', {
+                    class: 'vlan-topo-svg',
+                    width,
+                    height,
+                    viewBox: `0 0 ${width} ${height}`,
+                });
+
+                const edges = svgEl('g', { class: 'topo-edges' });
+                svg.appendChild(edges);
+
+                const hubX = offsetX;
+                const hubY = offsetY;
+
+                layout.forEach((entry) => {
+                    const cx = entry.pos.x + offsetX;
+                    const cy = entry.pos.y + offsetY;
+                    edges.appendChild(svgEl('line', { class: 'topo-edge', x1: hubX, y1: hubY, x2: cx, y2: cy }));
+                    entry.machines.forEach((item) => {
+                        edges.appendChild(svgEl('line', {
+                            class: 'topo-edge',
+                            x1: cx,
+                            y1: cy,
+                            x2: item.pos.x + offsetX,
+                            y2: item.pos.y + offsetY,
+                        }));
+                    });
+                });
+
+                layout.forEach((entry) => {
+                    entry.machines.forEach((item) => {
+                        const cx = item.pos.x + offsetX;
+                        const cy = item.pos.y + offsetY;
+                        const link = svgEl('a', { class: 'topo-machine', href: item.machine.url || '#' });
+                        link.setAttribute('target', '_blank');
+                        link.setAttribute('rel', 'noopener');
+                        link.appendChild(svgEl('circle', { cx, cy, r: MACH_R }));
+                        const nameLines = wrapLines(item.machine.name, 11, 2);
+                        const ip = item.machine.ip || '';
+                        const nameBlock = (nameLines.length - 1) * 11;
+                        const nameMid = cy - (ip ? 7 : 0) - nameBlock / 2;
+                        addText(link, 'topo-machine-label', cx, nameMid, nameLines, 11);
+                        if (ip) {
+                            addText(link, 'topo-machine-ip', cx, nameMid + nameBlock / 2 + 12, [ip], 11);
+                        }
+                        const title = svgEl('title');
+                        title.textContent = `${item.machine.ip}${item.machine.location ? ` \u00b7 ${item.machine.location}` : ''}`;
+                        link.appendChild(title);
+                        svg.appendChild(link);
+                    });
+                });
+
+                layout.forEach((entry) => {
+                    const cx = entry.pos.x + offsetX;
+                    const cy = entry.pos.y + offsetY;
+                    const link = svgEl('a', { class: 'topo-subnet', href: entry.subnet.url || '#' });
+                    link.setAttribute('target', '_blank');
+                    link.setAttribute('rel', 'noopener');
+                    link.appendChild(svgEl('rect', {
+                        x: cx - SUB_W / 2,
+                        y: cy - SUB_H / 2,
+                        width: SUB_W,
+                        height: SUB_H,
+                        rx: 8,
+                    }));
+                    addText(link, 'topo-subnet-name', cx, cy - 12, wrapLines(entry.subnet.name, 16, 3), 14);
+                    if (entry.subnet.prefix && entry.subnet.prefix !== 'None') {
+                        addText(link, 'topo-subnet-prefix', cx, cy + SUB_H / 2 - 14, wrapLines(entry.subnet.prefix, 26, 1), 11);
+                    }
+                    svg.appendChild(link);
+                });
+
+                const hub = svgEl('g', { class: 'topo-hub' });
+                hub.appendChild(svgEl('circle', { cx: hubX, cy: hubY, r: HUB_R }));
+                addText(hub, 'topo-hub-name', hubX, hubY - 6, wrapLines(data.center.name, 12, 2), 15);
+                if (data.center.ip) {
+                    addText(hub, 'topo-hub-ip', hubX, hubY + 24, [data.center.ip], 11);
+                }
+                svg.appendChild(hub);
+
+                stage.insertBefore(svg, stage.firstChild);
             }
 
-            const hubRadius = 110;
-            const startX = Math.cos(angle) * hubRadius;
-            const startY = Math.sin(angle) * hubRadius;
-            const endX = candidateCenterX = Math.cos(angle) * ringRadius;
-            const endY = candidateCenterY = Math.sin(angle) * ringRadius;
-            const lineAngle = Math.atan2(endY - startY, endX - startX);
-            const lineLength = Math.hypot(endX - startX, endY - startY);
-
-            item.spoke.style.left = centerX + 'px';
-            item.spoke.style.top = centerY + 'px';
-            item.spoke.style.setProperty('--angle', lineAngle + 'rad');
-            item.spoke.style.setProperty('--line-length', lineLength + 'px');
-            item.spoke.style.transform = 'translate(0, 0)';
-
-            if (item.card) {
-                item.card.style.position = 'absolute';
-                item.card.style.left = '0';
-                item.card.style.top = '0';
-                item.card.style.transform = `translate(${candidateCenterX - halfWidth}px, ${candidateCenterY - halfHeight}px)`;
+            function applyTransform() {
+                if (stage) stage.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
             }
 
-            placed.push({
-                left: candidateCenterX - halfWidth,
-                right: candidateCenterX + halfWidth,
-                top: candidateCenterY - halfHeight,
-                bottom: candidateCenterY + halfHeight,
+            function fitToViewport() {
+                if (!stage || !viewport) return;
+                const stageWidth = stage.offsetWidth || 1;
+                const stageHeight = stage.offsetHeight || 1;
+                const viewWidth = viewport.clientWidth;
+                const viewHeight = viewport.clientHeight;
+
+                const fitScale = Math.min((viewWidth - 24) / stageWidth, (viewHeight - 24) / stageHeight);
+                state.scale = clamp(fitScale, 0.03, 1);
+
+                state.tx = (viewWidth - stageWidth * state.scale) / 2;
+                state.ty = (viewHeight - stageHeight * state.scale) / 2;
+                applyTransform();
+            }
+
+            function zoomAt(clientX, clientY, direction) {
+                if (!viewport || !stage) return;
+                const rect = viewport.getBoundingClientRect();
+                const mouseX = clientX - rect.left;
+                const mouseY = clientY - rect.top;
+                const worldX = (mouseX - state.tx) / state.scale;
+                const worldY = (mouseY - state.ty) / state.scale;
+                const nextScale = clamp(state.scale * (direction > 0 ? 1.15 : 0.87), 0.02, 2.5);
+                state.scale = nextScale;
+                state.tx = mouseX - worldX * nextScale;
+                state.ty = mouseY - worldY * nextScale;
+                applyTransform();
+            }
+
+            controls.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const cx = viewport.clientWidth / 2;
+                    const cy = viewport.clientHeight / 2;
+                    const action = button.dataset.zoom;
+                    if (action === 'in') zoomAt(cx, cy, 1);
+                    if (action === 'out') zoomAt(cx, cy, -1);
+                    if (action === 'reset') fitToViewport();
+                });
             });
-        });
 
-        fitToViewport();
-    }
+            if (viewport) {
+                viewport.addEventListener('pointerdown', (event) => {
+                    if (event.button !== 0) return;
+                    if (event.target.closest('a, button')) return;
+                    state.dragging = true;
+                    state.dragStartX = event.clientX;
+                    state.dragStartY = event.clientY;
+                    state.startTx = state.tx;
+                    state.startTy = state.ty;
+                    viewport.setPointerCapture(event.pointerId);
+                });
 
-    function zoomAt(clientX, clientY, direction) {
-        if (!viewport || !stage) return;
+                viewport.addEventListener('pointermove', (event) => {
+                    if (!state.dragging) return;
+                    state.tx = state.startTx + (event.clientX - state.dragStartX);
+                    state.ty = state.startTy + (event.clientY - state.dragStartY);
+                    applyTransform();
+                });
 
-        const rect = viewport.getBoundingClientRect();
-        const mouseX = clientX - rect.left;
-        const mouseY = clientY - rect.top;
+                viewport.addEventListener('pointerup', (event) => {
+                    state.dragging = false;
+                    if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+                });
 
-        const worldX = (mouseX - state.tx) / state.scale;
-        const worldY = (mouseY - state.ty) / state.scale;
+                viewport.addEventListener('pointerleave', () => { state.dragging = false; });
 
-        const nextScale = clamp(state.scale * (direction > 0 ? 1.12 : 0.88), 0.6, 1.8);
-
-        state.scale = nextScale;
-        state.tx = mouseX - worldX * nextScale;
-        state.ty = mouseY - worldY * nextScale;
-
-        applyTransform();
-    }
-
-    function setActiveSpoke(targetSpoke) {
-        spokes.forEach((spoke) => {
-            spoke.classList.toggle('is-focused', targetSpoke && spoke === targetSpoke);
-        });
-    }
-
-    controls.forEach((button) => {
-        button.addEventListener('click', () => {
-            const centerX = viewport.clientWidth / 2;
-            const centerY = viewport.clientHeight / 2;
-            const action = button.dataset.zoom;
-            if (action === 'in') zoomAt(centerX, centerY, 1);
-            if (action === 'out') zoomAt(centerX, centerY, -1);
-            if (action === 'reset') {
-                state.scale = 1;
-                fitToViewport();
+                viewport.addEventListener('wheel', (event) => {
+                    if (event.target.closest('a, button')) return;
+                    event.preventDefault();
+                    zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
+                }, { passive: false });
             }
-        });
-    });
 
-    document.querySelectorAll('.vlan-topology-vlan').forEach((card) => {
-        card.addEventListener('click', (event) => {
-            // Allow links to work (target="_blank" will open in new tab)
-            if (event.target.tagName === 'A' || event.target.closest('a')) {
-                return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            const spoke = card.closest('.vlan-topology-spoke');
-            if (spoke) {
-                setActiveSpoke(spoke);
-            }
-        });
-    });
-
-    if (viewport) {
-        viewport.addEventListener('pointerdown', (event) => {
-            if (event.button !== 0) return;
-            const hit = event.target.closest('.vlan-topology-vlan, .vlan-topology-core, .vlan-topology-machine, .vlan-machine-toggle, a, button');
-            if (hit) return;
-
-            state.dragging = true;
-            state.dragStartX = event.clientX;
-            state.dragStartY = event.clientY;
-            state.startTx = state.tx;
-            state.startTy = state.ty;
-            viewport.setPointerCapture(event.pointerId);
-        });
-
-        viewport.addEventListener('pointermove', (event) => {
-            if (!state.dragging) return;
-            const dx = event.clientX - state.dragStartX;
-            const dy = event.clientY - state.dragStartY;
-            state.tx = state.startTx + dx;
-            state.ty = state.startTy + dy;
-            applyTransform();
-        });
-
-        viewport.addEventListener('pointerup', (event) => {
-            state.dragging = false;
-            if (viewport.hasPointerCapture(event.pointerId)) {
-                viewport.releasePointerCapture(event.pointerId);
-            }
-        });
-
-        viewport.addEventListener('pointerleave', () => {
-            state.dragging = false;
-        });
-
-        viewport.addEventListener('wheel', (event) => {
-            const activeCard = event.target.closest('.vlan-topology-vlan, .vlan-topology-core, .vlan-topology-machine, .vlan-machine-toggle, a, button');
-            if (activeCard) return;
-            event.preventDefault();
-            zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
-        }, { passive: false });
-    }
-
-    placeSpokes();
-    window.addEventListener('resize', placeSpokes);
-})();
-</script>
+            buildGraph();
+            fitToViewport();
+            window.addEventListener('resize', fitToViewport);
+            window.addEventListener('load', fitToViewport);
+        })();
+    </script>
 {% endblock %}

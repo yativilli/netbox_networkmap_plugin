@@ -1,3 +1,5 @@
+from collections import Counter
+
 from dcim.models import Device
 from django.db.models import QuerySet
 from django.shortcuts import render
@@ -141,12 +143,67 @@ class VlanTopologyView(VlanElementListView):
             ):
                 return candidate
 
+    def decorate_elements(self, elements):
+        """
+        Give every subnet a representative color (the location that shows up
+        most often among its machines) and order them so the largest subnets
+        are drawn closest to the center of the topology.
+        """
+        for element in elements:
+            colors = [
+                machine["color"] for machine in element.machines if machine.get("color")
+            ]
+            if colors:
+                element.color = Counter(colors).most_common(1)[0][0]
+            else:
+                element.color = "location-color-default"
+
+        return sorted(elements, key=lambda element: element.machine_count, reverse=True)
+
+    def serialize_topology(self, elements, center_device):
+        center = {
+            "name": "Main Gateway / Firewall",
+            "ip": "",
+            "url": "",
+        }
+        if center_device:
+            center["name"] = str(center_device.name or center["name"])
+            if center_device.primary_ip4:
+                center["ip"] = str(center_device.primary_ip4.address.ip)
+            center["url"] = center_device.get_absolute_url()
+
+        subnets = []
+        for element in elements:
+            subnets.append(
+                {
+                    "name": str(element.name),
+                    "prefix": str(element.prefix),
+                    "url": element.url or "",
+                    "machines": [
+                        {
+                            "name": str(machine["dns_name"] or machine["ip"]),
+                            "ip": str(machine["ip"]),
+                            "url": machine["url"] or "",
+                            "location": str(machine["location"]),
+                        }
+                        for machine in element.machines
+                    ],
+                }
+            )
+
+        return {"center": center, "subnets": subnets}
+
     def get(self, request):
         queryset = self.get_queryset()
         center_device = self.get_center_device()
+        elements = self.decorate_elements(self.build_elements(queryset))
         context = {
-            "elements": self.build_elements(queryset),
+            "elements": elements,
             "center_device": center_device,
+            "center_device_url": (
+                center_device.get_absolute_url() if center_device else None
+            ),
+            "topology_data": self.serialize_topology(elements, center_device),
         }
         return render(request, self.template_name, context)
 
