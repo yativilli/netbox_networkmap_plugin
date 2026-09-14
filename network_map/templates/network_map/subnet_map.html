@@ -44,7 +44,7 @@
                     <ul class="mb-0">
                         {% for item in map_data.unplaced %}
                             <li>
-                                <a href="{{ item.url }}">{{ item.prefix }}</a>
+                                <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.prefix }}</a>
                                 &mdash; {{ item.locations|join:", " }}
                             </li>
                         {% endfor %}
@@ -223,6 +223,8 @@
                 if (url) {
                     const a = el('a', cssClass, text);
                     a.href = url;
+                    a.target = '_blank';
+                    a.rel = 'noopener';
                     return a;
                 }
                 return el('span', cssClass, text);
@@ -315,7 +317,7 @@
                     interactive: false,
                     style: {
                         stroke: true, color: '#c8102e', weight: 3, opacity: 0.95,
-                        dashArray: '8 6', fill: true, fillColor: '#c8102e', fillOpacity: 0.04
+                        dashArray: '8 6', fill: true, fillColor: '#c8102e', fillOpacity: 0.10
                     }
                 }).addTo(map);
             }
@@ -533,6 +535,18 @@
                     return L.TileLayer.prototype.getTileUrl.call(this, coords);
                 };
                 layer.addTo(map);
+                // Leaflet rebuilds the attribution control HTML whenever
+                // layers are added; re-apply the new-tab target each time.
+                const openAttributionLinks = function () {
+                    map.attributionControl.getContainer()
+                        .querySelectorAll('a')
+                        .forEach(function (link) {
+                            link.target = '_blank';
+                            link.rel = 'noopener';
+                        });
+                };
+                map.on('layeradd', openAttributionLinks);
+                openAttributionLinks();
 
                 addCantonBorder(map);
                 buildPins(map);
