@@ -16,4 +16,9 @@ menu_items = (
         link_text="Topology Map",
         permissions=["network_map.view_vlanelement"],
     ),
+    PluginMenuItem(
+        link="plugins:network_map:subnet_map",
+        link_text="Site Map",
+        permissions=["network_map.view_vlanelement"],
+    ),
 )

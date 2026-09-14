@@ -8,4 +8,5 @@ urlpatterns = [
     path(
         "vlan-connections/", views.VlanConnectionView.as_view(), name="vlan_connections"
     ),
+    path("subnet-map/", views.SubnetLocationView.as_view(), name="subnet_map"),
 ]

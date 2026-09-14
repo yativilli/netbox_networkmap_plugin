@@ -1,0 +1,569 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/network_map/leaflet/leaflet.css">
+    <link rel="stylesheet" href="/static/network_map/subnet_map.css">
+{% endblock %}
+
+{% block title %}{% trans "Subnet Locations" %}{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="card-title mb-0">{% trans "Subnet Locations" %}</h2>
+
+            <div class="subnet-map-legend" aria-label="Legend">
+                <span class="legend-item">
+                    <span class="legend-pin">
+                        <svg width="14" height="20" viewBox="0 0 30 42" aria-hidden="true">
+                            <path d="M15 0C6.7 0 0 6.7 0 15c0 10.9 15 27 15 27s15-16.1 15-27C30 6.7 23.3 0 15 0z" fill="#0072b2" stroke="#ffffff" stroke-width="2"/>
+                        </svg>
+                    </span>
+                    {% trans "Subnet machines at a site (one pin per subnet &times; site)" %}
+                </span>
+                <span class="legend-item">
+                    <span class="legend-cluster" aria-hidden="true"></span>
+                    {% trans "Multiple subnets at one address (click to expand)" %}
+                </span>
+                <span class="legend-item">
+                    <span class="legend-canton-border" aria-hidden="true"></span>
+                    {% trans "Canton Bern" %}
+                </span>
+            </div>
+
+            <button type="button" id="subnet-labels-toggle" class="btn btn-sm btn-outline-secondary flex-shrink-0" aria-pressed="false" title="{% trans 'Show or hide the labels below the pins' %}">
+                {% trans "Hide labels" %}
+            </button>
+        </div>
+
+        <div class="card-body">
+            {% if map_data.unplaced %}
+                <div class="alert alert-warning subnet-map-warning" role="alert">
+                    {% trans "Could not locate the following subnets. Check the site coordinates under DCIM &rarr; Sites:" %}
+                    <ul class="mb-0">
+                        {% for item in map_data.unplaced %}
+                            <li>
+                                <a href="{{ item.url }}">{{ item.prefix }}</a>
+                                &mdash; {{ item.locations|join:", " }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            {% if map_data.pins %}
+                <div class="subnet-map-layout">
+                    <div id="subnet-map" class="subnet-map"></div>
+                    <aside id="subnet-detail-panel" class="subnet-detail-panel" aria-label="Pin details">
+                        <div class="detail-panel-head">
+                            <span id="subnet-detail-title" class="detail-panel-title"></span>
+                            <button type="button" id="subnet-detail-close" class="btn btn-sm btn-link p-0" aria-label="Close details">&times;</button>
+                        </div>
+                        <div id="subnet-detail-body" class="detail-panel-body"></div>
+                    </aside>
+                </div>
+                {{ map_data|json_script:"subnet-map-data" }}
+            {% else %}
+                <p class="subnet-map-empty">{% trans "No locatable subnet machines found." %}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="/static/network_map/leaflet/leaflet.js"></script>
+    <script src="/static/network_map/lv03_grid.js"></script>
+    <script>
+        (function () {
+            const dataNode = document.getElementById('subnet-map-data');
+            if (!dataNode || typeof L === 'undefined') {
+                return;
+            }
+            const mapData = JSON.parse(dataNode.textContent);
+
+            const SWISSSTOPO_URL =
+                'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/21781/{z}/{y}/{x}.jpeg';
+            const EMPTY_TILE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=';
+            // Switzerland plus a margin; also keeps the view inside the
+            // area covered by the LV03 tile grid.
+            const COVERAGE_BOUNDS = L.latLngBounds([[45.82, 6.0], [47.9, 10.75]]);
+
+            // swisstopo LV03 (EPSG:21781) tile grid: origin 420000/350000,
+            // resolution 4000 - 250 * z m/px for z <= 13, then per the
+            // official WMTSCapabilities down to 0.1.
+            const LV03_RESOLUTIONS = (function () {
+                const resolutions = [];
+                for (let z = 0; z <= 13; z++) {
+                    resolutions.push(4000 - 250 * z);
+                }
+                [650, 500, 250, 100, 50, 20, 10, 5, 2.5, 2, 1.5, 1, 0.5, 0.25, 0.1].forEach(function (res) {
+                    resolutions.push(res);
+                });
+                return resolutions;
+            })();
+
+            // LV03 CRS fed by the precomputed projection grid (lv03_grid.js,
+            // generated from the official EPSG:4326 -> EPSG:21781 operation),
+            // which reproduces the swisstopo tile grid; the legacy +towgs84
+            // proj4 string used previously drifts by up to tens of km.
+            const LV03_CRS = L.extend({}, L.CRS, {
+                code: 'EPSG:21781',
+                projection: {
+                    project: function (latlng) {
+                        const p = window.LV03.project(latlng.lat, latlng.lng);
+                        return L.point(p.e, p.n);
+                    },
+                    unproject: function (point) {
+                        const ll = window.LV03.unproject(point.x, point.y);
+                        return L.latLng(ll.lat, ll.lng);
+                    },
+                    bounds: L.latLngBounds([[-85, -180], [85, 180]])
+                },
+                transformation: L.transformation(1, -420000, -1, 350000),
+                scale: function (zoom) {
+                    const z = Math.min(Math.max(Math.round(zoom), 0), LV03_RESOLUTIONS.length - 1);
+                    return 1 / LV03_RESOLUTIONS[z];
+                },
+                zoom: function (scale) {
+                    const res = 1 / scale;
+                    for (let z = 0; z < LV03_RESOLUTIONS.length - 1; z++) {
+                        if (res >= LV03_RESOLUTIONS[z + 1]) {
+                            const a = LV03_RESOLUTIONS[z];
+                            const b = LV03_RESOLUTIONS[z + 1];
+                            return z + (a - res) / (a - b);
+                        }
+                    }
+                    return LV03_RESOLUTIONS.length - 1;
+                },
+                distance: L.CRS.Earth.distance,
+                R: 6371000,
+                infinite: true
+            });
+
+            const pins = mapData.pins || [];
+            const groups = {};
+            pins.forEach(function (pin) {
+                const key = pin.lat.toFixed(4) + ',' + pin.lon.toFixed(4);
+                if (!groups[key]) {
+                    groups[key] = {site: pin.site, lat: pin.lat, lon: pin.lon, pins: []};
+                }
+                groups[key].pins.push(pin);
+            });
+
+            const PIN_W = 22;
+            const PIN_H = 31;
+            const CLUSTER_W = 30;
+            const CLUSTER_H = 42;
+
+            const panel = document.getElementById('subnet-detail-panel');
+            const panelTitle = document.getElementById('subnet-detail-title');
+            const panelBody = document.getElementById('subnet-detail-body');
+            function closePanel() {
+                if (panel.classList.contains('is-open')) {
+                    panel.classList.remove('is-open');
+                    if (window.__subnetMap) {
+                        window.__subnetMap.invalidateSize();
+                    }
+                }
+            }
+            document.getElementById('subnet-detail-close').addEventListener('click', closePanel);
+
+            const labelsToggle = document.getElementById('subnet-labels-toggle');
+            const mapContainer = document.getElementById('subnet-map');
+            if (labelsToggle && mapContainer) {
+                labelsToggle.addEventListener('click', function () {
+                    const hidden = mapContainer.classList.toggle('labels-hidden');
+                    labelsToggle.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+                    labelsToggle.textContent = hidden ? 'Show labels' : 'Hide labels';
+                });
+            }
+
+            function pinSvg(color) {
+                return '<svg width="22" height="31" viewBox="0 0 30 42" aria-hidden="true">' +
+                '<path d="M15 0C6.7 0 0 6.7 0 15c0 10.9 15 27 15 27s15-16.1 15-27C30 6.7 23.3 0 15 0z" ' +
+                'fill="' + color + '" stroke="#ffffff" stroke-width="1.8"/>' +
+                '<circle cx="15" cy="15" r="5.5" fill="#ffffff"/></svg>';
+            }
+
+            function clusterSvg(count) {
+                return '<div class="subnet-cluster-pin">' +
+                '<svg width="30" height="42" viewBox="0 0 30 42" aria-hidden="true">' +
+                '<path d="M15 0C6.7 0 0 6.7 0 15c0 10.9 15 27 15 27s15-16.1 15-27C30 6.7 23.3 0 15 0z" ' +
+                'fill="#ffffff" stroke="#343a40" stroke-width="2"/></svg>' +
+                '<span class="subnet-cluster-count">' + count + '</span></div>';
+            }
+
+            function pinLabelHtml(site, pin) {
+                return '<span class="pin-label-site">' + site + '</span>' +
+                '<span class="pin-label-subnet">' + pin.subnet +
+                (pin.prefix && pin.prefix !== pin.subnet ? ' &middot; ' + pin.prefix : '') +
+                '</span>';
+            }
+
+            function bindPinLabel(marker, site, pin, extraClass) {
+                marker.bindTooltip(pinLabelHtml(site, pin), {
+                    permanent: true,
+                    direction: 'bottom',
+                    offset: [0, 6],
+                    className: 'subnet-pin-label' + (extraClass || '')
+                });
+            }
+
+            function el(tag, cssClass, text) {
+                const node = document.createElement(tag);
+                if (cssClass) {
+                    node.className = cssClass;
+                }
+                if (text !== undefined && text !== null) {
+                    node.textContent = text;
+                }
+                return node;
+            }
+
+            function linkOrText(url, text, cssClass) {
+                if (url) {
+                    const a = el('a', cssClass, text);
+                    a.href = url;
+                    return a;
+                }
+                return el('span', cssClass, text);
+            }
+
+            function machineList(machines) {
+                const list = el('ul', 'detail-machines');
+                machines.forEach(function (machine) {
+                    const item = el('li');
+                    item.appendChild(linkOrText(machine.url, machine.name));
+                    item.appendChild(el('span', 'detail-ip', ' \u2013 ' + machine.ip));
+                    list.appendChild(item);
+                });
+                return list;
+            }
+
+            function openPanel() {
+                panel.classList.add('is-open');
+                if (window.__subnetMap) {
+                    window.__subnetMap.invalidateSize();
+                }
+            }
+
+            function showVlanPanel(pin) {
+                panelTitle.textContent = pin.subnet;
+                panelBody.textContent = '';
+
+                const prefixLine = el('div', 'detail-prefix');
+                prefixLine.appendChild(linkOrText(pin.url, pin.prefix || pin.subnet));
+                panelBody.appendChild(prefixLine);
+
+                panelBody.appendChild(el('div', 'detail-site', pin.site));
+
+                const vlanDetails = el('details', 'detail-section');
+                vlanDetails.open = true;
+                const summary = el('summary', null,
+                    pin.machines.length + ' ' + (pin.machines.length === 1 ? 'machine' : 'machines'));
+                vlanDetails.appendChild(summary);
+                vlanDetails.appendChild(machineList(pin.machines));
+                panelBody.appendChild(vlanDetails);
+
+                openPanel();
+            }
+
+            function showAddressPanel(group) {
+                panelTitle.textContent = group.site;
+                panelBody.textContent = '';
+                panelBody.appendChild(el('div', 'detail-site',
+                    group.pins.length + ' ' + (group.pins.length === 1 ? 'subnet' : 'subnets')));
+
+                group.pins.slice().sort(function (a, b) {
+                    return a.prefix.localeCompare(b.prefix);
+                }).forEach(function (pin) {
+                    const vlanDetails = el('details', 'detail-section detail-vlan');
+                    const summary = el('summary');
+                    summary.appendChild(el('span', 'detail-dot', ''));
+                    summary.querySelector('.detail-dot').style.background = pin.color;
+                    summary.appendChild(el('span', 'detail-vlan-name', pin.prefix || pin.subnet));
+                    summary.appendChild(el('span', 'detail-count', String(pin.machines.length)));
+                    vlanDetails.appendChild(summary);
+
+                    const head = el('div', 'detail-vlan-head');
+                    if (pin.subnet !== pin.prefix) {
+                        head.appendChild(el('div', 'detail-vlan-subnet', pin.subnet));
+                    }
+                    head.appendChild(linkOrText(pin.url, pin.prefix || pin.subnet, 'detail-vlan-link'));
+                    vlanDetails.appendChild(head);
+                    vlanDetails.appendChild(machineList(pin.machines));
+                    panelBody.appendChild(vlanDetails);
+                });
+
+                openPanel();
+            }
+
+            let currentMap = null;
+            let cantonBern = null;
+
+            function addCantonBorder(map) {
+                if (!cantonBern) {
+                    return;
+                }
+                const renderer = L.canvas({padding: 0.2});
+                L.geoJSON(cantonBern, {
+                    renderer: renderer,
+                    interactive: false,
+                    style: {stroke: true, color: '#ffffff', weight: 8, opacity: 0.4, fill: false}
+                }).addTo(map);
+                L.geoJSON(cantonBern, {
+                    renderer: renderer,
+                    interactive: false,
+                    style: {
+                        stroke: true, color: '#c8102e', weight: 3, opacity: 0.95,
+                        dashArray: '8 6', fill: true, fillColor: '#c8102e', fillOpacity: 0.04
+                    }
+                }).addTo(map);
+            }
+
+            const expanded = {};
+            const grids = {};
+            const clusterMarkers = {};
+
+            function renderGroupPins(map, group, container) {
+                const count = group.pins.length;
+                const cols = Math.min(8, Math.max(3, Math.round(Math.sqrt(count) * 1.4)));
+                const last = count - 1;
+                const lastPos = last % cols;
+                const lastRow = Math.floor(last / cols);
+                const centerX = (14 * lastPos + 7 * lastRow) / 2;
+                const centerY = (20 * lastRow - 9 * lastPos) / 2;
+
+                group.pins.forEach(function (pin, index) {
+                    const pos = index % cols;
+                    const row = Math.floor(index / cols);
+                    const dx = Math.round(14 * pos + 7 * row - centerX);
+                    const dy = Math.round(20 * row - 9 * pos - centerY);
+
+                    const icon = L.divIcon({
+                        className: 'subnet-pin-icon',
+                        html: '<div class="subnet-pin" style="transform: translate(' + dx + 'px,' + dy + 'px);">' +
+                        pinSvg(pin.color) + '</div>',
+                        iconSize: [PIN_W, PIN_H],
+                        iconAnchor: [PIN_W / 2, PIN_H]
+                    });
+
+                    const marker = L.marker([pin.lat, pin.lon], {
+                        icon: icon,
+                        zIndexOffset: 4000 + count * 100 - index * 10
+                    });
+                    marker.on('click', function () {
+                        showVlanPanel(pin);
+                    });
+                    bindPinLabel(marker, group.site, pin, ' subnet-grid-label');
+                    marker.addTo(container);
+                });
+            }
+
+            function tooltipContent(group) {
+                return '<span class="cluster-label-site">' + group.site + '</span>' +
+                '<span class="cluster-label-details">' + group.pins.length +
+                ' subnets \u00b7 Details</span>';
+            }
+
+            function bindClusterTooltip(marker, group) {
+                marker.bindTooltip(tooltipContent(group), {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -44],
+                    className: 'subnet-cluster-tooltip'
+                });
+            }
+
+            function collapseGroup(map, key) {
+                if (!expanded[key]) {
+                    return;
+                }
+                map.removeLayer(grids[key]);
+                delete grids[key];
+                delete expanded[key];
+            }
+
+            function collapseAll(map, exceptKey) {
+                Object.keys(expanded).forEach(function (key) {
+                    if (key !== exceptKey) {
+                        collapseGroup(map, key);
+                    }
+                });
+            }
+
+            function toggleGroup(map, key, group) {
+                const wasExpanded = !!expanded[key];
+                collapseAll(map, key);
+                if (wasExpanded) {
+                    collapseGroup(map, key);
+                } else {
+                    expanded[key] = true;
+                    const grid = L.layerGroup();
+                    renderGroupPins(map, group, grid);
+                    grid.addTo(map);
+                    grids[key] = grid;
+                }
+                if (wasExpanded) {
+                    closePanel();
+                } else {
+                    showAddressPanel(group);
+                }
+            }
+
+            function buildPins(map) {
+                Object.keys(groups).forEach(function (key) {
+                    const group = groups[key];
+
+                    if (group.pins.length === 1) {
+                        const pin = group.pins[0];
+                        const icon = L.divIcon({
+                            className: 'subnet-pin-icon',
+                            html: '<div class="subnet-pin">' + pinSvg(pin.color) + '</div>',
+                            iconSize: [PIN_W, PIN_H],
+                            iconAnchor: [PIN_W / 2, PIN_H]
+                        });
+                        const marker = L.marker([pin.lat, pin.lon], {icon: icon, zIndexOffset: 5000});
+                        marker.on('click', function () {
+                            showVlanPanel(pin);
+                        });
+                        bindPinLabel(marker, pin.site, pin);
+                        marker.addTo(map);
+                        return;
+                    }
+
+                    const icon = L.divIcon({
+                        className: 'subnet-pin-icon subnet-cluster-icon',
+                        html: clusterSvg(group.pins.length),
+                        iconSize: [CLUSTER_W, CLUSTER_H],
+                        iconAnchor: [CLUSTER_W / 2, CLUSTER_H]
+                    });
+                    const marker = L.marker([group.lat, group.lon], {icon: icon, zIndexOffset: 2000})
+                        .addTo(map);
+                    clusterMarkers[key] = marker;
+                    bindClusterTooltip(marker, group);
+                    marker.on('click', function () {
+                        toggleGroup(map, key, group);
+                    });
+                });
+            }
+
+            function fitView(map) {
+                const bounds = L.latLngBounds(pins.map(function (pin) {
+                    return [pin.lat, pin.lon];
+                }));
+                if (!bounds.isValid()) {
+                    map.setView([46.95, 8.2], 8);
+                    return;
+                }
+
+                const crs = map.options.crs;
+                if (crs && crs.code === 'EPSG:21781') {
+                    // Leaflet's getBoundsZoom assumes crs.scale(0) === 1,
+                    // which is false for the LV03 tile grid, so pick the
+                    // zoom from the projected spans manually. The grid is
+                    // rotated, so project all four bounds corners. Use an
+                    // integer zoom so tiles render at their native scale.
+                    const size = map.getSize();
+                    const corners = [
+                        bounds.getNorthWest(), bounds.getNorthEast(),
+                        bounds.getSouthWest(), bounds.getSouthEast()
+                    ].map(function (latlng) {
+                        return crs.projection.project(latlng);
+                    });
+                    const easting = corners.map(function (p) { return p.x; });
+                    const northing = corners.map(function (p) { return p.y; });
+                    const spanX = Math.max.apply(null, easting) - Math.min.apply(null, easting);
+                    const spanY = Math.max.apply(null, northing) - Math.min.apply(null, northing);
+
+                    let zoom = 0;
+                    for (let z = 0; z < LV03_RESOLUTIONS.length; z++) {
+                        const res = LV03_RESOLUTIONS[z];
+                        if (spanX / res <= size.x * 0.85 && spanY / res <= size.y * 0.85) {
+                            zoom = z;
+                        } else {
+                            break;
+                        }
+                    }
+                    zoom = Math.min(zoom, map.getMaxZoom());
+                    const centerProjected = L.point(
+                        (Math.min.apply(null, easting) + Math.max.apply(null, easting)) / 2,
+                        (Math.min.apply(null, northing) + Math.max.apply(null, northing)) / 2
+                    );
+                    map.setView(crs.projection.unproject(centerProjected), zoom);
+                } else {
+                    map.fitBounds(bounds.pad(0.15));
+                }
+            }
+
+            function buildMap() {
+                if (currentMap) {
+                    currentMap.remove();
+                    currentMap = null;
+                    Object.keys(grids).forEach(function (key) { delete grids[key]; });
+                    Object.keys(expanded).forEach(function (key) { delete expanded[key]; });
+                    Object.keys(clusterMarkers).forEach(function (key) { delete clusterMarkers[key]; });
+                }
+                const map = typeof window.LV03 !== 'undefined'
+                    ? L.map('subnet-map', {
+                        crs: LV03_CRS,
+                        minZoom: 6,
+                        maxZoom: 24,
+                        zoomAnimation: false,
+                        maxBounds: COVERAGE_BOUNDS.pad(0.15),
+                        maxBoundsViscosity: 0.8
+                    })
+                    : L.map('subnet-map', {maxBounds: COVERAGE_BOUNDS.pad(0.15)});
+                currentMap = map;
+
+                const layer = L.tileLayer(SWISSSTOPO_URL, {
+                    minZoom: 0,
+                    maxZoom: 24,
+                    minNativeZoom: 8,
+                    maxNativeZoom: 27,
+                    bounds: COVERAGE_BOUNDS,
+                    attribution: '&copy; <a href="https://www.swisstopo.ch/">swisstopo</a>'
+                });
+                layer.getTileUrl = function (coords) {
+                    // The LV03 grid starts at tile 0/0 at its origin; the
+                    // WMTS server answers 400 for negative indices, which
+                    // happens at wide zooms and outside the country.
+                    if (coords.x < 0 || coords.y < 0) {
+                        return EMPTY_TILE;
+                    }
+                    return L.TileLayer.prototype.getTileUrl.call(this, coords);
+                };
+                layer.addTo(map);
+
+                addCantonBorder(map);
+                buildPins(map);
+                // Clicking anywhere outside the pins collapses expanded
+                // clusters again and closes the detail panel.
+                map.on('click', function () {
+                    collapseAll(map);
+                    closePanel();
+                });
+                window.__subnetMap = map;
+                fitView(map);
+                setTimeout(function () {
+                    map.invalidateSize();
+                }, 0);
+            }
+
+            fetch('/static/network_map/kanton_bern.geojson')
+                .then(function (response) {
+                    return response.ok ? response.json() : null;
+                })
+                .then(function (geojson) {
+                    cantonBern = geojson;
+                })
+                .catch(function () {
+                    cantonBern = null;
+                })
+                .finally(function () {
+                    if (!currentMap) {
+                        buildMap();
+                    }
+                });
+        })();
+    </script>
+{% endblock %}

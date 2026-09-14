@@ -1,6 +1,6 @@
 from collections import Counter
 
-from dcim.models import Device
+from dcim.models import Device, Site
 from django.db.models import QuerySet
 from django.shortcuts import render
 from django.views import View
@@ -8,7 +8,8 @@ from ipam.models import VLAN, IPAddress, Prefix
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
-from .colors import color_for_location
+from .colors import color_for_location, color_for_location_hex
+from .geocoding import geocode_sites
 from .models import (
     DetailsElement,
     GatewayElement,
@@ -84,6 +85,7 @@ class VlanElementListView(View):
                     machines.append(
                         {
                             "ip": str(ip.address.ip),
+                            "prefix": str(prefix.prefix),
                             "dns_name": ip.dns_name
                             or device
                             or ip.description
@@ -204,6 +206,99 @@ class VlanTopologyView(VlanElementListView):
                 center_device.get_absolute_url() if center_device else None
             ),
             "topology_data": self.serialize_topology(elements, center_device),
+        }
+        return render(request, self.template_name, context)
+
+
+class SubnetLocationView(VlanElementListView):
+    template_name = "network_map/subnet_map.html"
+
+    def build_map_data(self, elements):
+        """
+        Group machines per subnet and site, so every subnet is drawn as one
+        pin per site it has machines at, placed at the site's coordinates.
+        """
+        site_names = {
+            machine["location"]
+            for element in elements
+            for machine in element.machines
+            if machine["location"] != "None"
+        }
+        coordinates = geocode_sites(Site.objects.filter(name__in=site_names))
+
+        placements = {}
+        for element in elements:
+            if not element.machines:
+                continue
+            vlan_prefix = str(element.prefix) if element.prefix else ""
+            for machine in element.machines:
+                if machine["location"] == "None":
+                    continue
+                prefix = machine.get("prefix") or vlan_prefix
+                key = (str(element.name), prefix)
+                placement = placements.setdefault(
+                    key,
+                    {
+                        "subnet": str(element.name),
+                        "prefix": prefix,
+                        "url": element.url or "",
+                        "sites": {},
+                    },
+                )
+                placement["sites"].setdefault(machine["location"], []).append(machine)
+
+        pins = []
+        unplaced = []
+        subnet_colors = {}
+        for placement in placements.values():
+            color_key = f"{placement['subnet']}|{placement['prefix']}"
+            if color_key not in subnet_colors:
+                subnet_colors[color_key] = color_for_location_hex(len(subnet_colors))
+
+            placed_any = False
+            for location, machines in placement["sites"].items():
+                coords = coordinates.get(location)
+                if not coords:
+                    continue
+                placed_any = True
+                pins.append(
+                    {
+                        "subnet": placement["subnet"],
+                        "prefix": placement["prefix"],
+                        "url": placement["url"],
+                        "color": subnet_colors[color_key],
+                        "site": str(location),
+                        "lat": coords[0],
+                        "lon": coords[1],
+                        "machines": [
+                            {
+                                "name": str(machine["dns_name"] or machine["ip"]),
+                                "ip": str(machine["ip"]),
+                                "url": machine["url"] or "",
+                            }
+                            for machine in machines
+                        ],
+                    }
+                )
+
+            if not placed_any:
+                unplaced.append(
+                    {
+                        "subnet": placement["subnet"],
+                        "prefix": placement["prefix"],
+                        "url": placement["url"],
+                        "locations": sorted(placement["sites"]),
+                    }
+                )
+
+        return {"pins": pins, "unplaced": unplaced}
+
+    def get(self, request):
+        queryset = self.get_queryset()
+        elements = self.build_elements(queryset)
+        context = {
+            "elements": elements,
+            "map_data": self.build_map_data(elements),
         }
         return render(request, self.template_name, context)
 
