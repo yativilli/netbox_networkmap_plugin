@@ -4,6 +4,7 @@ from dcim.models import Device, Location, Site
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
 from django.shortcuts import render
+from django.utils.translation import gettext_lazy as _
 from django.views import View
 from extras.models import ImageAttachment
 from ipam.models import VLAN, IPAddress, Prefix
@@ -122,8 +123,11 @@ class VlanElementListView(View):
         return render(request, self.template_name, context)
 
 
-class VlanTopologyView(VlanElementListView):
-    template_name = "network_map/vlan_topology.html"
+class CenterDeviceMixin:
+    """
+    Finds the device that anchors the topology views: prefer firewalls, then
+    gateways/routers, else the first active device with a primary IP.
+    """
 
     def get_center_device(self):
         queryset = (
@@ -131,15 +135,10 @@ class VlanTopologyView(VlanElementListView):
             .select_related("device_type", "site", "primary_ip4", "role")
             .order_by("site__name", "name")
         )
-
-        if self._search_for_center_device(queryset, ["firewall", "fw"]):
-            return self._search_for_center_device(queryset, ["firewall", "fw"])
-
-        if self._search_for_center_device(queryset, ["gateway", "router", "edge"]):
-            return self._search_for_center_device(
-                queryset, ["gateway", "router", "edge"]
-            )
-
+        for params in (["firewall", "fw"], ["gateway", "router", "edge"]):
+            found = self._search_for_center_device(queryset, params)
+            if found:
+                return found
         return queryset.first()
 
     def _search_for_center_device(self, queryset: QuerySet[Device], params: list[str]):
@@ -154,6 +153,10 @@ class VlanTopologyView(VlanElementListView):
                 for token in params
             ):
                 return candidate
+
+
+class VlanTopologyView(CenterDeviceMixin, VlanElementListView):
+    template_name = "network_map/vlan_topology.html"
 
     def decorate_elements(self, elements):
         """
@@ -212,9 +215,6 @@ class VlanTopologyView(VlanElementListView):
         context = {
             "elements": elements,
             "center_device": center_device,
-            "center_device_url": (
-                center_device.get_absolute_url() if center_device else None
-            ),
             "topology_data": self.serialize_topology(elements, center_device),
         }
         return render(request, self.template_name, context)
@@ -365,6 +365,26 @@ class SubnetLocationView(VlanElementListView):
             "pins": pins,
             "unplaced": unplaced,
             "locations": self.build_site_locations(sites),
+            "ui": {
+                "labels_show": _("Show labels"),
+                "labels_hide": _("Hide labels"),
+                "machine": _("machine"),
+                "machines": _("machines"),
+                "subnet": _("subnet"),
+                "subnets": _("subnets"),
+                "details": _("Details"),
+                "floor_map": _("Floor map"),
+                "house_plan": _("House plan"),
+                "badge_hint": _("scroll out to return to the map"),
+                "logical_title": _("logical floor map"),
+                "generated_from": _("generated from NetBox locations"),
+                "no_location": _("No location"),
+                "machines_band": _("Machines"),
+                "virtual": _("Virtual"),
+                "other_rooms": _("Other rooms"),
+                "vm": _("VM"),
+                "vms": _("VMs"),
+            },
         }
 
     def get(self, request):
@@ -377,7 +397,7 @@ class SubnetLocationView(VlanElementListView):
         return render(request, self.template_name, context)
 
 
-class VlanConnectionView(View):
+class VlanConnectionView(CenterDeviceMixin, View):
     def build_elements(self) -> list[dict]:
         element_obj = []
 
@@ -501,42 +521,6 @@ class VlanConnectionView(View):
             type="VLAN / IP-Address",
         )
 
-    def get_center_device(self):
-        queryset = (
-            Device.objects.filter(status="active", primary_ip4__isnull=False)
-            .select_related(
-                "device_type",
-                "site",
-                "primary_ip4",
-                "role",
-            )
-            .order_by("site__name", "name")
-        )
-
-        if self._search_for_center_device(queryset, ["firewall", "fw"]):
-            return self._search_for_center_device(queryset, ["firewall", "fw"])
-
-        if self._search_for_center_device(queryset, ["gateway", "router", "edge"]):
-            return self._search_for_center_device(
-                queryset, ["gateway", "router", "edge"]
-            )
-
-        return queryset.first()
-
-    def _search_for_center_device(self, queryset: QuerySet[Device], params: list[str]):
-        for candidate in queryset:
-            role_name = getattr(getattr(candidate, "role", None), "name", "") or ""
-            device_model = (
-                getattr(getattr(candidate, "device_type", None), "model", "") or ""
-            )
-            device_name = getattr(candidate, "name", "") or ""
-
-            if any(
-                token in (role_name + " " + device_model + " " + device_name).lower()
-                for token in params
-            ):
-                return candidate
-
     def get(self, request):
         elements = self.build_elements()
 
@@ -545,9 +529,6 @@ class VlanConnectionView(View):
         context = {
             "elements": elements,
             "center_device": center_device,
-            "center_device_url": (
-                center_device.get_absolute_url() if center_device else None
-            ),
         }
 
         return render(request, "network_map/vlan_connection.html", context)

@@ -1,0 +1,11 @@
+{% load i18n %}
+<div class="info-item">
+    <span class="info-label">{% translate label %}</span>
+    <span class="info-value">
+        {% if url %}
+            <a href="{{ url }}" target="_blank" rel="noopener">{{ value }} &#128279;</a>
+        {% else %}
+            {{ value }}
+        {% endif %}
+    </span>
+</div>

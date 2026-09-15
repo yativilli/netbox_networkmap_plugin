@@ -1,8 +1,9 @@
 {% extends 'generic/_base.html' %}
 {% load i18n %}
+{% load static %}
 
 {% block head %}
-  <link rel="stylesheet" href="/static/network_map/vlan_element_list.css">
+  <link rel="stylesheet" href="{% static 'network_map/vlan_element_list.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Elements" %}{% endblock %}
@@ -44,23 +45,23 @@
                      class="card network-node vlan-parent-card {{ element.color|default:'location-color-default' }}">
               <div class="card-body">
                 <h5 class="card-title mb-2">{% if element.url %}<a href="{{ element.url }}"
-                                                                   target="_blank">{{element.name}}</a>{% else %}{{ element.name }}{% endif %}</h5>
-                <p class="card-text mb-1"><strong>Group:</strong> {{ element.group }}</p>
-                <p class="card-text mb-1"><strong>Description:</strong> {{ element.description }}</p>
-                <p class="card-text mb-1"><strong>Role:</strong> {{ element.role }}</p>
-                <p class="card-text mb-1"><strong>Machines:</strong> {{ element.machine_count }}</p>
-                <p class="card-text mb-3"><strong>Range:</strong> {{ element.prefix }}</p>
+                                                                   target="_blank" rel="noopener">{{ element.name }}</a>{% else %}{{ element.name }}{% endif %}</h5>
+                <p class="card-text mb-1"><strong>{% trans "Group" %}:</strong> {{ element.group }}</p>
+                <p class="card-text mb-1"><strong>{% trans "Description" %}:</strong> {{ element.description }}</p>
+                <p class="card-text mb-1"><strong>{% trans "Role" %}:</strong> {{ element.role }}</p>
+                <p class="card-text mb-1"><strong>{% trans "Machines" %}:</strong> {{ element.machine_count }}</p>
+                <p class="card-text mb-3"><strong>{% trans "Range" %}:</strong> {{ element.prefix }}</p>
 
                 <div class="vlan-child-grid">
                   {% for machine in element.machines %}
                     <article class="card vlan-child-card {{ machine.color|default:'location-color-default' }}">
                       <div class="card-body p-2">
                         <h6 class="card-title mb-2">{% if machine.url %}<a href="{{ machine.url }}"
-                                                                           target="_blank">{{machine.dns_name }}</a>{% else %}{{ machine.dns_name }}{% endif %}</h6>
-                        <p class="card-text mb-1"><strong>Location:</strong> {{ machine.location }}</p>
-                        <p class="card-text mb-1"><strong>IP:</strong> {{ machine.ip }}</p>
-                        <p class="card-text mb-1"><strong>Role:</strong> {{ machine.role  }}</p>
-                        <p class="card-text mb-1"><strong>Description:</strong> {{ machine.description }}</p>
+                                                                           target="_blank" rel="noopener">{{ machine.dns_name }}</a>{% else %}{{ machine.dns_name }}{% endif %}</h6>
+                        <p class="card-text mb-1"><strong>{% trans "Location" %}:</strong> {{ machine.location }}</p>
+                        <p class="card-text mb-1"><strong>{% trans "IP" %}:</strong> {{ machine.ip }}</p>
+                        <p class="card-text mb-1"><strong>{% trans "Role" %}:</strong> {{ machine.role }}</p>
+                        <p class="card-text mb-1"><strong>{% trans "Description" %}:</strong> {{ machine.description }}</p>
                       </div>
                     </article>
                   {% empty %}
