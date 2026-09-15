@@ -1,9 +1,11 @@
 from collections import Counter
 
-from dcim.models import Device, Site
+from dcim.models import Device, Location, Site
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
 from django.shortcuts import render
 from django.views import View
+from extras.models import ImageAttachment
 from ipam.models import VLAN, IPAddress, Prefix
 from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
@@ -60,6 +62,7 @@ class VlanElementListView(View):
                     device = getattr(assigned_object, "device", None)
                     vm = getattr(assigned_object, "virtual_machine", None)
 
+                    room = None
                     if device:
                         location = device.site.name if device.site else "None"
                         url = device.get_absolute_url()
@@ -67,6 +70,10 @@ class VlanElementListView(View):
                             device.description or device.role or ip.comments or "None"
                         )
                         role = device.role or "None"
+                        device_location = getattr(device, "location", None) or getattr(
+                            getattr(device, "rack", None), "location", None
+                        )
+                        room = str(device_location.name) if device_location else None
 
                     elif vm:
                         location = vm.site.name if vm.site else "None"
@@ -92,6 +99,8 @@ class VlanElementListView(View):
                             or ip.description
                             or "None",
                             "location": location,
+                            "room": room,
+                            "physical": device is not None,
                             "url": url,
                             "description": description,
                             "color": color,
@@ -214,6 +223,57 @@ class VlanTopologyView(VlanElementListView):
 class SubnetLocationView(VlanElementListView):
     template_name = "network_map/subnet_map.html"
 
+    def build_site_plans(self, sites):
+        """
+        Map each site name to its first image attachment (used as the house
+        plan shown when zooming into the building). Returns {} when the site
+        has no uploaded plan, in which case the map falls back to a generic
+        mock plan.
+        """
+        if not sites:
+            return {}
+        site_type = ContentType.objects.get_for_model(Site)
+        plans = {}
+        attachments = (
+            ImageAttachment.objects.filter(
+                object_type=site_type,
+                object_id__in=[site.pk for site in sites],
+            )
+            .order_by("object_id", "id")
+            .only("object_id", "image", "image_width", "image_height")
+        )
+        site_ids = {site.pk: str(site.name) for site in sites}
+        for attachment in attachments:
+            name = site_ids.get(attachment.object_id)
+            if not name or name in plans:
+                continue
+            try:
+                url = attachment.image.url
+            except ValueError:
+                continue
+            plans[name] = {
+                "url": url,
+                "width": attachment.image_width or 1200,
+                "height": attachment.image_height or 850,
+            }
+        return plans
+
+    def build_site_locations(self, sites):
+        """
+        Map each site name to the list of its location (room) names, so the
+        map can render a logical building layout including rooms that hold
+        no devices.
+        """
+        if not sites:
+            return {}
+        locations = Location.objects.filter(site__in=sites).order_by(
+            "site__name", "name"
+        )
+        tree = {}
+        for location in locations:
+            tree.setdefault(str(location.site.name), []).append(str(location.name))
+        return tree
+
     def build_map_data(self, elements):
         """
         Group machines per subnet and site, so every subnet is drawn as one
@@ -225,7 +285,10 @@ class SubnetLocationView(VlanElementListView):
             for machine in element.machines
             if machine["location"] != "None"
         }
-        coordinates = geocode_sites(Site.objects.filter(name__in=site_names))
+        sites = list(Site.objects.filter(name__in=site_names))
+        coordinates = geocode_sites(sites)
+
+        site_plans = self.build_site_plans(sites)
 
         placements = {}
         for element in elements:
@@ -262,6 +325,7 @@ class SubnetLocationView(VlanElementListView):
                 if not coords:
                     continue
                 placed_any = True
+                plan = site_plans.get(location) or {}
                 pins.append(
                     {
                         "subnet": placement["subnet"],
@@ -271,11 +335,16 @@ class SubnetLocationView(VlanElementListView):
                         "site": str(location),
                         "lat": coords[0],
                         "lon": coords[1],
+                        "plan_url": plan.get("url"),
+                        "plan_w": plan.get("width"),
+                        "plan_h": plan.get("height"),
                         "machines": [
                             {
                                 "name": str(machine["dns_name"] or machine["ip"]),
                                 "ip": str(machine["ip"]),
                                 "url": machine["url"] or "",
+                                "room": machine.get("room"),
+                                "physical": machine.get("physical", True),
                             }
                             for machine in machines
                         ],
@@ -292,7 +361,11 @@ class SubnetLocationView(VlanElementListView):
                     }
                 )
 
-        return {"pins": pins, "unplaced": unplaced}
+        return {
+            "pins": pins,
+            "unplaced": unplaced,
+            "locations": self.build_site_locations(sites),
+        }
 
     def get(self, request):
         queryset = self.get_queryset()
