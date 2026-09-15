@@ -95,9 +95,10 @@
                 for (let z = 0; z <= 13; z++) {
                     resolutions.push(4000 - 250 * z);
                 }
-                [650, 500, 250, 100, 50, 20, 10, 5, 2.5, 2, 1.5, 1, 0.5, 0.25, 0.1].forEach(function (res) {
-                    resolutions.push(res);
-                });
+                [650, 500, 250, 100, 50, 20, 10, 5, 2.5, 2, 1.5, 1,
+                    0.5, 0.25, 0.1, 0.05, 0.025].forEach(function (res) {
+                        resolutions.push(res);
+                    });
                 return resolutions;
             })();
 
@@ -148,6 +149,31 @@
                 }
                 groups[key].pins.push(pin);
             });
+
+            // House-plan mode: deep zoom onto a site swaps the map for the
+            // building's floor plan and scatters that site's machines on it.
+            const MOCK_PLAN_URL = '/static/network_map/house_plan.svg';
+            const siteLocations = mapData.locations || {};
+            const HOUSE_ENTER_ZOOM = 24;
+            const HOUSE_EXIT_ZOOM = 23;
+            const HOUSE_ENTER_M = 150;
+            const HOUSE_LEAVE_M = 400;
+            // Room slots of the mock plan as fractional x/y from its
+            // top-left corner; must match house_plan.svg's rooms.
+            const MOCK_PLAN_SLOTS = [
+                [0.2542, 0.1765], [0.2542, 0.4], [0.2542, 0.6118], [0.2542, 0.8294],
+                [0.7458, 0.1765], [0.7458, 0.4], [0.7458, 0.6059], [0.7458, 0.8235],
+                [0.5, 0.3529], [0.5, 0.6588]
+            ];
+            const house = {
+                activeKey: null,
+                group: null,
+                marker: null,
+                layer: null,
+                planOverlay: null,
+                machines: null,
+                badge: null
+            };
 
             const PIN_W = 22;
             const PIN_H = 31;
@@ -300,6 +326,7 @@
             }
 
             let currentMap = null;
+            let tileLayer = null;
             let cantonBern = null;
 
             function addCantonBorder(map) {
@@ -325,6 +352,7 @@
             const expanded = {};
             const grids = {};
             const clusterMarkers = {};
+            const singleMarkers = {};
 
             function renderGroupPins(map, group, container) {
                 const count = group.pins.length;
@@ -430,6 +458,7 @@
                         });
                         bindPinLabel(marker, pin.site, pin);
                         marker.addTo(map);
+                        singleMarkers[key] = marker;
                         return;
                     }
 
@@ -447,6 +476,594 @@
                         toggleGroup(map, key, group);
                     });
                 });
+            }
+
+            function housePlanOf(group) {
+                for (let i = 0; i < group.pins.length; i++) {
+                    const pin = group.pins[i];
+                    if (pin.plan_url) {
+                        return {
+                            url: pin.plan_url,
+                            w: pin.plan_w || 1200,
+                            h: pin.plan_h || 850,
+                            custom: true
+                        };
+                    }
+                }
+                const known = siteLocations[group.site] || [];
+                if (known.length || group.pins.some(function (pin) {
+                    return pin.machines.some(function (m) {
+                        return m.room;
+                    });
+                })) {
+                    return {logical: true, url: '', w: 1400, h: 850,
+                        custom: false};
+                }
+                return {url: MOCK_PLAN_URL, w: 1200, h: 850, custom: false};
+            }
+
+            function houseFootprint(plan) {
+                // The mock is ~120 m x 85 m; keep that ground area and
+                // adapt to the aspect ratio of uploaded plans. Logical maps
+                // grow with the number of floors so each stays readable.
+                let area = 120 * 85;
+                if (plan.logical) {
+                    area = Math.min(20400,
+                        Math.max(10200, 10200 * plan.h / 850));
+                }
+                const ratio = plan.w / plan.h;
+                return {w: Math.sqrt(area * ratio), h: Math.sqrt(area / ratio)};
+            }
+
+            function houseBounds(lat, lon, width, height) {
+                const dLat = height / 2 / 111320;
+                const dLon = width / 2 / (111320 * Math.cos(lat * Math.PI / 180));
+                return L.latLngBounds(
+                    [[lat - dLat, lon - dLon], [lat + dLat, lon + dLon]]
+                );
+            }
+
+            // Fractional position on the plan -> coordinates, interpolated
+            // in projected space so it holds in any CRS.
+            function slotToLatLng(bounds, fx, fy) {
+                const zoom = 27;
+                const nw = currentMap.project(bounds.getNorthWest(), zoom);
+                const se = currentMap.project(bounds.getSouthEast(), zoom);
+                return currentMap.unproject(
+                    L.point(nw.x + fx * (se.x - nw.x), nw.y + fy * (se.y - nw.y)),
+                    zoom
+                );
+            }
+
+            function houseSlots(custom) {
+                if (!custom) {
+                    return MOCK_PLAN_SLOTS;
+                }
+                const slots = [];
+                [0.3, 0.5, 0.7].forEach(function (fy) {
+                    [0.2, 0.4, 0.6, 0.8].forEach(function (fx) {
+                        slots.push([fx, fy]);
+                    });
+                });
+                return slots;
+            }
+
+            function ipHash(text) {
+                let hash = 0;
+                for (let i = 0; i < text.length; i++) {
+                    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+                }
+                return Math.abs(hash);
+            }
+
+            function escapeHtml(text) {
+                return String(text).replace(/[&<>"]/g, function (ch) {
+                    return {'&': '&amp;', '<': '&lt;', '>': '&gt;',
+                        '"': '&quot;'}[ch];
+                });
+            }
+
+            // Derive a floor from a NetBox location name, e.g.
+            // "2. Stock - Gang - DigiKri" -> 2. Stock, "U204" -> UG,
+            // "O 242" -> OG (attic), "Büro 267" -> 2. Stock, "019" -> EG.
+            function logicalFloor(name) {
+                let m = name.match(/(\d+)\.\s*stock\b/i);
+                if (m) {
+                    const n = parseInt(m[1], 10);
+                    return {sort: n, label: n + '. Stock'};
+                }
+                if (/^(UG|ET|KG)\b/i.test(name) || /^U[\d\s]/.test(name)) {
+                    return {sort: -2, label: 'UG'};
+                }
+                if (/^EG\b/i.test(name)) {
+                    return {sort: 0, label: 'EG'};
+                }
+                if (/^(OG|AD)\b/i.test(name) || /^O[\d\s]/.test(name)) {
+                    return {sort: 100, label: 'OG'};
+                }
+                m = name.match(/\b(\d{2,3})\b/);
+                if (m) {
+                    const d = parseInt(m[1].charAt(0), 10);
+                    return d === 0 ?
+                    {sort: 0, label: 'EG'} :
+                    {sort: d, label: d + '. Stock'};
+                }
+                return {sort: 200, label: 'Other rooms'};
+            }
+
+            function clipRoomLabel(name, widthPx) {
+                const max = Math.max(6, Math.floor((widthPx - 10) / 8.6));
+                return name.length > max ?
+                name.slice(0, Math.max(1, max - 1)) + '\u2026' :
+                    name;
+            }
+
+            // Columns a room box of the given width fits for `count`
+            // machines: enough that dots fill the box without touching.
+            function roomGridCols(widthPx, count) {
+                return Math.max(1, Math.min(
+                    Math.floor((widthPx - 16) / 18),
+                    Math.ceil(Math.sqrt(count * 2.5))));
+            }
+
+            // Logical building map generated from NetBox locations: rooms
+            // are Location objects, floors are parsed from their names and
+            // drawn as bands (top floor first); empty rooms are shown too.
+            function buildLogicalLayout(group) {
+                const counts = {};
+                let vmTotal = 0;
+                group.pins.forEach(function (pin) {
+                    pin.machines.forEach(function (machine) {
+                        if (machine.physical === false) {
+                            vmTotal += 1;
+                            return;
+                        }
+                        const room = machine.room || '';
+                        counts[room] = (counts[room] || 0) + 1;
+                    });
+                });
+                const rooms = Object.keys(counts);
+                (siteLocations[group.site] || []).forEach(function (name) {
+                    if (rooms.indexOf(name) < 0) {
+                        rooms.push(name);
+                    }
+                    if (!(name in counts)) {
+                        counts[name] = 0;
+                    }
+                });
+                const floors = [];
+                rooms.filter(function (name) {
+                    return name !== '';
+                }).forEach(function (name) {
+                    const f = logicalFloor(name);
+                    let floor = null;
+                    floors.forEach(function (x) {
+                        if (x.sort === f.sort) {
+                            floor = x;
+                        }
+                    });
+                    if (!floor) {
+                        floor = {sort: f.sort, label: f.label, rooms: []};
+                        floors.push(floor);
+                    }
+                    floor.rooms.push(name);
+                });
+                floors.sort(function (a, b) {
+                    return b.sort - a.sort;
+                });
+                if (rooms.indexOf('') >= 0) {
+                    floors.push({sort: -1000, label: 'No location',
+                        rooms: ['']});
+                }
+                if (vmTotal > 0) {
+                    counts['__virtual__'] = vmTotal;
+                    floors.push({sort: -2000, label: 'Virtual',
+                        rooms: ['__virtual__']});
+                }
+
+                const W = 1400, PAD = 34, BAND_W = 150, GAP = 14;
+
+                // Pre-plan each floor band: room widths go by machine
+                // count and the band grows tall enough that the machine
+                // grids never collapse onto each other.
+                const bands = floors.map(function (floor) {
+                    const gap = floor.rooms.length > 1 ? 10 : 0;
+                    const availW = W - 2 * PAD - BAND_W - 12 -
+                    gap * (floor.rooms.length - 1);
+                    const weights = floor.rooms.map(function (name) {
+                        return Math.pow(counts[name] || 0, 0.65) + 1.6;
+                    });
+                    const totalW = weights.reduce(function (a, b) {
+                        return a + b;
+                    }, 0);
+                    let maxRows = 1;
+                    let stacked = false;
+                    const widths = floor.rooms.map(function (name, i) {
+                        const w = Math.max(60, availW * weights[i] / totalW);
+                        const count = counts[name] || 0;
+                        const cols = roomGridCols(w, count);
+                        maxRows = Math.max(maxRows, Math.ceil(count / cols));
+                        if (name !== '' && name !== '__virtual__' &&
+                            count > 0 && w - countChipWidth(name, count) -
+                            12 < 60) {
+                                stacked = true;
+                            }
+                        return {w: w, cols: cols};
+                    });
+                    const boxH = Math.max(150, maxRows * 30 + 24);
+                    return {floor: floor, gap: gap, widths: widths,
+                        boxH: boxH, stacked: stacked,
+                        shift: stacked ? 24 : 0};
+                });
+                const H = 110 + bands.reduce(function (a, band) {
+                    return a + band.boxH + 90 + GAP + band.shift;
+                }, 0) + PAD;
+                const boxes = {};
+                const svg = [
+                    '<rect x="0" y="0" width="' + W + '" height="' + H +
+                    '" fill="#f8f5ec"/>',
+                    '<rect x="4" y="4" width="' + (W - 8) + '" height="' +
+                    (H - 8) + '" fill="none" stroke="#555" stroke-width="4"/>',
+                    '<text x="' + PAD + '" y="64" font-size="26" fill="#3d3d38"' +
+                    ' font-style="italic">' + escapeHtml(group.site) +
+                    ' \u2014 logical floor map</text>',
+                    '<text x="' + (W - PAD) + '" y="64" text-anchor="end"' +
+                    ' font-size="16" fill="#8a8378">generated from NetBox' +
+                    ' locations</text>'
+                ];
+                let y0 = 110;
+                bands.forEach(function (band) {
+                    const floor = band.floor;
+                    const bandH = band.boxH + 74 + band.shift;
+                    svg.push('<rect x="' + PAD + '" y="' + y0 + '" width="' +
+                        (W - 2 * PAD) + '" height="' + bandH + '" rx="8"' +
+                        ' fill="#ece7da" stroke="#d8d2c2" stroke-width="1.5"/>');
+                    const fmax = Math.floor((BAND_W - 20) / 11.7);
+                    const flabel = floor.label.length > fmax ?
+                    floor.label.slice(0, fmax - 1) + '\u2026' :
+                        floor.label;
+                    svg.push('<text x="' + (PAD + BAND_W / 2) + '" y="' +
+                        (y0 + 40) + '" text-anchor="middle" font-size="22"' +
+                        ' font-weight="bold" fill="#6b5d4a">' +
+                        escapeHtml(flabel) + '</text>');
+                    const boxTop = y0 + 62 + band.shift, boxH = band.boxH;
+                    let x = PAD + BAND_W + 6;
+                    floor.rooms.forEach(function (name, i) {
+                        const w = band.widths[i].w;
+                        const count = counts[name] || 0;
+                        const chip = count > 0 ?
+                        countChipText(name, count) : '';
+                        if (name !== '' && name !== '__virtual__') {
+                            // Narrow boxes stack name over count instead
+                            // of letting them run into each other.
+                            const budget = band.stacked ? w - 6 :
+                                w - (count > 0 ?
+                                    countChipWidth(name, count) + 12 : 10);
+                            svg.push('<text x="' + x + '" y="' +
+                                (boxTop - (band.stacked ? 32 : 8)) +
+                                '" font-size="17" fill="#3d3d38">' +
+                                escapeHtml(clipRoomLabel(name, budget)) +
+                                '</text>');
+                        }
+                        if (count > 0) {
+                            svg.push('<text ' + (band.stacked ?
+                                'x="' + x + '"' :
+                                    'x="' + (x + w - 6) + '"' +
+                                ' text-anchor="end"') + ' y="' +
+                                (boxTop - 8) + '" font-size="14"' +
+                                ' fill="#8a8378">' + escapeHtml(chip) +
+                                '</text>');
+                        }
+                        svg.push('<rect x="' + x + '" y="' + boxTop +
+                            '" width="' + w + '" height="' + boxH +
+                            '" rx="6" fill="#f7f4ea" stroke="#6b6b63"' +
+                            ' stroke-width="2.5"/>');
+                        boxes[name] = {x: x, y: boxTop, w: w, h: boxH,
+                            cols: band.widths[i].cols};
+                        x += w + band.gap;
+                    });
+                    y0 += band.boxH + 90 + GAP + band.shift;
+                });
+                return {w: W, h: H, boxes: boxes, markup: svg.join('')};
+            }
+
+            function countChipText(name, count) {
+                if (name === '__virtual__') {
+                    return count + (count === 1 ? ' VM' : ' VMs');
+                }
+                return count + (count === 1 ? ' machine' : ' machines');
+            }
+
+            // Rough rendered width of the 14px count chip.
+            function countChipWidth(name, count) {
+                return countChipText(name, count).length * 7.4 + 4;
+            }
+
+            // The floor plan as a hand-rolled SVG overlay: Firefox drops
+            // raster content (img, canvas, background) inside the deeply
+            // translated map panes at house zoom, but paints vectors
+            // reliably, so the plan is inlined into an <svg> sized to the
+            // footprint on every view change.
+            function createPlanOverlay(plan, bounds) {
+                const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                el.setAttribute('class', 'house-plan-overlay');
+                el.setAttribute('viewBox', '0 0 ' + plan.w + ' ' + plan.h);
+                el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+                el.style.position = 'absolute';
+
+                function reset() {
+                    if (!currentMap) {
+                        return;
+                    }
+                    const nw = currentMap.latLngToLayerPoint(bounds.getNorthWest());
+                    const se = currentMap.latLngToLayerPoint(bounds.getSouthEast());
+                    el.style.width = Math.max(1, Math.round(se.x - nw.x)) + 'px';
+                    el.style.height = Math.max(1, Math.round(se.y - nw.y)) + 'px';
+                    L.DomUtil.setPosition(el, nw);
+                }
+
+                function attach(map) {
+                    map.getPanes().overlayPane.appendChild(el);
+                    map.on('zoomend moveend viewreset', reset);
+                    reset();
+                    if (plan.markup) {
+                        el.innerHTML = plan.markup;
+                    } else if (/\.svg(\?|$)/i.test(plan.url)) {
+                        fetch(plan.url)
+                            .then(function (response) {
+                                return response.ok ? response.text() : '';
+                            })
+                            .then(function (text) {
+                                const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+                                const root = doc.querySelector('svg');
+                                if (!root) {
+                                    return;
+                                }
+                                root.setAttribute('width', '100%');
+                                root.setAttribute('height', '100%');
+                                el.appendChild(document.importNode(root, true));
+                            })
+                            .catch(function () {
+                            });
+                    } else {
+                        const raster = document.createElementNS(
+                            'http://www.w3.org/2000/svg', 'image');
+                        raster.setAttribute('href', plan.url);
+                        raster.setAttribute('width', plan.w);
+                        raster.setAttribute('height', plan.h);
+                        el.appendChild(raster);
+                    }
+                }
+
+                function detach(map) {
+                    map.off('zoomend moveend viewreset', reset);
+                    if (el.parentNode) {
+                        el.parentNode.removeChild(el);
+                    }
+                }
+
+                return {attach: attach, detach: detach};
+            }
+
+            function addMachineMarkers(group, bounds, plan) {
+                const layer = L.layerGroup();
+                const machines = [];
+                group.pins.forEach(function (pin) {
+                    pin.machines.forEach(function (machine) {
+                        machines.push({
+                            name: machine.name, ip: machine.ip,
+                            url: machine.url, color: pin.color,
+                            room: machine.room || '',
+                            physical: machine.physical !== false
+                        });
+                    });
+                });
+                machines.sort(function (a, b) {
+                    return a.ip.localeCompare(b.ip, undefined, {numeric: true});
+                });
+                const layout = plan.layout || null;
+                const roomTotals = {}, roomSeen = {};
+                function gridRoom(machine) {
+                    return machine.physical ? machine.room : '__virtual__';
+                }
+                if (layout) {
+                    machines.forEach(function (machine) {
+                        const room = gridRoom(machine);
+                        roomTotals[room] = (roomTotals[room] || 0) + 1;
+                    });
+                }
+                const slots = houseSlots(plan.custom);
+                machines.forEach(function (machine, index) {
+                    let fx, fy;
+                    if (layout) {
+                        // Grid inside the machine's room box on the
+                        // logical floor map (VMs into the VM band).
+                        const room = gridRoom(machine);
+                        const box = layout.boxes[room] ||
+                        layout.boxes[''] || {
+                            x: 40, y: layout.h / 2, w: layout.w - 80, h: 60
+                        };
+                        const k = roomSeen[room] = (roomSeen[room] || 0);
+                        roomSeen[room] = k + 1;
+                        const total = roomTotals[room];
+                        const cols = box.cols || roomGridCols(box.w, total);
+                        const rows = Math.max(1, Math.ceil(total / cols));
+                        const cellW = (box.w - 16) / cols;
+                        const cellH = Math.max(16, (box.h - 16) / rows);
+                        fx = (box.x + 8 + ((k % cols) + 0.5) * cellW) /
+                        layout.w;
+                        fy = (box.y + 8 + Math.floor(k / cols) * cellH +
+                            cellH / 2) / layout.h;
+                    } else {
+                        const slot = slots[index % slots.length];
+                        const round = Math.floor(index / slots.length);
+                        const hash = ipHash(machine.ip) + round * 17;
+                        fx = slot[0] +
+                        (round === 0 ? 0 : ((hash % 7) - 3) * 0.012);
+                        fy = slot[1] +
+                        (round === 0 ? 0 : (((hash >> 3) % 7) - 3) * 0.02);
+                    }
+                    const marker = L.marker(
+                        slotToLatLng(bounds, fx, fy),
+                        {
+                            icon: L.divIcon({
+                                className: 'subnet-machine-icon',
+                                html: '<div class="subnet-machine-pin' +
+                                (machine.physical ? '' : ' virtual') + '" ' +
+                                'style="' + (machine.physical ?
+                                    'background:' + machine.color :
+                                        'background:#fff;border-color:' +
+                                    machine.color) + '"></div>',
+                                iconSize: [14, 14],
+                                iconAnchor: [7, 7]
+                            }),
+                            zIndexOffset: 6000 + index
+                        }
+                    );
+                    marker.bindTooltip(
+                        '<span class="machine-name">' + machine.name +
+                        '</span><span class="machine-ip">' + machine.ip + '</span>',
+                        {direction: 'top', offset: [0, -8],
+                            className: 'subnet-machine-tooltip'}
+                    );
+                    if (machine.url) {
+                        marker.on('click', function () {
+                            window.open(machine.url, '_blank', 'noopener');
+                        });
+                    }
+                    marker.addTo(layer);
+                });
+                layer.addTo(currentMap);
+                return layer;
+            }
+
+            function enterHouse(key, group) {
+                const map = currentMap;
+                collapseAll(map);
+                const plan = housePlanOf(group);
+                if (plan.logical) {
+                    plan.layout = buildLogicalLayout(group);
+                    plan.markup = plan.layout.markup;
+                    plan.w = plan.layout.w;
+                    plan.h = plan.layout.h;
+                }
+                const footprint = houseFootprint(plan);
+                const bounds = houseBounds(group.lat, group.lon,
+                    footprint.w, footprint.h);
+
+                house.activeKey = key;
+                house.group = group;
+                house.marker = clusterMarkers[key] || singleMarkers[key] || null;
+                if (house.marker) {
+                    map.removeLayer(house.marker);
+                }
+                if (tileLayer) {
+                    map.removeLayer(tileLayer);
+                }
+                mapContainer.classList.add('house-active');
+
+                house.layer = L.layerGroup([
+                    L.rectangle(bounds.pad(0.9), {
+                        stroke: false, fillColor: '#edeae0',
+                        fillOpacity: 1, interactive: false
+                    })
+                ]).addTo(map);
+                house.planOverlay = createPlanOverlay(plan, bounds);
+                house.planOverlay.attach(map);
+                house.machines = addMachineMarkers(group, bounds, plan);
+
+                const badge = document.createElement('div');
+                badge.className = 'house-plan-badge';
+                badge.appendChild(el('span', 'badge-site',
+                    (plan.logical ? 'Floor map \u2014 ' : 'House plan \u2014 ') +
+                    group.site));
+                badge.appendChild(el('span', 'badge-hint',
+                    'scroll out to return to the map'));
+                mapContainer.appendChild(badge);
+                house.badge = badge;
+
+                // Frame the plan once on entry: zoom in as far as the plan
+                // still fits within the fill fraction of the viewport.
+                // Logical maps are usually tall, so they get more room.
+                const size = map.getSize();
+                const fill = plan.logical ? 0.75 : 0.6;
+                let zoom = HOUSE_ENTER_ZOOM;
+                for (let z = HOUSE_ENTER_ZOOM; z <= map.getMaxZoom(); z++) {
+                    const res = LV03_RESOLUTIONS[z];
+                    if (footprint.w > res * size.x * fill ||
+                        footprint.h > res * size.y * fill) {
+                            break;
+                        }
+                    zoom = z;
+                }
+                map.setView(bounds.getCenter(), zoom);
+            }
+
+            function exitHouse() {
+                const map = currentMap;
+                if (!house.activeKey) {
+                    return;
+                }
+                if (house.layer) {
+                    map.removeLayer(house.layer);
+                    house.layer = null;
+                }
+                if (house.planOverlay) {
+                    house.planOverlay.detach(map);
+                    house.planOverlay = null;
+                }
+                if (house.machines) {
+                    map.removeLayer(house.machines);
+                    house.machines = null;
+                }
+                if (house.badge) {
+                    house.badge.remove();
+                    house.badge = null;
+                }
+                if (tileLayer) {
+                    tileLayer.addTo(map);
+                }
+                mapContainer.classList.remove('house-active');
+                if (house.marker) {
+                    house.marker.addTo(map);
+                }
+                house.activeKey = null;
+                house.group = null;
+                house.marker = null;
+            }
+
+            function updateHouseMode() {
+                const map = currentMap;
+                if (!map) {
+                    return;
+                }
+                const zoom = map.getZoom();
+                if (isNaN(zoom)) {
+                    return;
+                }
+                if (house.activeKey) {
+                    const far = map.distance(map.getCenter(),
+                        [house.group.lat, house.group.lon]) > HOUSE_LEAVE_M;
+                    if (zoom < HOUSE_EXIT_ZOOM || far) {
+                        exitHouse();
+                    }
+                    return;
+                }
+                if (zoom < HOUSE_ENTER_ZOOM) {
+                    return;
+                }
+                const center = map.getCenter();
+                let best = null;
+                Object.keys(groups).forEach(function (key) {
+                    const dist = map.distance(center,
+                        [groups[key].lat, groups[key].lon]);
+                    if (dist <= HOUSE_ENTER_M && (!best || dist < best.dist)) {
+                        best = {key: key, dist: dist};
+                    }
+                });
+                if (best) {
+                    enterHouse(best.key, groups[best.key]);
+                }
             }
 
             function fitView(map) {
@@ -504,12 +1121,27 @@
                     Object.keys(grids).forEach(function (key) { delete grids[key]; });
                     Object.keys(expanded).forEach(function (key) { delete expanded[key]; });
                     Object.keys(clusterMarkers).forEach(function (key) { delete clusterMarkers[key]; });
+                    Object.keys(singleMarkers).forEach(function (key) { delete singleMarkers[key]; });
+                    house.activeKey = null;
+                    house.group = null;
+                    house.marker = null;
+                    house.layer = null;
+                    house.planOverlay = null;
+                    house.machines = null;
+                    if (house.badge) {
+                        house.badge.remove();
+                        house.badge = null;
+                    }
+                    tileLayer = null;
                 }
                 const map = typeof window.LV03 !== 'undefined'
                     ? L.map('subnet-map', {
                         crs: LV03_CRS,
                         minZoom: 6,
-                        maxZoom: 24,
+                        // Tiles go natively to 27 (0.25 m/px); the view
+                        // overzooms to 30 so the vector floor plan can be
+                        // inspected at close range.
+                        maxZoom: 30,
                         zoomAnimation: false,
                         maxBounds: COVERAGE_BOUNDS.pad(0.15),
                         maxBoundsViscosity: 0.8
@@ -519,7 +1151,7 @@
 
                 const layer = L.tileLayer(SWISSSTOPO_URL, {
                     minZoom: 0,
-                    maxZoom: 24,
+                    maxZoom: 30,
                     minNativeZoom: 8,
                     maxNativeZoom: 27,
                     bounds: COVERAGE_BOUNDS,
@@ -535,6 +1167,7 @@
                     return L.TileLayer.prototype.getTileUrl.call(this, coords);
                 };
                 layer.addTo(map);
+                tileLayer = layer;
                 // Leaflet rebuilds the attribution control HTML whenever
                 // layers are added; re-apply the new-tab target each time.
                 const openAttributionLinks = function () {
@@ -551,11 +1184,17 @@
                 addCantonBorder(map);
                 buildPins(map);
                 // Clicking anywhere outside the pins collapses expanded
-                // clusters again and closes the detail panel.
+                // clusters again and closes the detail panel. (Suppressed
+                // in house-plan mode, where the plan is the whole map.)
                 map.on('click', function () {
+                    if (house.activeKey) {
+                        return;
+                    }
                     collapseAll(map);
                     closePanel();
                 });
+                map.on('zoomend', updateHouseMode);
+                map.on('moveend', updateHouseMode);
                 window.__subnetMap = map;
                 fitView(map);
                 setTimeout(function () {

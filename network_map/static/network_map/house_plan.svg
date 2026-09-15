@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850" font-family="Helvetica, Arial, sans-serif">
+    <rect x="0" y="0" width="1200" height="850" fill="#f8f5ec"/>
+    <text x="42" y="27" font-size="15" font-style="italic" fill="#7a746a">Hausplan (Beispiel)</text>
+
+    <!-- room fills -->
+    <g fill="#f3f0e4">
+        <rect x="70" y="50" width="470" height="200"/>
+        <rect x="70" y="250" width="470" height="180"/>
+        <rect x="70" y="430" width="470" height="180"/>
+        <rect x="70" y="610" width="470" height="190"/>
+        <rect x="660" y="50" width="470" height="200"/>
+        <rect x="660" y="250" width="470" height="180"/>
+        <rect x="660" y="430" width="470" height="170"/>
+        <rect x="660" y="600" width="470" height="200"/>
+    </g>
+    <rect x="540" y="50" width="120" height="750" fill="#ebe7d9"/>
+
+    <!-- stairwell in the corridor -->
+    <g stroke="#9a937f" stroke-width="2">
+        <line x1="548" y1="700" x2="652" y2="700"/>
+        <line x1="548" y1="714" x2="652" y2="714"/>
+        <line x1="548" y1="728" x2="652" y2="728"/>
+        <line x1="548" y1="742" x2="652" y2="742"/>
+        <line x1="548" y1="756" x2="652" y2="756"/>
+        <line x1="548" y1="770" x2="652" y2="770"/>
+        <line x1="548" y1="784" x2="652" y2="784"/>
+    </g>
+    <line x1="600" y1="694" x2="600" y2="662" stroke="#5f5a4e" stroke-width="2"/>
+    <path d="M600 656 l-6 12 h12 z" fill="#5f5a4e"/>
+
+    <!-- racks in the server room -->
+    <g fill="#c9c2b0" stroke="#8d8674" stroke-width="1.5">
+        <rect x="720" y="648" width="80" height="24"/>
+        <rect x="720" y="692" width="80" height="24"/>
+        <rect x="990" y="648" width="80" height="24"/>
+        <rect x="990" y="692" width="80" height="24"/>
+    </g>
+
+    <!-- desks in the meeting rooms -->
+    <g fill="#dcd5c3" stroke="#9a937f" stroke-width="1.5">
+        <rect x="240" y="120" width="120" height="52" rx="8"/>
+        <rect x="830" y="120" width="120" height="52" rx="8"/>
+        <rect x="240" y="306" width="120" height="52" rx="8"/>
+        <rect x="830" y="306" width="120" height="52" rx="8"/>
+    </g>
+
+    <!-- corridor walls with door gaps -->
+    <g stroke="#6b6b63" stroke-width="5" stroke-dasharray="140 26" stroke-dashoffset="70">
+        <line x1="540" y1="50" x2="540" y2="800"/>
+        <line x1="660" y1="50" x2="660" y2="800"/>
+    </g>
+
+    <!-- room partitions -->
+    <g stroke="#6b6b63" stroke-width="5">
+        <line x1="70" y1="250" x2="540" y2="250"/>
+        <line x1="70" y1="430" x2="540" y2="430"/>
+        <line x1="70" y1="610" x2="540" y2="610"/>
+        <line x1="660" y1="250" x2="1130" y2="250"/>
+        <line x1="660" y1="430" x2="1130" y2="430"/>
+        <line x1="660" y1="600" x2="1130" y2="600"/>
+    </g>
+
+    <!-- outer wall -->
+    <rect x="45" y="45" width="1110" height="755" fill="none" stroke="#3f3f3a" stroke-width="10"/>
+    <!-- entrance gap -->
+    <rect x="576" y="792" width="48" height="16" fill="#f8f5ec"/>
+    <path d="M600 826 l-8 -16 h16 z" fill="#5f5a4e"/>
+
+    <!-- room labels -->
+    <g font-size="21" fill="#3d3d38" text-anchor="middle">
+        <text x="305" y="168">LR 1</text>
+        <text x="305" y="358">LR 2</text>
+        <text x="305" y="538">LR 3</text>
+        <text x="305" y="723">LR 4</text>
+        <text x="895" y="168">LR 5</text>
+        <text x="895" y="358">LR 6</text>
+        <text x="895" y="533">Technik</text>
+        <text x="895" y="726">Serverraum</text>
+        <text x="600" y="410" transform="rotate(-90 600 410)" font-size="18" fill="#6b6b63">Flur</text>
+    </g>
+
+    <!-- scale bar (10 px = 1 m) -->
+    <g stroke="#3d3d38" stroke-width="2">
+        <line x1="60" y1="828" x2="260" y2="828"/>
+        <line x1="60" y1="820" x2="60" y2="836"/>
+        <line x1="160" y1="822" x2="160" y2="834"/>
+        <line x1="260" y1="820" x2="260" y2="836"/>
+    </g>
+    <g font-size="14" fill="#3d3d38" text-anchor="middle">
+        <text x="60" y="815">0</text>
+        <text x="160" y="815">10</text>
+        <text x="262" y="815">20 m</text>
+    </g>
+
+    <!-- north arrow -->
+    <g transform="translate(1105 812)">
+        <path d="M0 18 L-8 18 L0 -12 L8 18 Z" fill="#3d3d38"/>
+        <text x="0" y="34" font-size="14" fill="#3d3d38" text-anchor="middle">N</text>
+    </g>
+</svg>
