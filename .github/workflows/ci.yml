@@ -81,10 +81,12 @@ jobs:
           pip install .
       - name: Write test configuration
         run: |
-          cat > "$RUNNER_TEMP/netbox/netbox/netbox/configuration.py" <<'EOF'
+          TEST_SECRET_KEY=$(openssl rand -hex 32)
+          cat > "$RUNNER_TEMP/netbox/netbox/netbox/configuration.py" <<EOF
           DEBUG = False
           ALLOWED_HOSTS = ['*']
-          SECRET_KEY = 'ci-only-not-a-secret'
+          PLUGINS = ['network_map']
+          SECRET_KEY = '${TEST_SECRET_KEY}'
           DATABASES = {
               'default': {
                   'ENGINE': 'django.db.backends.postgresql',
