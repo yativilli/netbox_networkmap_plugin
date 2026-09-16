@@ -1,21 +1,34 @@
+from dataclasses import dataclass, field
+from typing import Any
+
 from django.db import models
-from netbox.models import NetBoxModel
 
 
-class VlanElement(NetBoxModel):
-    id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=100)
-    group = models.CharField(max_length=100)
-    prefix = models.CharField(max_length=60)
-    status = models.CharField(max_length=20)
-    role = models.CharField(max_length=50)
-    machine_count = models.IntegerField(default=0)
-    description = models.TextField(max_length=500, blank=True)
+class VlanElement(models.Model):
+    """
+    Unmanaged anchor model providing the content type and the
+    network_map.view_vlanelement permission used by the plugin menu and
+    views. No instances are ever stored in the database.
+    """
 
-    def __init__(self, *args, **kwargs):
-        self.machines = kwargs.pop("machines", [])
-        self.url = kwargs.pop("url", None)
-        super().__init__(*args, **kwargs)
+    class Meta:
+        managed = False
+        default_permissions = ("view",)
+
+
+@dataclass
+class VlanInfo:
+    id: int
+    name: str
+    group: str
+    prefix: str
+    status: str
+    role: str
+    machine_count: int = 0
+    description: str = ""
+    machines: list[dict] = field(default_factory=list)
+    url: str | None = None
+    color: str = ""
 
     @classmethod
     def from_vlan(cls, vlan, machines=None):
@@ -33,56 +46,57 @@ class VlanElement(NetBoxModel):
         if hasattr(vlan, "get_absolute_url"):
             url = vlan.get_absolute_url()
 
-        machine_count = len(machines or [])
-
-        vlan_element = cls(
+        return cls(
             id=vlan.pk,
             name=vlan.name or f"VLAN {vlan.vid}",
             group=vlan.group.name if vlan.group else "None",
             prefix=prefix_value,
             status=getattr(vlan.status, "label", vlan.status) or "None",
             role=vlan.role.name if vlan.role else "None",
-            machine_count=machine_count,
+            machine_count=len(machines or []),
             description=vlan.description or "None",
             machines=machines or [],
             url=url,
         )
-        return vlan_element
 
 
-class DetailsElement(NetBoxModel):
-    id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=100)
-    location = models.CharField(max_length=100)
-    url = models.CharField(max_length=100)
-    description = models.CharField(max_length=100)
-    type = models.CharField(max_length=100)
+@dataclass
+class DetailsElement:
+    id: int
+    name: str
+    location: str
+    url: str
+    description: str
+    type: str
 
 
-class IpDetailsElement(NetBoxModel):
-    id = models.AutoField(primary_key=True)
-    address = models.GenericIPAddressField()
-    dns_name = models.CharField(max_length=100)
-    description = models.CharField(max_length=100)
-    comments = models.CharField(max_length=200)
-    role = models.CharField(max_length=100)
-    details = models.JSONField(default=list)
-    url = models.CharField(max_length=100)
-    type = models.CharField(max_length=100)
+@dataclass
+class IpDetailsElement:
+    id: int
+    address: str
+    dns_name: str
+    description: str
+    comments: str
+    role: str
+    details: DetailsElement
+    url: str
+    type: str
 
 
-class PrefixElement(NetBoxModel):
-    id = models.CharField(primary_key=True)
-    prefix = models.CharField(max_length=100)
-    ip_addresses = models.JSONField(default=list)
-    type = models.CharField(max_length=100)
+@dataclass
+class PrefixElement:
+    id: int
+    prefix: str
+    ip_addresses: list[IpDetailsElement] = field(default_factory=list)
+    type: str = "Prefix"
 
 
-class GatewayElement(NetBoxModel):
-    address = models.GenericIPAddressField()
-    dns_name = models.CharField(max_length=100)
-    description = models.CharField(max_length=100)
-    vlan = models.JSONField(default=list)
-    prefixes = models.JSONField(default=list)
-    url = models.CharField(max_length=100)
-    type = models.CharField(max_length=100)
+@dataclass
+class GatewayElement:
+    address: str
+    dns_name: str
+    description: str
+    vlan: Any
+    prefixes: list[PrefixElement] = field(default_factory=list)
+    url: str = ""
+    type: str = ""
