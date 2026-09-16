@@ -28,8 +28,9 @@ from .models import (
 class NetworkMapPermissionRequiredMixin(
     ConditionalLoginRequiredMixin, PermissionRequiredMixin
 ):
+    # AccessMixin defaults: anonymous users are redirected to the login
+    # page, authenticated users without the permission get a 403.
     permission_required = "network_map.view_vlanelement"
-    raise_exception = True
 
 
 class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
