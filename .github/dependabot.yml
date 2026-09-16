@@ -17,7 +17,3 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
-
-# Open pull requests for CVE/GHSA security fixes, not only routine updates
-enable:
-  - security-updates
