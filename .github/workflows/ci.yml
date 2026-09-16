@@ -21,6 +21,89 @@ jobs:
       - run: ruff check network_map
       - run: ruff format --check network_map
 
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        netbox: ["v4.5", "v4.6", "v4.7", "latest"]
+    # The "latest" entry is an early warning when a new NetBox appears;
+    # it must not block merges.
+    continue-on-error: ${{ matrix.netbox == 'latest' }}
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: netbox
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U netbox"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve NetBox tag
+        id: nbtag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NB: ${{ matrix.netbox }}
+        run: |
+          if [ "$NB" = "latest" ]; then
+            tag=$(gh release view --json tagName -q .tagName -R netbox-community/netbox) ||
+              tag=$(git ls-remote --tags --refs https://github.com/netbox-community/netbox \
+                | sed 's|.*refs/tags/||' | sort -V | tail -1)
+          else
+            tag=$(git ls-remote --tags --refs https://github.com/netbox-community/netbox \
+              "$NB.[0-9]*" | sed 's|.*refs/tags/||' | sort -V | tail -1)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved $NB to $tag"
+      - name: Clone NetBox
+        env:
+          NB_TAG: ${{ steps.nbtag.outputs.tag }}
+        run: git clone --depth 1 --branch "$NB_TAG"
+          https://github.com/netbox-community/netbox.git "$RUNNER_TEMP/netbox"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install NetBox and plugin
+        run: |
+          pip install -r "$RUNNER_TEMP/netbox/base_requirements.txt"
+          pip install .
+      - name: Write test configuration
+        run: |
+          cat > "$RUNNER_TEMP/netbox/netbox/configuration.py" <<'EOF'
+          DEBUG = False
+          ALLOWED_HOSTS = ['*']
+          SECRET_KEY = 'ci-only-not-a-secret'
+          DATABASES = {
+              'default': {
+                  'ENGINE': 'django.db.backends.postgresql',
+                  'NAME': 'netbox',
+                  'USER': 'netbox',
+                  'PASSWORD': 'netbox',
+                  'HOST': 'localhost',
+                  'PORT': '',
+                  'CONN_MAX_AGE': 0,
+              }
+          }
+          REDIS = {
+              'tasks': {'HOST': 'localhost', 'PORT': 6379, 'DATABASE': 0},
+              'caching': {'HOST': 'localhost', 'PORT': 6379, 'DATABASE': 1},
+          }
+          EOF
+      - name: Run plugin tests
+        run: python "$RUNNER_TEMP/netbox/netbox/manage.py" test network_map -v 2
+
   analyze:
     runs-on: ubuntu-latest
     permissions:
