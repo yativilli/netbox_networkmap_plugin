@@ -14,7 +14,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - run: pip install ruff==0.16.6
@@ -72,7 +72,7 @@ jobs:
           NB_TAG: ${{ steps.nbtag.outputs.tag }}
         run: git clone --depth 1 --branch "$NB_TAG"
           https://github.com/netbox-community/netbox.git "$RUNNER_TEMP/netbox"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install NetBox and plugin
