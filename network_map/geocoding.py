@@ -4,6 +4,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from netbox.plugins import get_plugin_config
+
 logger = logging.getLogger(__name__)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -18,6 +20,7 @@ def geocode_site(site):
     coordinates when present and geocoding via Nominatim otherwise.
     Geocoded coordinates are written back to the Site so the lookup
     happens only once and can be corrected in the UI afterwards.
+    URL, country filter and timeout are configurable via PLUGINS_CONFIG.
     """
     if site.latitude is not None and site.longitude is not None:
         return float(site.latitude), float(site.longitude)
@@ -31,19 +34,23 @@ def geocode_site(site):
             "q": query,
             "format": "jsonv2",
             "limit": 1,
-            "countrycodes": "ch",
+            "countrycodes": get_plugin_config("network_map", "country_codes", "ch"),
         }
     )
     request = urllib.request.Request(
-        f"{NOMINATIM_URL}?{params}",
+        f"{get_plugin_config('network_map', 'nominatim_url', NOMINATIM_URL)}?{params}",
         headers={"User-Agent": USER_AGENT},
     )
 
     try:
-        # The URL is built from a fixed https constant plus an encoded
-        # query string, so urlopen cannot be steered to other schemes.
+        # The URL comes from the plugin settings (an https Nominatim
+        # instance) plus an encoded query string, so urlopen cannot be
+        # steered to other schemes.
         with urllib.request.urlopen(  # nosec B310
-            request, timeout=REQUEST_TIMEOUT_SECONDS
+            request,
+            timeout=get_plugin_config(
+                "network_map", "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS
+            ),
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError):
@@ -69,8 +76,11 @@ def geocode_site(site):
 def geocode_sites(sites):
     """
     Geocode an iterable of sites, respecting the Nominatim usage policy
-    (max one request per second). Returns {site_name: (lat, lon)}.
+    (max one request per configured interval). Returns {site_name: (lat, lon)}.
     """
+    interval = get_plugin_config(
+        "network_map", "request_interval_seconds", REQUEST_INTERVAL_SECONDS
+    )
     coordinates = {}
     geocoded_now = 0
 
@@ -80,7 +90,7 @@ def geocode_sites(sites):
             continue
 
         if geocoded_now:
-            time.sleep(REQUEST_INTERVAL_SECONDS)
+            time.sleep(interval)
 
         result = geocode_site(site)
         geocoded_now += 1

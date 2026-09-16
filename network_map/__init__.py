@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from netbox.plugins import PluginConfig
 
 
@@ -13,6 +15,18 @@ class NetworkMapConfig(PluginConfig):
     author_email = "yannick@wernle.net"
     license = "GPL-3.0"
     author_url = "https://github.com/yativilli/netbox_networkmap_plugin"
+    default_settings: ClassVar[dict] = {
+        # Tag identifying gateway devices/addresses in the connection view
+        "gateway_search_tag": "GATEWAY-TAG",
+        # Nominatim instance used to geocode sites without coordinates
+        "nominatim_url": "https://nominatim.openstreetmap.org/search",
+        # Restrict geocoding to these country codes (comma separated)
+        "country_codes": "ch",
+        # Nominatim usage policy: at most one request per interval
+        "request_interval_seconds": 1.0,
+        # Per-request timeout for the geocoding HTTP call
+        "request_timeout_seconds": 10,
+    }
 
 
 config = NetworkMapConfig
