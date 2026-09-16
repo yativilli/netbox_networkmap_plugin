@@ -7,3 +7,5 @@
 /scripts/*.json
 /.vscode/
 network_map/.vscode/
+
+/build/
