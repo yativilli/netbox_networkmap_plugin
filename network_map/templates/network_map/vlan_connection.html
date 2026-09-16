@@ -29,11 +29,11 @@
 
             <div class="details-content">
                 <div class="info-grid">
-                    {% include 'network_map/includes/_info_item.html' with label="Name" value=center_device.name url=center_device.get_absolute_url %}
-                    {% include 'network_map/includes/_info_item.html' with label="Description" value=center_device.description %}
-                    {% include 'network_map/includes/_info_item.html' with label="Location" value=center_device.site %}
-                    {% include 'network_map/includes/_info_item.html' with label="IP-Address" value=center_device.primary_ip4.address url=center_device.primary_ip4.get_absolute_url %}
-                    {% include 'network_map/includes/_info_item.html' with label="Type" value=center_device.role %}
+                    {% include 'network_map/includes/_info_item.html' with label=labels.name value=center_device.name url=center_device.get_absolute_url %}
+                    {% include 'network_map/includes/_info_item.html' with label=labels.description value=center_device.description %}
+                    {% include 'network_map/includes/_info_item.html' with label=labels.location value=center_device.site %}
+                    {% include 'network_map/includes/_info_item.html' with label=labels.ip_address value=center_device.primary_ip4.address url=center_device.primary_ip4.get_absolute_url %}
+                    {% include 'network_map/includes/_info_item.html' with label=labels.type value=center_device.role %}
                 </div>
             </div>
 
@@ -50,12 +50,12 @@
 
                         <div class="details-content">
                             <div class="info-grid">
-                                {% include 'network_map/includes/_info_item.html' with label="VLAN" value=element.vlan.vid url=element.vlan.get_absolute_url %}
-                                {% include 'network_map/includes/_info_item.html' with label="Name" value=element.vlan.name %}
-                                {% include 'network_map/includes/_info_item.html' with label="Gateway" value=element.address url=element.url %}
-                                {% include 'network_map/includes/_info_item.html' with label="DNS Name" value=element.dns_name %}
-                                {% include 'network_map/includes/_info_item.html' with label="Description" value=element.description %}
-                                {% include 'network_map/includes/_info_item.html' with label="Type" value=element.type %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.vlan value=element.vlan.vid url=element.vlan.get_absolute_url %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.name value=element.vlan.name %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.gateway value=element.address url=element.url %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.dns_name value=element.dns_name %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.description value=element.description %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.type value=element.type %}
                             </div>
 
                             {% for prefix in element.prefixes %}
@@ -68,9 +68,9 @@
 
                                     <div class="details-content">
                                         <div class="info-grid">
-                                            {% include 'network_map/includes/_info_item.html' with label="Prefix" value=prefix.prefix url=prefix.url %}
-                                            {% include 'network_map/includes/_info_item.html' with label="ID" value=prefix.id %}
-                                            {% include 'network_map/includes/_info_item.html' with label="Type" value=prefix.type %}
+                                            {% include 'network_map/includes/_info_item.html' with label=labels.prefix value=prefix.prefix url=prefix.url %}
+                                            {% include 'network_map/includes/_info_item.html' with label=labels.id value=prefix.id %}
+                                            {% include 'network_map/includes/_info_item.html' with label=labels.type value=prefix.type %}
                                         </div>
 
                                         {% for ip in prefix.ip_addresses %}
@@ -83,12 +83,12 @@
 
                                                 <div class="details-content">
                                                     <div class="info-grid">
-                                                        {% include 'network_map/includes/_info_item.html' with label="Address" value=ip.address url=ip.url %}
-                                                        {% include 'network_map/includes/_info_item.html' with label="DNS Name" value=ip.dns_name %}
-                                                        {% include 'network_map/includes/_info_item.html' with label="Description" value=ip.description %}
-                                                        {% include 'network_map/includes/_info_item.html' with label="Comments" value=ip.comments %}
-                                                        {% include 'network_map/includes/_info_item.html' with label="Role" value=ip.role %}
-                                                        {% include 'network_map/includes/_info_item.html' with label="Type" value=ip.type %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.address value=ip.address url=ip.url %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.dns_name value=ip.dns_name %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.description value=ip.description %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.comments value=ip.comments %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.role value=ip.role %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.type value=ip.type %}
                                                     </div>
 
                                                     {% if ip.details %}
@@ -100,10 +100,10 @@
                                                             </summary>
                                                             <div class="details-content">
                                                                 <div class="info-grid">
-                                                                    {% include 'network_map/includes/_info_item.html' with label="Name" value=ip.details.name url=ip.details.url %}
-                                                                    {% include 'network_map/includes/_info_item.html' with label="Description" value=ip.details.description %}
-                                                                    {% include 'network_map/includes/_info_item.html' with label="Location" value=ip.details.location %}
-                                                                    {% include 'network_map/includes/_info_item.html' with label="Type" value=ip.details.type %}
+                                                                    {% include 'network_map/includes/_info_item.html' with label=labels.name value=ip.details.name url=ip.details.url %}
+                                                                    {% include 'network_map/includes/_info_item.html' with label=labels.description value=ip.details.description %}
+                                                                    {% include 'network_map/includes/_info_item.html' with label=labels.location value=ip.details.location %}
+                                                                    {% include 'network_map/includes/_info_item.html' with label=labels.type value=ip.details.type %}
                                                                 </div>
                                                             </div>
                                                         </details>
