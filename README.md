@@ -32,6 +32,33 @@ cd /opt/netbox/netbox
 /opt/netbox/venv/bin/python manage.py check
 ```
 
+## Testing
+
+The test suite runs inside a NetBox installation and needs a PostgreSQL user
+with the `CREATEDB` privilege, so it can build a disposable `test_netbox`
+database:
+
+```bash
+cd /opt/netbox/netbox
+/opt/netbox/venv/bin/python manage.py test network_map
+```
+
+This is exactly what CI does (see `.github/workflows/ci.yml`, which runs the
+tests against every supported NetBox version plus the newest release).
+
+On machines whose database role lacks `CREATEDB` (e.g. this development box),
+the suite can instead reuse the existing database: copy
+`netbox/netbox/configuration.py` to `configuration_testing.py` in the same
+directory, set `DEBUG = False`, and add `'TEST': {'NAME': 'netbox'}` to the
+default database entry. The tests wrap everything in transactions and roll
+back, so no data is changed:
+
+```bash
+cd /opt/netbox/netbox
+NETBOX_CONFIGURATION=netbox.configuration_testing \
+  /opt/netbox/venv/bin/python manage.py test network_map --keepdb
+```
+
 ## Publishing a New Version
 
 The version is defined once, as `__version__` in `network_map/__init__.py`.
