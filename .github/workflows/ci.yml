@@ -81,7 +81,7 @@ jobs:
           pip install .
       - name: Write test configuration
         run: |
-          cat > "$RUNNER_TEMP/netbox/netbox/configuration.py" <<'EOF'
+          cat > "$RUNNER_TEMP/netbox/netbox/netbox/configuration.py" <<'EOF'
           DEBUG = False
           ALLOWED_HOSTS = ['*']
           SECRET_KEY = 'ci-only-not-a-secret'
