@@ -19,7 +19,7 @@ from .models import (
     GatewayElement,
     IpDetailsElement,
     PrefixElement,
-    VlanElement,
+    VlanInfo,
 )
 
 
@@ -43,7 +43,7 @@ class VlanElementListView(View):
         locations = []
         for vlan in queryset:
             machines = []
-            vlan_element = VlanElement.from_vlan(vlan, machines=[])
+            vlan_element = VlanInfo.from_vlan(vlan, machines=[])
             vlan_element.name = vlan_element.name or "None"
             vlan_element.group = vlan_element.group or "None"
             vlan_element.status = vlan_element.status or "None"
@@ -488,7 +488,7 @@ class VlanConnectionView(CenterDeviceMixin, View):
 
     def _get_ip_details(self, ip: IPAddress) -> IpDetailsElement:
         return IpDetailsElement(
-            pk=ip.pk,
+            id=ip.pk,
             address=str(ip.address.ip),
             dns_name=ip.dns_name or "None",
             description=ip.description or "None",
