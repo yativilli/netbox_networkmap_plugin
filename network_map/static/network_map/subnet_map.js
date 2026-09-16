@@ -79,6 +79,7 @@
     // House mode: deep zoom onto a site swaps the map for the
     // building's floor plan and scatters that site's machines on it.
     const siteLocations = mapData.locations || {};
+    const layoutCache = {};
     const HOUSE_ENTER_ZOOM = 24;
     const HOUSE_EXIT_ZOOM = 23;
     const HOUSE_ENTER_M = 150;
@@ -154,15 +155,40 @@
     function linkHtml(url, text, cssClass) {
         const cls = cssClass ? ` class="${cssClass}"` : '';
         if (url) {
-            return `<a href="${url}"${cls} target="_blank" rel="noopener">${text}</a>`;
+            return `<a href="${escapeHtml(url)}"${cls} target="_blank" rel="noopener">${text}</a>`;
         }
         return `<span${cls}>${text}</span>`;
     }
 
+    const ipCmp = (a, b) => a.ip.localeCompare(b.ip, undefined, {numeric: true});
+
+    // Flatten one site group's machines into one list, ordered by IP
+    // like the dots on the floor plan. Panel lists and house-mode
+    // markers share it so the two always show the same set and order.
+    function collectMachines(group) {
+        const machines = [];
+        group.pins.forEach((pin) => {
+            pin.machines.forEach((machine) => machines.push({
+                name: machine.name, ip: machine.ip,
+                url: machine.url, color: pin.color,
+                room: machine.room || '',
+                physical: machine.physical !== false
+            }));
+        });
+        machines.sort(ipCmp);
+        return machines;
+    }
+
     function machineListHtml(machines) {
-        const items = machines.map((machine) =>
-            `<li>${linkHtml(machine.url, escapeHtml(machine.name))}` +
-            `<span class="detail-ip"> \u2013 ${escapeHtml(machine.ip)}</span></li>`).join('');
+        if (!machines.length) {
+            return `<div class="detail-empty">${t('no_machines', 'No machines')}</div>`;
+        }
+        // Virtual machines are flagged like on the floor plan.
+        const items = machines.slice().sort(ipCmp).map((machine) =>
+            `<li${machine.physical ? '' : ' class="is-vm"'}>` +
+            `${linkHtml(machine.url, escapeHtml(machine.name))}` +
+            `<span class="detail-ip"> \u2013 ${escapeHtml(machine.ip)}</span>` +
+            `${machine.physical ? '' : '<span class="detail-machine-vm">' + t('vm', 'VM') + '</span>'}</li>`).join('');
         return `<ul class="detail-machines">${items}</ul>`;
     }
 
@@ -429,11 +455,13 @@
     // Derive a floor from a NetBox location name, e.g.
     // "2. Stock - Gang - DigiKri" -> 2. Stock, "U204" -> UG,
     // "O 242" -> OG (attic), "Büro 267" -> 2. Stock, "019" -> EG.
+    // The German labels (UG/EG/OG, "N. Stock") are the Swiss
+    // building convention and deliberately stay untranslated.
     function logicalFloor(name) {
         let m = name.match(/(\d+)\.\s*stock\b/i);
         if (m) {
             const n = parseInt(m[1], 10);
-            return {sort: n, label: n + '. Stock'};
+            return {sort: n, label: `${n}. Stock`};
         }
         if (/^(UG|ET|KG)\b/i.test(name) || /^U[\d\s]/.test(name)) {
             return {sort: -2, label: 'UG'};
@@ -447,26 +475,36 @@
         m = name.match(/\b(\d{2,3})\b/);
         if (m) {
             const d = parseInt(m[1].charAt(0), 10);
-            return d === 0 ?
-            {sort: 0, label: 'EG'} :
-            {sort: d, label: d + '. Stock'};
+            return d === 0 ? {sort: 0, label: 'EG'} : {sort: d, label: `${d}. Stock`};
         }
         return {sort: 200, label: t('other_rooms', 'Other rooms')};
     }
 
+    // Calibrated font/geometry metrics; they keep room labels and
+    // count chips from ever overlapping and were tuned against the
+    // render checks in scripts/map_capture.py + scripts/map_compare.py.
+    const CHIP_CHAR_W = 7.4;         // glyph width of the 14px count chip
+    const ROOM_LABEL_CHAR_W = 8.6;   // glyph width of the 17px room label
+    const FLOOR_LABEL_CHAR_W = 11.7; // glyph width of the 22px floor label
+    const GRID_PAD = 16;             // padding inside a room box's dot grid
+    const GRID_DOT_DX = 18;          // minimum horizontal dot spacing
+    const GRID_DOT_DENSITY = 2.5;    // target fill ratio of the dot grid
+    const GRID_ROW_H = 30;           // machine-dot row pitch
+    const ROOM_MIN_H = 150;          // minimum room box height
+
     function clipRoomLabel(name, widthPx) {
-        const max = Math.max(6, Math.floor((widthPx - 10) / 8.6));
-        return name.length > max ?
-        name.slice(0, Math.max(1, max - 1)) + '\u2026' :
-            name;
+        const max = Math.max(6, Math.floor((widthPx - 10) / ROOM_LABEL_CHAR_W));
+        return name.length > max
+            ? name.slice(0, Math.max(1, max - 1)) + '\u2026'
+            : name;
     }
 
     // Columns a room box of the given width fits for `count`
     // machines: enough that dots fill the box without touching.
     function roomGridCols(widthPx, count) {
         return Math.max(1, Math.min(
-            Math.floor((widthPx - 16) / 18),
-            Math.ceil(Math.sqrt(count * 2.5))));
+            Math.floor((widthPx - GRID_PAD) / GRID_DOT_DX),
+            Math.ceil(Math.sqrt(count * GRID_DOT_DENSITY))));
     }
 
     // Logical building map generated from NetBox locations: rooms
@@ -476,54 +514,48 @@
     function buildLogicalLayout(group) {
         const counts = {};
         let vmTotal = 0;
-        group.pins.forEach(function (pin) {
-            pin.machines.forEach(function (machine) {
+        for (const pin of group.pins) {
+            for (const machine of pin.machines) {
                 if (machine.physical === false) {
                     vmTotal += 1;
-                    return;
+                    continue;
                 }
                 const room = machine.room || '';
                 counts[room] = (counts[room] || 0) + 1;
-            });
-        });
+            }
+        }
         const rooms = Object.keys(counts);
-        (siteLocations[group.site] || []).forEach(function (name) {
-            if (rooms.indexOf(name) < 0) {
+        for (const name of siteLocations[group.site] || []) {
+            if (!rooms.includes(name)) {
                 rooms.push(name);
             }
             if (!(name in counts)) {
                 counts[name] = 0;
             }
-        });
-        const floors = [];
-        rooms.filter(function (name) {
-            return name !== '';
-        }).forEach(function (name) {
-            const f = logicalFloor(name);
-            let floor = null;
-            floors.forEach(function (x) {
-                if (x.sort === f.sort) {
-                    floor = x;
-                }
-            });
-            if (!floor) {
-                floor = {sort: f.sort, label: f.label, rooms: []};
-                floors.push(floor);
+        }
+
+        const bySort = new Map();
+        for (const name of rooms) {
+            if (name === '') {
+                continue;
             }
-            floor.rooms.push(name);
-        });
-        floors.sort(function (a, b) {
-            return b.sort - a.sort;
-        });
-        if (rooms.indexOf('') >= 0) {
-            const single = !rooms.some(function (name) {
-                return name !== '';
+            const f = logicalFloor(name);
+            if (!bySort.has(f.sort)) {
+                bySort.set(f.sort, {sort: f.sort, label: f.label, rooms: []});
+            }
+            bySort.get(f.sort).rooms.push(name);
+        }
+        const floors = [...bySort.values()].sort((a, b) => b.sort - a.sort);
+
+        if (rooms.includes('')) {
+            const single = rooms.every((name) => name === '');
+            floors.push({
+                sort: -1000,
+                label: single
+                    ? t('machines_band', 'Machines')
+                    : t('no_location', 'No location'),
+                rooms: ['']
             });
-            floors.push({sort: -1000,
-                label: single ?
-                    t('machines_band', 'Machines') :
-                    t('no_location', 'No location'),
-                rooms: ['']});
         }
         if (vmTotal > 0) {
             counts['__virtual__'] = vmTotal;
@@ -536,107 +568,91 @@
         // Pre-plan each floor band: room widths go by machine
         // count and the band grows tall enough that the machine
         // grids never collapse onto each other.
-        const bands = floors.map(function (floor) {
+        const bands = floors.map((floor) => {
             const gap = floor.rooms.length > 1 ? 10 : 0;
-            const availW = W - 2 * PAD - BAND_W - 12 -
-            gap * (floor.rooms.length - 1);
-            const weights = floor.rooms.map(function (name) {
-                return Math.pow(counts[name] || 0, 0.65) + 1.6;
-            });
-            const totalW = weights.reduce(function (a, b) {
-                return a + b;
-            }, 0);
+            const availW = W - 2 * PAD - BAND_W - 12 - gap * (floor.rooms.length - 1);
+            const weights = floor.rooms.map(
+                (name) => Math.pow(counts[name] || 0, 0.65) + 1.6);
+            const totalW = weights.reduce((a, b) => a + b, 0);
             let maxRows = 1;
             let stacked = false;
-            const widths = floor.rooms.map(function (name, i) {
+            const widths = floor.rooms.map((name, i) => {
                 const w = Math.max(60, availW * weights[i] / totalW);
                 const count = counts[name] || 0;
                 const cols = roomGridCols(w, count);
                 maxRows = Math.max(maxRows, Math.ceil(count / cols));
                 if (name !== '' && name !== '__virtual__' &&
-                    count > 0 && w - countChipWidth(name, count) -
-                    12 < 60) {
-                        stacked = true;
-                    }
-                return {w: w, cols: cols};
+                        count > 0 &&
+                        w - countChipWidth(name, count) - 12 < 60) {
+                    stacked = true;
+                }
+                return {w, cols};
             });
-            const boxH = Math.max(150, maxRows * 30 + 24);
-            return {floor: floor, gap: gap, widths: widths,
-                boxH: boxH, stacked: stacked,
-                shift: stacked ? 24 : 0};
+            const boxH = Math.max(ROOM_MIN_H, maxRows * GRID_ROW_H + 24);
+            return {floor, gap, widths, boxH, stacked, shift: stacked ? 24 : 0};
         });
-        const H = 110 + bands.reduce(function (a, band) {
-            return a + band.boxH + 90 + GAP + band.shift;
-        }, 0) + PAD;
+        const H = 110 +
+            bands.reduce((a, band) => a + band.boxH + 90 + GAP + band.shift, 0) +
+            PAD;
+
         const boxes = {};
         const svg = [
-            '<rect x="0" y="0" width="' + W + '" height="' + H +
-            '" fill="#f8f5ec"/>',
-            '<rect x="4" y="4" width="' + (W - 8) + '" height="' +
-            (H - 8) + '" fill="none" stroke="#555" stroke-width="4"/>',
-            '<text x="' + PAD + '" y="64" font-size="26" fill="#3d3d38"' +
-            ' font-style="italic">' + escapeHtml(group.site) +
-            ' \u2014 ' + escapeHtml(t('logical_title', 'logical floor map')) +
-                '</text>',
-            '<text x="' + (W - PAD) + '" y="64" text-anchor="end"' +
-            ' font-size="16" fill="#8a8378">' +
-                escapeHtml(t('generated_from',
-                    'generated from NetBox locations')) + '</text>'
+            `<rect x="0" y="0" width="${W}" height="${H}" fill="#f8f5ec"/>`,
+            `<rect x="4" y="4" width="${W - 8}" height="${H - 8}" ` +
+            'fill="none" stroke="#555" stroke-width="4"/>',
+            `<text x="${PAD}" y="64" font-size="26" fill="#3d3d38"` +
+            ` font-style="italic">${escapeHtml(group.site)} \u2014 ` +
+            `${escapeHtml(t('logical_title', 'logical floor map'))}</text>`,
+            `<text x="${W - PAD}" y="64" text-anchor="end"` +
+            ` font-size="16" fill="#8a8378">` +
+            `${escapeHtml(t('generated_from', 'generated from NetBox locations'))}` +
+            '</text>'
         ];
+
         let y0 = 110;
-        bands.forEach(function (band) {
-            const floor = band.floor;
-            const bandH = band.boxH + 74 + band.shift;
-            svg.push('<rect x="' + PAD + '" y="' + y0 + '" width="' +
-                (W - 2 * PAD) + '" height="' + bandH + '" rx="8"' +
-                ' fill="#ece7da" stroke="#d8d2c2" stroke-width="1.5"/>');
-            const fmax = Math.floor((BAND_W - 20) / 11.7);
-            const flabel = floor.label.length > fmax ?
-            floor.label.slice(0, fmax - 1) + '\u2026' :
-                floor.label;
-            svg.push('<text x="' + (PAD + BAND_W / 2) + '" y="' +
-                (y0 + 40) + '" text-anchor="middle" font-size="22"' +
-                ' font-weight="bold" fill="#6b5d4a">' +
-                escapeHtml(flabel) + '</text>');
-            const boxTop = y0 + 62 + band.shift, boxH = band.boxH;
+        for (const band of bands) {
+            const {floor, gap, widths, boxH, stacked, shift} = band;
+            svg.push(`<rect x="${PAD}" y="${y0}" width="${W - 2 * PAD}" ` +
+                `height="${boxH + 74 + shift}" rx="8" fill="#ece7da" ` +
+                'stroke="#d8d2c2" stroke-width="1.5"/>');
+            const fmax = Math.floor((BAND_W - 20) / FLOOR_LABEL_CHAR_W);
+            const flabel = floor.label.length > fmax
+                ? floor.label.slice(0, fmax - 1) + '\u2026'
+                : floor.label;
+            svg.push(`<text x="${PAD + BAND_W / 2}" y="${y0 + 40}" ` +
+                'text-anchor="middle" font-size="22" font-weight="bold" ' +
+                `fill="#6b5d4a">${escapeHtml(flabel)}</text>`);
+            const boxTop = y0 + 62 + shift;
             let x = PAD + BAND_W + 6;
-            floor.rooms.forEach(function (name, i) {
-                const w = band.widths[i].w;
+            floor.rooms.forEach((name, i) => {
+                const w = widths[i].w;
                 const count = counts[name] || 0;
-                const chip = count > 0 ?
-                countChipText(name, count) : '';
+                const chip = count > 0 ? countChipText(name, count) : '';
                 if (name !== '' && name !== '__virtual__') {
                     // Narrow boxes stack name over count instead
                     // of letting them run into each other.
-                    const budget = band.stacked ? w - 6 :
-                        w - (count > 0 ?
-                            countChipWidth(name, count) + 12 : 10);
-                    svg.push('<text x="' + x + '" y="' +
-                        (boxTop - (band.stacked ? 32 : 8)) +
-                        '" font-size="17" fill="#3d3d38">' +
-                        escapeHtml(clipRoomLabel(name, budget)) +
-                        '</text>');
+                    const budget = stacked ? w - 6
+                        : w - (count > 0 ? countChipWidth(name, count) + 12 : 10);
+                    svg.push(`<text x="${x}" ` +
+                        `y="${boxTop - (stacked ? 32 : 8)}" ` +
+                        'font-size="17" fill="#3d3d38">' +
+                        `${escapeHtml(clipRoomLabel(name, budget))}</text>`);
                 }
                 if (count > 0) {
-                    svg.push('<text ' + (band.stacked ?
-                        'x="' + x + '"' :
-                            'x="' + (x + w - 6) + '"' +
-                        ' text-anchor="end"') + ' y="' +
-                        (boxTop - 8) + '" font-size="14"' +
-                        ' fill="#8a8378">' + escapeHtml(chip) +
-                        '</text>');
+                    svg.push('<text ' +
+                        (stacked ? `x="${x}"` : `x="${x + w - 6}" text-anchor="end"`) +
+                        ` y="${boxTop - 8}" font-size="14" fill="#8a8378">` +
+                        `${escapeHtml(chip)}</text>`);
                 }
-                svg.push('<rect x="' + x + '" y="' + boxTop +
-                    '" width="' + w + '" height="' + boxH +
-                    '" rx="6" fill="#f7f4ea" stroke="#6b6b63"' +
-                    ' stroke-width="2.5"/>');
-                boxes[name] = {x: x, y: boxTop, w: w, h: boxH,
-                    cols: band.widths[i].cols};
-                x += w + band.gap;
+                svg.push(`<rect x="${x}" y="${boxTop}" width="${w}" ` +
+                    `height="${boxH}" rx="6" fill="#f7f4ea" ` +
+                    'stroke="#6b6b63" stroke-width="2.5"/>');
+                boxes[name] = {x, y: boxTop, w, h: boxH, cols: widths[i].cols};
+                x += w + gap;
             });
-            y0 += band.boxH + 90 + GAP + band.shift;
-        });
-        return {w: W, h: H, boxes: boxes, markup: svg.join('')};
+            y0 += boxH + 90 + GAP + shift;
+        }
+        return {w: W, h: H, boxes, markup: svg.join('')};
     }
 
     function countChipText(name, count) {
@@ -648,7 +664,7 @@
 
     // Rough rendered width of the 14px count chip.
     function countChipWidth(name, count) {
-        return countChipText(name, count).length * 7.4 + 4;
+        return countChipText(name, count).length * CHIP_CHAR_W + 4;
     }
 
     // The floor plan as a hand-rolled SVG overlay: Firefox drops
@@ -716,16 +732,7 @@
 
     function addMachineMarkers(group, bounds, plan) {
         const layer = L.layerGroup();
-        const machines = [];
-        group.pins.forEach((pin) => {
-            pin.machines.forEach((machine) => machines.push({
-                name: machine.name, ip: machine.ip,
-                url: machine.url, color: pin.color,
-                room: machine.room || '',
-                physical: machine.physical !== false
-            }));
-        });
-        machines.sort((a, b) => a.ip.localeCompare(b.ip, undefined, {numeric: true}));
+        const machines = collectMachines(group);
 
         // Physical machines go into their room's box grid, virtual
         // ones into the server-built "Virtual" band.
@@ -752,8 +759,8 @@
                 const total = roomTotals[room];
                 const cols = box.cols || roomGridCols(box.w, total);
                 const rows = Math.max(1, Math.ceil(total / cols));
-                const cellW = (box.w - 16) / cols;
-                const cellH = Math.max(16, (box.h - 16) / rows);
+                const cellW = (box.w - GRID_PAD) / cols;
+                const cellH = Math.max(GRID_PAD, (box.h - GRID_PAD) / rows);
                 fx = (box.x + 8 + ((k % cols) + 0.5) * cellW) / layout.w;
                 fy = (box.y + 8 + Math.floor(k / cols) * cellH + cellH / 2) / layout.h;
             } else {
@@ -794,7 +801,10 @@
         collapseAll(map);
         const plan = housePlanOf(group);
         if (plan.logical) {
-            plan.layout = buildLogicalLayout(group);
+            // Data is static for the page's lifetime; build each
+            // site's layout once and reuse it.
+            plan.layout = layoutCache[group.site] ||
+                (layoutCache[group.site] = buildLogicalLayout(group));
             plan.markup = plan.layout.markup;
             plan.w = plan.layout.w;
             plan.h = plan.layout.h;
@@ -956,6 +966,7 @@
             clearObj(expanded);
             clearObj(clusterMarkers);
             clearObj(singleMarkers);
+            clearObj(layoutCache);
             resetHouseState();
             tileLayer = null;
         }
