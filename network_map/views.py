@@ -53,11 +53,6 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
         for vlan in queryset:
             machines = []
             vlan_element = VlanInfo.from_vlan(vlan, machines=[])
-            vlan_element.name = vlan_element.name or "None"
-            vlan_element.group = vlan_element.group or "None"
-            vlan_element.status = vlan_element.status or "None"
-            vlan_element.role = vlan_element.role or "None"
-            vlan_element.description = vlan_element.description or "None"
             related_prefixes = list(vlan.prefixes.all())
             machine_count = 0
             for prefix in related_prefixes:
@@ -74,27 +69,27 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
 
                     room = None
                     if device:
-                        location = device.site.name if device.site else "None"
+                        location = device.site.name if device.site else ""
                         url = device.get_absolute_url()
                         description = (
-                            device.description or device.role or ip.comments or "None"
+                            device.description or device.role or ip.comments or ""
                         )
-                        role = device.role or "None"
+                        role = device.role or ""
                         device_location = getattr(device, "location", None) or getattr(
                             getattr(device, "rack", None), "location", None
                         )
                         room = str(device_location.name) if device_location else None
 
                     elif vm:
-                        location = vm.site.name if vm.site else "None"
+                        location = vm.site.name if vm.site else ""
                         url = vm.get_absolute_url()
-                        description = vm.description or vm.comments or "None"
-                        role = vm.role or "None"
+                        description = vm.description or vm.comments or ""
+                        role = vm.role or ""
                     else:
-                        location = "None"
+                        location = ""
                         url = ip.get_absolute_url()
-                        description = ip.description or "None"
-                        role = ip.role or "None"
+                        description = ip.description or ""
+                        role = ip.role or ""
 
                     if location not in locations:
                         locations.append(location)
@@ -104,10 +99,7 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
                         {
                             "ip": str(ip.address.ip),
                             "prefix": str(prefix.prefix),
-                            "dns_name": ip.dns_name
-                            or device
-                            or ip.description
-                            or "None",
+                            "dns_name": ip.dns_name or device or ip.description or "",
                             "location": location,
                             "room": room,
                             "physical": device is not None,
@@ -292,7 +284,7 @@ class SubnetLocationView(VlanElementListView):
             machine["location"]
             for element in elements
             for machine in element.machines
-            if machine["location"] != "None"
+            if machine["location"]
         }
         sites = list(Site.objects.filter(name__in=site_names))
         coordinates = geocode_sites(sites)
@@ -305,7 +297,7 @@ class SubnetLocationView(VlanElementListView):
                 continue
             vlan_prefix = str(element.prefix) if element.prefix else ""
             for machine in element.machines:
-                if machine["location"] == "None":
+                if not machine["location"]:
                     continue
                 prefix = machine.get("prefix") or vlan_prefix
                 key = (str(element.name), prefix)
@@ -465,11 +457,9 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             details = DetailsElement(
                 id=device.pk,
                 name=device.name,
-                location=device.site.name if device.site else "None",
+                location=device.site.name if device.site else "",
                 url=device.get_absolute_url(),
-                description=str(
-                    device.description or device.role or ip.comments or "None"
-                ),
+                description=str(device.description or device.role or ip.comments or ""),
                 type="Device",
             )
 
@@ -477,9 +467,9 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             details = DetailsElement(
                 id=vm.pk,
                 name=vm.name,
-                location=vm.site.name if vm.site else "None",
+                location=vm.site.name if vm.site else "",
                 url=vm.get_absolute_url(),
-                description=vm.description or vm.comments or "None",
+                description=vm.description or vm.comments or "",
                 type="Virtual Machine",
             )
 
@@ -487,9 +477,9 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             details = DetailsElement(
                 id=ip.pk,
                 name=ip.dns_name,
-                location="None",
+                location="",
                 url=ip.get_absolute_url(),
-                description=ip.description or "None",
+                description=ip.description or "",
                 type="IP-Address",
             )
 
@@ -499,10 +489,10 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
         return IpDetailsElement(
             id=ip.pk,
             address=str(ip.address.ip),
-            dns_name=ip.dns_name or "None",
-            description=ip.description or "None",
-            comments=ip.comments or "None",
-            role=ip.role or "None",
+            dns_name=ip.dns_name or "",
+            description=ip.description or "",
+            comments=ip.comments or "",
+            role=ip.role or "",
             details=self._get_device_vm_ip_details(ip),
             url=ip.get_absolute_url(),
             type="IP-Address",

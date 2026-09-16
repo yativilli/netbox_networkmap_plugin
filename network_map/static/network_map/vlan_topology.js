@@ -287,7 +287,7 @@
                 rx: 8,
             }));
             addText(link, 'topo-subnet-name', cx, cy - 12, wrapLines(entry.subnet.name, 16, 3), 14);
-            if (entry.subnet.prefix && entry.subnet.prefix !== 'None') {
+            if (entry.subnet.prefix) {
                 addText(link, 'topo-subnet-prefix', cx, cy + SUB_H / 2 - 14, wrapLines(entry.subnet.prefix, 26, 1), 11);
             }
             svg.appendChild(link);

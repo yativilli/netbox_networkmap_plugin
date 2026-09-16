@@ -40,7 +40,7 @@ class VlanInfo:
             },
             key=lambda value: value,
         )
-        prefix_value = ", ".join(prefixes) if prefixes else "None"
+        prefix_value = ", ".join(prefixes) if prefixes else ""
 
         url = None
         if hasattr(vlan, "get_absolute_url"):
@@ -49,12 +49,12 @@ class VlanInfo:
         return cls(
             id=vlan.pk,
             name=vlan.name or f"VLAN {vlan.vid}",
-            group=vlan.group.name if vlan.group else "None",
+            group=vlan.group.name if vlan.group else "",
             prefix=prefix_value,
-            status=getattr(vlan.status, "label", vlan.status) or "None",
-            role=vlan.role.name if vlan.role else "None",
+            status=getattr(vlan.status, "label", vlan.status) or "",
+            role=vlan.role.name if vlan.role else "",
             machine_count=len(machines or []),
-            description=vlan.description or "None",
+            description=vlan.description or "",
             machines=machines or [],
             url=url,
         )
