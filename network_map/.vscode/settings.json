@@ -1,8 +1,0 @@
-{
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python.analysis.extraPaths": [
-        "/opt/netbox/network_map_plugin",
-        "/opt/netbox/netbox",
-        "/opt/netbox/venv/lib/python3.13/site-packages"
-    ]
-}
