@@ -6,10 +6,12 @@ import urllib.request
 
 from netbox.plugins import get_plugin_config
 
+from . import __version__
+
 logger = logging.getLogger(__name__)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "network_map_plugin/0.1 (NetBox network topology plugin)"
+USER_AGENT = f"network_map_plugin/{__version__} (NetBox network topology plugin)"
 REQUEST_INTERVAL_SECONDS = 1.0
 REQUEST_TIMEOUT_SECONDS = 10
 

@@ -2,12 +2,14 @@ from typing import ClassVar
 
 from netbox.plugins import PluginConfig
 
+__version__ = "0.1.0"
+
 
 class NetworkMapConfig(PluginConfig):
     name = "network_map"
     verbose_name = "Netbox Network Map"
     description = "A simple plugin displaying the relations of vlans in netbox"
-    version = "0.1.0"
+    version = __version__
     base_url = "networkmap"
     min_version = "4.5.0"
     max_version = "4.7.99"

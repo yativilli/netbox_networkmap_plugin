@@ -34,12 +34,10 @@ cd /opt/netbox/netbox
 
 ## Publishing a New Version
 
-When releasing a new version, update the version in both files:
-
-- `pyproject.toml`: the package version used by `pip`
-- `__init__.py`: the NetBox plugin version shown in the UI
-
-For example, change `0.1.0` to `0.2.0` in both files, then reinstall it:
+The version is defined once, as `__version__` in `network_map/__init__.py`.
+Both `pip` (via the setuptools dynamic `attr` in `pyproject.toml`) and the
+NetBox plugin UI read it from there. To release, change `0.1.0` to `0.2.0`
+in that file, then reinstall it:
 
 ```bash
 cd /opt/netbox/network_map_plugin/network_map
@@ -64,6 +62,10 @@ sudo systemctl restart netbox
 Do not commit generated `*.egg-info/` directories. They are recreated by
 `pip install` and should be ignored by Git.
 
+When adopting a new NetBox release, verify the plugin works with it and adjust
+`min_version`/`max_version` in `network_map/__init__.py` if needed; NetBox
+disables the plugin outside that range.
+
 ## Configuration
 
 Optional entry in NetBox's `configuration.py`:
@@ -72,9 +74,37 @@ Optional entry in NetBox's `configuration.py`:
 PLUGINS_CONFIG = {
     "network_map": {
         "gateway_search_tag": "GATEWAY-TAG",
+        "nominatim_url": "https://nominatim.openstreetmap.org/search",
+        "country_codes": "ch",
+        "request_interval_seconds": 1.0,
+        "request_timeout_seconds": 10,
     },
 }
 ```
 
-`gateway_search_tag` is the device tag (or other exact-match search term)
-the Vlan-Connections view uses to locate the central gateway object.
+- `gateway_search_tag`: the device tag (or other exact-match search term)
+  the Vlan-Connections view uses to locate the central gateway object.
+
+### Site geocoding
+
+Sites shown on the Subnet-Map need coordinates. If a site has no latitude and
+longitude stored in NetBox, the plugin looks them up from the site's physical
+address (or name) via a geocoding service and writes the result back to the
+Site, so every site is geocoded only once and the values can be corrected in
+the NetBox UI afterwards. The following settings control that lookup:
+
+- `nominatim_url`: the geocoding endpoint used for the lookup. Defaults to
+  OpenStreetMap's public Nominatim service; point it at a self-hosted instance
+  for privacy or to avoid public rate limits.
+- `country_codes`: comma-separated country filter for the address search
+  (default `"ch"`), so an address such as "Bahnhofstrasse 1" resolves in
+  Switzerland instead of Germany.
+- `request_interval_seconds`: minimum delay between geocoding requests
+  (default 1.0, per Nominatim's usage policy) when several sites need to be
+  geocoded during one page load.
+- `request_timeout_seconds`: how long a single lookup may take (default 10)
+  before it is given up; without a timeout a hanging request would stall
+  rendering of the Subnet-Map page.
+
+All values are optional; omitting them reproduces the plugin's previous
+hard-coded behaviour.
