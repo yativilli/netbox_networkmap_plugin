@@ -108,3 +108,40 @@ the NetBox UI afterwards. The following settings control that lookup:
 
 All values are optional; omitting them reproduces the plugin's previous
 hard-coded behaviour.
+
+## Translations
+
+User-facing strings are marked with `{% trans %}` tags in the templates and
+`gettext_lazy` (`_()`) in Python code. Translations live in
+`network_map/locale/<lang>/LC_MESSAGES/django.po` (currently `de` and `fr`);
+`network_map/locale/django.pot` is the generated master list of all
+translatable strings.
+
+After adding or changing translatable strings, update every catalog:
+
+```bash
+cd /opt/netbox/network_map_plugin
+DJANGO_SETTINGS_MODULE=netbox.settings PYTHONPATH=/opt/netbox/netbox \
+  /opt/netbox/venv/bin/django-admin makemessages -l de -l fr
+```
+
+This marks new and changed entries in each `.po` file; fill in the `msgstr`
+values (by hand or with a tool like Poedit), then rebuild the binary `.mo`
+catalogs that NetBox actually loads:
+
+```bash
+cd /opt/netbox/network_map_plugin
+for lang in de fr; do
+  msgfmt --check \
+    -o network_map/locale/$lang/LC_MESSAGES/django.mo \
+       network_map/locale/$lang/LC_MESSAGES/django.po
+done
+```
+
+Restart NetBox afterwards; catalogs are read once at startup. The `.mo` files
+are committed because the package is built from this tree and does not
+compile them itself.
+
+Note: the local regression tooling in `scripts/map_regression.py` (Git
+ignored) keeps its own copies of the expected UI strings in `UI_EN`/`UI_DE`;
+update those dictionaries when translatable strings change.
