@@ -1,6 +1,7 @@
 from collections import Counter
 
 from dcim.models import Device, Location, Site
+from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
 from django.shortcuts import render
@@ -11,6 +12,7 @@ from ipam.models import VLAN, IPAddress, Prefix
 from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
+from utilities.views import ConditionalLoginRequiredMixin
 
 from .colors import color_for_location, color_for_location_hex
 from .geocoding import geocode_sites
@@ -23,7 +25,14 @@ from .models import (
 )
 
 
-class VlanElementListView(View):
+class NetworkMapPermissionRequiredMixin(
+    ConditionalLoginRequiredMixin, PermissionRequiredMixin
+):
+    permission_required = "network_map.view_vlanelement"
+    raise_exception = True
+
+
+class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
     template_name = "network_map/vlan_element_list.html"
 
     def get_queryset(self):
@@ -398,7 +407,7 @@ class SubnetLocationView(VlanElementListView):
         return render(request, self.template_name, context)
 
 
-class VlanConnectionView(CenterDeviceMixin, View):
+class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, View):
     def build_elements(self) -> list[dict]:
         element_obj = []
 
