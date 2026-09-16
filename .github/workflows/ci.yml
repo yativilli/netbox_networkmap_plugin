@@ -104,7 +104,10 @@ jobs:
           }
           EOF
       - name: Run plugin tests
-        run: python "$RUNNER_TEMP/netbox/netbox/manage.py" test network_map -v 2
+        # Run from NetBox's project dir so the "network_map" label resolves
+        # to the installed module, not the plugin checkout in the cwd.
+        working-directory: ${{ runner.temp }}/netbox/netbox
+        run: python manage.py test network_map -v 2
 
   analyze:
     runs-on: ubuntu-latest
