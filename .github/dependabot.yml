@@ -9,3 +9,15 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    labels: ["dependencies"]
+
+  # Watch the @vN pins of all actions used in .github/workflows/
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+
+# Open pull requests for CVE/GHSA security fixes, not only routine updates
+enable:
+  - security-updates
