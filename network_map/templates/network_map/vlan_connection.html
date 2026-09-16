@@ -45,7 +45,7 @@
                             <span class="summary-title">
                                 VLAN {{ element.vlan.vid }} - {{ element.vlan.name }}
                             </span>
-                            <span class="summary-subtitle">{{ element.description }}</span>
+                            <span class="summary-subtitle">{{ element.description|placeholder }}</span>
                         </summary>
 
                         <div class="details-content">
@@ -77,7 +77,7 @@
                                             <!-- IP Address -->
                                             <details class="stage-4">
                                                 <summary>
-                                                    <span class="summary-title">{{ ip.dns_name }}</span>
+                                                    <span class="summary-title">{{ ip.dns_name|placeholder }}</span>
                                                     <span class="summary-subtitle">{{ ip.address }}</span>
                                                 </summary>
 
@@ -95,7 +95,7 @@
                                                         <!-- Assigned Object -->
                                                         <details class="stage-5">
                                                             <summary>
-                                                                <span class="summary-title">{{ ip.details.name }}</span>
+                                                                <span class="summary-title">{{ ip.details.name|placeholder }}</span>
                                                                 <span class="summary-subtitle">{{ ip.details.type }}</span>
                                                             </summary>
                                                             <div class="details-content">

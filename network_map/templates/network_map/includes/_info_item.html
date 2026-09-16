@@ -2,9 +2,9 @@
     <span class="info-label">{{ label }}</span>
     <span class="info-value">
         {% if url %}
-            <a href="{{ url }}" target="_blank" rel="noopener">{{ value }} &#128279;</a>
+            <a href="{{ url }}" target="_blank" rel="noopener">{{ value|placeholder }} &#128279;</a>
         {% else %}
-            {{ value }}
+            {{ value|placeholder }}
         {% endif %}
     </span>
 </div>
