@@ -379,6 +379,7 @@ class SubnetLocationView(VlanElementListView):
                 "logical_title": _("logical floor map"),
                 "generated_from": _("generated from NetBox locations"),
                 "no_location": _("No location"),
+                "no_machines": _("No machines"),
                 "machines_band": _("Machines"),
                 "virtual": _("Virtual"),
                 "other_rooms": _("Other rooms"),
@@ -529,6 +530,23 @@ class VlanConnectionView(CenterDeviceMixin, View):
         context = {
             "elements": elements,
             "center_device": center_device,
+            # Info panel labels; extracted by makemessages and rendered
+            # by the _info_item include (a plain variable there).
+            "labels": {
+                "address": _("Address"),
+                "comments": _("Comments"),
+                "dns_name": _("DNS Name"),
+                "description": _("Description"),
+                "gateway": _("Gateway"),
+                "id": _("ID"),
+                "ip_address": _("IP-Address"),
+                "location": _("Location"),
+                "name": _("Name"),
+                "prefix": _("Prefix"),
+                "role": _("Role"),
+                "type": _("Type"),
+                "vlan": _("VLAN"),
+            },
         }
 
         return render(request, "network_map/vlan_connection.html", context)
