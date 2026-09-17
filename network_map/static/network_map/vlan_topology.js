@@ -381,6 +381,56 @@
         }, { passive: false });
     }
 
+    const exportButton = document.querySelector('[data-export-svg]');
+
+    async function svgStyles() {
+        // Inline the plugin stylesheet so the downloaded file renders styled;
+        // falls back to unstyled if the fetch fails.
+        const link = document.querySelector('link[href*="vlan_topology.css"]');
+        try {
+            let css = await fetch(link.href).then((response) => response.text());
+            css = css.replace(/[^{}]*:hover[^{}]*\{[^}]*\}/g, '');
+            return `${css}\n.topo-export-bg { fill: #fff; }`;
+        } catch (error) {
+            return '.topo-export-bg { fill: #fff; }';
+        }
+    }
+
+    async function exportSvg() {
+        const svg = stage ? stage.querySelector('svg.vlan-topo-svg') : null;
+        if (!svg) return;
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', SVG_NS);
+        // Static export: unwrap links into plain groups (keeping their
+        // classes for the fills/strokes) and drop hover tooltips.
+        clone.querySelectorAll('a').forEach((anchor) => {
+            const group = svgEl('g', { class: anchor.getAttribute('class') });
+            while (anchor.firstChild) group.appendChild(anchor.firstChild);
+            anchor.replaceWith(group);
+        });
+        clone.querySelectorAll('title').forEach((title) => title.remove());
+        clone.insertBefore(svgEl('style'), clone.firstChild).textContent = await svgStyles();
+        clone.insertBefore(
+            svgEl('rect', {
+                class: 'topo-export-bg',
+                x: 0,
+                y: 0,
+                width: svg.getAttribute('width'),
+                height: svg.getAttribute('height'),
+            }),
+            clone.firstChild.nextSibling
+        );
+        const source = `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
+        const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `vlan_topology_${new Date().toISOString().slice(0, 10)}.svg`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    }
+
+    if (exportButton) exportButton.addEventListener('click', exportSvg);
+
     buildGraph();
     fitToViewport();
     window.addEventListener('resize', fitToViewport);
