@@ -80,3 +80,16 @@ class ViewAccessTests(TestCase):
         self.client.login(username="viewer", password="pass")  # nosec B106
         response = self.client.get(reverse("plugins:network_map:vlanelement_list"))
         self.assertEqual(response.status_code, 200)
+
+    def test_topology_page_offers_svg_export(self):
+        user = User.objects.create_user(username="exporter", password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name="test-view-networkmap-topology",
+            actions=["view"],
+        )
+        permission.object_types.add(self.map_content_type)
+        user.object_permissions.add(permission)
+        self.client.login(username="exporter", password="pass")  # nosec B106
+        response = self.client.get(reverse("plugins:network_map:vlan_topology"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-export-svg")
