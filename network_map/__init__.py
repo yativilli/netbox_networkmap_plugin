@@ -36,10 +36,30 @@ class NetworkMapConfig(PluginConfig):
         # Legend label for the border (a proper noun, shown untranslated).
         # Defaults to the canton name when left empty.
         "canton_boundary_label": "",
-        # swisstopo feature URL template used to fetch the border. {id} is
-        # replaced with the canton's feature id (the BFS canton number). Keep
-        # sr=4326 so the coordinates arrive as WGS84 lon/lat for the map.
+        # Primary border geometry source: swisstopo WFS, whose raw polygon
+        # carries interior rings (holes), so neighbouring-canton pockets are
+        # excluded from the drawn area. {id} is replaced with the canton's
+        # BFS number; srsName=EPSG:4326 gives WGS84 lon/lat for the map.
         "canton_boundary_url_template": (
+            "https://wfs.geo.admin.ch/?service=WFS&version=2.0.0&request=GetFeature"
+            "&typeNames=ch.swisstopo.swissboundaries3d-kanton-flaeche.fill"
+            "&outputFormat=application%2Fjson&srsName=EPSG%3A4326&CQL_FILTER=id%3D{id}"
+        ),
+        # Fallback border geometry source: OpenStreetMap/Nominatim, used
+        # automatically when the WFS source is unreachable or malformed. Its
+        # polygon_geojson response also carries interior rings, so pockets
+        # such as Steinhof SO are still excluded. {code} is replaced with the
+        # canton's ISO/CH code (e.g. CH-BE). Set to "" to disable.
+        "canton_boundary_fallback_url_template": (
+            "https://nominatim.openstreetmap.org/search?q=CH-{code}"
+            "&countrycodes=ch&featuretype=country_subdivision"
+            "&polygon_geojson=1&format=json&limit=1"
+        ),
+        # Last-resort border geometry source: the hole-less
+        # map.geo.admin.ch feature endpoint. Used when the hole-carrying WFS
+        # and Nominatim sources both fail, so the border remains visible.
+        # {id} is replaced with the BFS number. Set to "" to disable.
+        "canton_boundary_last_resort_url_template": (
             "https://api3.geo.admin.ch/rest/services/api/MapServer"
             "/ch.swisstopo.swissboundaries3d-kanton-flaeche.fill/{id}"
             "?geometry=true&returnGeometry=true&sr=4326&f=json"

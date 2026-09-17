@@ -199,6 +199,12 @@ class SwisstopoResolverTests(TestCase):
         self.assertIsNone(swisstopo.resolve_canton_id(""))
         self.assertIsNone(swisstopo.resolve_canton_id(None))
 
+    def test_resolve_canton_code(self):
+        self.assertEqual(swisstopo.resolve_canton_code("BE"), "BE")
+        self.assertEqual(swisstopo.resolve_canton_code("ag"), "AG")
+        self.assertEqual(swisstopo.resolve_canton_code("2"), "BE")
+        self.assertIsNone(swisstopo.resolve_canton_code("XX"))
+
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_boundary_wrapped_in_feature_collection(self, urlopen):
         urlopen.return_value = _FakeHTTPResponse(SAMPLE_COLLECTION)
@@ -238,6 +244,156 @@ class SwisstopoResolverTests(TestCase):
         result = swisstopo.get_canton_boundary(2)
         self.assertEqual(result["features"][0]["geometry"]["type"], "MultiPolygon")
         self.assertEqual(len(result["features"][0]["geometry"]["coordinates"]), 2)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_wfs_holes_are_preserved(self, urlopen):
+        # WFS returns plain GeoJSON; interior rings (holes) must survive and
+        # come from the primary source without hitting the fallback.
+        exterior = [[7.0, 47.0], [8.0, 47.0], [8.0, 48.0], [7.0, 48.0], [7.0, 47.0]]
+        hole = [[7.4, 47.4], [7.6, 47.4], [7.6, 47.6], [7.4, 47.6], [7.4, 47.4]]
+        urlopen.return_value = _FakeHTTPResponse(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"id": 2},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [exterior, hole],
+                        },
+                    }
+                ],
+            }
+        )
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 1)
+        geometry = result["features"][0]["geometry"]
+        self.assertEqual(geometry["type"], "Polygon")
+        self.assertEqual(len(geometry["coordinates"]), 2)  # exterior + 1 hole
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_fallback_used_when_primary_empty(self, urlopen):
+        empty = _FakeHTTPResponse({"type": "FeatureCollection", "features": []})
+        api3 = _FakeHTTPResponse(
+            {
+                "feature": {
+                    "attributes": {"ak": "BE"},
+                    "geometry": {
+                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
+                    },
+                }
+            }
+        )
+        urlopen.side_effect = [empty, api3]
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_fallback_used_when_primary_fails(self, urlopen):
+        api3 = _FakeHTTPResponse(
+            {
+                "feature": {
+                    "attributes": {"ak": "BE"},
+                    "geometry": {
+                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
+                    },
+                }
+            }
+        )
+        urlopen.side_effect = [OSError("offline"), api3]
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_nominatim_fallback_geometry_is_converted(self, urlopen):
+        exterior = [[7.0, 47.0], [8.0, 47.0], [8.0, 48.0], [7.0, 48.0], [7.0, 47.0]]
+        hole = [[7.4, 47.4], [7.6, 47.4], [7.6, 47.6], [7.4, 47.6], [7.4, 47.4]]
+        empty = _FakeHTTPResponse({"type": "FeatureCollection", "features": []})
+        nominatim = _FakeHTTPResponse(
+            [
+                {
+                    "place_id": 1,
+                    "display_name": "Bern/Berne, Schweiz",
+                    "geojson": {
+                        "type": "Polygon",
+                        "coordinates": [exterior, hole],
+                    },
+                }
+            ]
+        )
+        urlopen.side_effect = [empty, nominatim]
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertIn("q=CH-BE", urlopen.call_args_list[1].args[0].full_url)
+        feature = result["features"][0]
+        self.assertEqual(feature["geometry"]["type"], "Polygon")
+        self.assertEqual(len(feature["geometry"]["coordinates"]), 2)
+        self.assertEqual(feature["properties"]["display_name"], "Bern/Berne, Schweiz")
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_last_resort_used_when_first_two_sources_fail(self, urlopen):
+        empty_collection = _FakeHTTPResponse(
+            {"type": "FeatureCollection", "features": []}
+        )
+        api3 = _FakeHTTPResponse(
+            {
+                "feature": {
+                    "attributes": {"ak": "BE"},
+                    "geometry": {
+                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
+                    },
+                }
+            }
+        )
+        empty_nominatim = _FakeHTTPResponse([])
+        urlopen.side_effect = [empty_collection, empty_nominatim, api3]
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 3)
+        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
+
+    @override_settings(
+        PLUGINS_CONFIG={
+            "network_map": {
+                "canton_boundary_fallback_url_template": "",
+                "canton_boundary_last_resort_url_template": "",
+            }
+        }
+    )
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_fallbacks_can_be_disabled(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(
+            {"type": "FeatureCollection", "features": []}
+        )
+        self.assertIsNone(swisstopo.get_canton_boundary("BE"))
+        self.assertEqual(urlopen.call_count, 1)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_features_without_geometry_fall_back(self, urlopen):
+        no_geometry = _FakeHTTPResponse(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "properties": {"id": 2}, "geometry": None}
+                ],
+            }
+        )
+        api3 = _FakeHTTPResponse(
+            {
+                "feature": {
+                    "attributes": {"ak": "BE"},
+                    "geometry": {
+                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
+                    },
+                }
+            }
+        )
+        urlopen.side_effect = [no_geometry, api3]
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_boundary_cached_after_first_fetch(self, urlopen):

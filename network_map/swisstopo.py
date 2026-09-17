@@ -41,6 +41,9 @@ CANTON_IDS = {
     "JU": 26,
 }
 
+# Reverse lookup from BFS number to two-letter canton code.
+CANTON_CODES = {canton_id: code for code, canton_id in CANTON_IDS.items()}
+
 # Default legend labels, shown untranslated (proper nouns).
 CANTON_NAMES = {
     "ZH": "Zürich",
@@ -71,10 +74,32 @@ CANTON_NAMES = {
     "JU": "Jura",
 }
 
-# swisstopo "map.geo.admin.ch" feature endpoint. {id} is the canton feature
-# id (the BFS canton number). sr=4326 returns the geometry as WGS84 lon/lat,
-# which the Leaflet map projects through its LV03 CRS.
+# Primary geometry source: swisstopo WFS. The raw feature type carries the
+# canton polygon *with* interior rings, so holes (neighbouring-canton pockets
+# such as the Solothurn exclave at Steinhof) are preserved and excluded from
+# the drawn area. {id} is replaced with the BFS canton number. srsName=EPSG:4326
+# returns WGS84 lon/lat, which the Leaflet map projects through its LV03 CRS.
 DEFAULT_URL_TEMPLATE = (
+    "https://wfs.geo.admin.ch/?service=WFS&version=2.0.0&request=GetFeature"
+    "&typeNames=ch.swisstopo.swissboundaries3d-kanton-flaeche.fill"
+    "&outputFormat=application%2Fjson&srsName=EPSG%3A4326&CQL_FILTER=id%3D{id}"
+)
+
+# Fallback geometry source: OpenStreetMap/Nominatim. Public Nominatim search
+# with polygon_geojson=1 returns the administrative boundary with interior
+# rings, so holes such as Steinhof SO are preserved when the WFS source is
+# unreachable. {code} is replaced with the canton's ISO/CH code (e.g. CH-BE).
+FALLBACK_URL_TEMPLATE = (
+    "https://nominatim.openstreetmap.org/search?q=CH-{code}"
+    "&countrycodes=ch&featuretype=country_subdivision"
+    "&polygon_geojson=1&format=json&limit=1"
+)
+
+# Last-resort geometry source: the map.geo.admin.ch feature endpoint. Its
+# polygon is display-optimised and carries no interior rings, so holes are not
+# cut out. Used when the hole-carrying WFS and Nominatim sources are both
+# unavailable.
+LAST_RESORT_URL_TEMPLATE = (
     "https://api3.geo.admin.ch/rest/services/api/MapServer"
     "/ch.swisstopo.swissboundaries3d-kanton-flaeche.fill/{id}"
     "?geometry=true&returnGeometry=true&sr=4326&f=json"
@@ -100,6 +125,17 @@ def resolve_canton_id(code):
     if text.isdigit():
         return int(text)
     return None
+
+
+def resolve_canton_code(code):
+    """
+    Map a canton code to its canonical two-letter ISO/CH code. Accepts a
+    two-letter code or a numeric BFS id and returns None for unknown ids.
+    """
+    canton_id = resolve_canton_id(code)
+    if canton_id is None:
+        return None
+    return CANTON_CODES.get(canton_id, str(canton_id))
 
 
 def _signed_area(ring):
@@ -138,11 +174,31 @@ def _esri_rings_to_geometry(rings):
 
 def _payload_to_collection(payload):
     """
-    Normalise a swisstopo response to a GeoJSON FeatureCollection, or None
-    when it carries no usable geometry. Handles the map.geo.admin.ch feature
-    response (Esri rings) as well as a plain GeoJSON FeatureCollection that an
-    overridden URL template might return.
+    Normalise a swisstopo or Nominatim response to a GeoJSON FeatureCollection,
+    or None when it carries no usable geometry. Handles the map.geo.admin.ch
+    feature response (Esri rings), a plain GeoJSON FeatureCollection, and a
+    Nominatim search response carrying a `geojson` polygon.
     """
+    if isinstance(payload, list):
+        features = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            geometry = item.get("geojson") or item.get("geometry")
+            if not isinstance(geometry, dict):
+                continue
+            properties = {
+                key: value
+                for key, value in item.items()
+                if key not in {"geojson", "geometry", "boundingbox"}
+            }
+            features.append(
+                {"type": "Feature", "properties": properties, "geometry": geometry}
+            )
+        if features:
+            return {"type": "FeatureCollection", "features": features}
+        return None
+
     if not isinstance(payload, dict):
         return None
 
@@ -161,33 +217,42 @@ def _payload_to_collection(payload):
         }
 
     features = payload.get("features")
-    if features:
+    if features and any(
+        isinstance(feature, dict) and isinstance(feature.get("geometry"), dict)
+        for feature in features
+    ):
         return {"type": "FeatureCollection", "features": features}
     return None
 
 
-def get_canton_boundary(code):
+def _format_url(template, canton_id, canton_code):
+    return template.format(
+        id=canton_id,
+        code=canton_code or "",
+        name=CANTON_NAMES.get(canton_code or "", ""),
+    )
+
+
+def _try_collection(source, template, canton_id, canton_code):
     """
-    Return the canton border as a GeoJSON FeatureCollection in WGS84
-    lon/lat, fetched from swisstopo and cached. Returns None when no code
-    is configured, the code is unknown, or the fetch/parse fails, so the
-    caller can simply skip drawing the border.
+    Fetch and normalise a single canton boundary URL template for the canton.
+    Returns a GeoJSON FeatureCollection, or None when the template is unset,
+    malformed, the request fails, or the payload carries no usable geometry.
     """
-    canton_id = resolve_canton_id(code)
-    if canton_id is None:
+    if not template:
         return None
 
-    cache_key = f"network_map:canton_boundary:{canton_id}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
+    try:
+        url = _format_url(template, canton_id, canton_code)
+    except (KeyError, IndexError, ValueError) as error:
+        logger.warning(
+            "Canton border %s URL template is malformed: %s",
+            source,
+            error,
+        )
+        return None
 
-    template = get_plugin_config(
-        "network_map", "canton_boundary_url_template", DEFAULT_URL_TEMPLATE
-    )
-    url = template.format(id=canton_id)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-
     try:
         # The URL comes from the plugin settings (an https swisstopo
         # endpoint) plus a numeric canton id, so urlopen cannot be steered
@@ -201,7 +266,8 @@ def get_canton_boundary(code):
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         logger.warning(
-            "Canton border request for canton id %s failed: HTTP %s (%s)",
+            "Canton border %s request for canton id %s failed: HTTP %s (%s)",
+            source,
             canton_id,
             error.code,
             url,
@@ -209,7 +275,8 @@ def get_canton_boundary(code):
         return None
     except (OSError, ValueError) as error:
         logger.warning(
-            "Canton border request for canton id %s failed: %s (%s)",
+            "Canton border %s request for canton id %s failed: %s (%s)",
+            source,
             canton_id,
             error,
             url,
@@ -218,16 +285,78 @@ def get_canton_boundary(code):
 
     feature_collection = _payload_to_collection(payload)
     if feature_collection is None:
-        logger.warning("No canton border geometry for canton id %s", canton_id)
+        logger.warning(
+            "No canton border geometry from the %s source for canton id %s (%s)",
+            source,
+            canton_id,
+            url,
+        )
+    return feature_collection
+
+
+def get_canton_boundary(code):
+    """
+    Return the canton border as a GeoJSON FeatureCollection in WGS84
+    lon/lat, fetched from configured boundary sources and cached. The WFS
+    source is tried first (its geometry carries holes), then the Nominatim
+    fallback (also hole-carrying), then the hole-less map.geo.admin.ch feature
+    endpoint as a last resort. Returns None only when no code is configured,
+    the code is unknown, or all sources fail, so the caller can simply skip
+    drawing the border.
+    """
+    canton_id = resolve_canton_id(code)
+    if canton_id is None:
+        return None
+    canton_code = resolve_canton_code(code)
+
+    cache_key = f"network_map:canton_boundary:{canton_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    primary = get_plugin_config(
+        "network_map", "canton_boundary_url_template", DEFAULT_URL_TEMPLATE
+    )
+    fallback = get_plugin_config(
+        "network_map",
+        "canton_boundary_fallback_url_template",
+        FALLBACK_URL_TEMPLATE,
+    )
+    last_resort = get_plugin_config(
+        "network_map",
+        "canton_boundary_last_resort_url_template",
+        LAST_RESORT_URL_TEMPLATE,
+    )
+
+    feature_collection = None
+    source = None
+    seen_templates = set()
+    for source_label, template in (
+        ("primary", primary),
+        ("fallback", fallback),
+        ("last-resort", last_resort),
+    ):
+        if not template or template in seen_templates:
+            continue
+        seen_templates.add(template)
+        feature_collection = _try_collection(
+            source_label, template, canton_id, canton_code
+        )
+        if feature_collection is not None:
+            source = source_label
+            break
+    if feature_collection is None:
         return None
 
-    cache.set(
-        cache_key,
-        feature_collection,
-        get_plugin_config(
-            "network_map", "canton_boundary_cache_seconds", CACHE_SECONDS
-        ),
+    logger.info(
+        "Canton border geometry for canton id %s fetched from the %s source",
+        canton_id,
+        source,
     )
+    cache_seconds = get_plugin_config(
+        "network_map", "canton_boundary_cache_seconds", CACHE_SECONDS
+    )
+    cache.set(cache_key, feature_collection, cache_seconds)
     return feature_collection
 
 
