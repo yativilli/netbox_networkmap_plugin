@@ -93,3 +93,51 @@ class ViewAccessTests(TestCase):
         response = self.client.get(reverse("plugins:network_map:vlan_topology"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-export-svg")
+
+
+class SvgApiTests(TestCase):
+    KINDS = ("machine-list", "logical-map", "topology")
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.map_content_type = ContentType.objects.get(
+            app_label="network_map", model="vlanelement"
+        )
+        cls.vlan = VLAN.objects.create(vid=110, name="SVG VLAN", status="active")
+        Prefix.objects.create(prefix="10.10.0.0/24", vlan=cls.vlan)
+        cls.user = User.objects.create_user(username="svgviewer", password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name="test-view-networkmap-svg",
+            actions=["view"],
+        )
+        permission.object_types.add(cls.map_content_type)
+        cls.user.object_permissions.add(permission)
+
+    def get_svg(self, kind):
+        # The mount prefix derives from the plugin's base_url/module name.
+        for prefix in ("networkmap", "network_map"):
+            response = self.client.get(f"/api/plugins/{prefix}/svg/{kind}/")
+            if response.status_code != 404:
+                return response
+        return response
+
+    def test_svg_endpoints_render(self):
+        self.client.force_login(self.user)
+        for kind in self.KINDS:
+            response = self.get_svg(kind)
+            self.assertEqual(response.status_code, 200, kind)
+            self.assertTrue(response["Content-Type"].startswith("image/svg+xml"), kind)
+            self.assertIn(b"<svg", response.content)
+
+    def test_unknown_kind_returns_404(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.get_svg("nope").status_code, 404)
+
+    def test_anonymous_is_rejected(self):
+        response = self.get_svg("topology")
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_user_without_permission_gets_403(self):
+        User.objects.create_user(username="nosvg", password="pass")  # nosec B106
+        self.client.login(username="nosvg", password="pass")  # nosec B106
+        self.assertEqual(self.get_svg("machine-list").status_code, 403)

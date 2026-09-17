@@ -1,4 +1,4 @@
-/network_map/__pycache__/
+__pycache__/
 /network_map/migrations/
 /network_map.egg-info
 /scripts/map_capture.py
