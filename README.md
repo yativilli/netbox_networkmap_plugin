@@ -59,6 +59,28 @@ NETBOX_CONFIGURATION=netbox.configuration_testing \
   /opt/netbox/venv/bin/python manage.py test network_map --keepdb
 ```
 
+## SVG API Endpoints
+
+The three map views are also served as server-side rendered SVG (no
+`foreignObject`/HTML, so they open in any picture viewer). NetBox API token
+authentication applies, and the caller needs the `network_map.view_vlanelement`
+permission like for the web views:
+
+| Kind           | URL                                              |
+| -------------- | ------------------------------------------------ |
+| Machine list   | `/api/plugins/networkmap/svg/machine-list/`      |
+| Logical map    | `/api/plugins/networkmap/svg/logical-map/`       |
+| Topology map   | `/api/plugins/networkmap/svg/topology/`          |
+
+```bash
+curl -H "Authorization: Token <token>" \
+  https://netbox.example.com/api/plugins/networkmap/svg/topology/ -o topology.svg
+```
+
+The renderers live in `network_map/svg_render.py` and mirror the browser
+exports; text wrapping uses a character-width estimate, so line breaks can
+differ slightly from the on-page "Export as .SVG" buttons.
+
 ## Publishing a New Version
 
 The version is defined once, as `__version__` in `network_map/__init__.py`.
