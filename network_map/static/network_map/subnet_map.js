@@ -7,7 +7,6 @@
     const UI = mapData.ui || {};
     const t = (key, fallback) => UI[key] || fallback;
 
-    const ASSET_BASE = '/static/network_map/';
     const SWISSSTOPO_URL =
         'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/21781/{z}/{y}/{x}.jpeg';
     const EMPTY_TILE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=';
@@ -273,15 +272,15 @@
         stroke: true, color: '#c8102e', weight: 3, opacity: 0.95,
         dashArray: '8 6', fill: true, fillColor: '#c8102e', fillOpacity: 0.10
     };
-    let cantonBern = null;
+    let cantonBoundary = null;
 
     function addCantonBorder(map) {
-        if (!cantonBern) {
+        if (!cantonBoundary) {
             return;
         }
         const renderer = L.canvas({padding: 0.2});
         [{style: CANTON_HALO_STYLE}, {style: CANTON_BORDER_STYLE}].forEach((opts) => {
-            L.geoJSON(cantonBern, {
+            L.geoJSON(cantonBoundary, {
                 renderer: renderer,
                 interactive: false,
                 style: opts.style
@@ -1039,17 +1038,22 @@
     let currentMap = null;
     let tileLayer = null;
 
-    fetch(ASSET_BASE + 'kanton_bern.geojson')
-        .then((response) => (response.ok ? response.json() : null))
-        .then((geojson) => {
-            cantonBern = geojson;
-        })
-        .catch(() => {
-            cantonBern = null;
-        })
-        .finally(() => {
-            if (!currentMap) {
-                buildMap();
-            }
-        });
+    const boundaryUrl = mapData.canton_boundary_url;
+    if (boundaryUrl) {
+        fetch(boundaryUrl)
+            .then((response) => (response.ok ? response.json() : null))
+            .then((geojson) => {
+                cantonBoundary = geojson;
+            })
+            .catch(() => {
+                cantonBoundary = null;
+            })
+            .finally(() => {
+                if (!currentMap) {
+                    buildMap();
+                }
+            });
+    } else {
+        buildMap();
+    }
 })();
