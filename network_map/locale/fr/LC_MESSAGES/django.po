@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: network_map_plugin 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-16 08:01+0000\n"
+"POT-Creation-Date: 2026-09-16 16:50+0200\n"
 "PO-Revision-Date: 2026-09-16 12:00+0200\n"
 "Last-Translator: Yannick Wernle <yannick@wernle.net>\n"
 "Language-Team: fr\n"
@@ -20,15 +20,15 @@ msgstr ""
 msgid "Machine List"
 msgstr "Liste des machines"
 
-#: navigation.py:13
+#: navigation.py:12
 msgid "Logical Map"
 msgstr "Vue logique"
 
-#: navigation.py:19
+#: navigation.py:17
 msgid "Topology Map"
 msgstr "Carte de topologie"
 
-#: navigation.py:25
+#: navigation.py:22
 msgid "Site Map"
 msgstr "Carte des sites"
 
@@ -59,7 +59,7 @@ msgstr "Canton de Berne"
 msgid "Show or hide the labels below the pins"
 msgstr "Afficher ou masquer les libellés sous les repères"
 
-#: templates/network_map/subnet_map.html:37 views.py:370
+#: templates/network_map/subnet_map.html:37 views.py:372
 msgid "Hide labels"
 msgstr "Masquer les libellés"
 
@@ -118,11 +118,11 @@ msgid ""
 "Overview of machines per VLAN. Press on a VLAN to scroll to the details. The "
 "individual machines are colored according to their locations."
 msgstr ""
-"Aperçu des machines par VLAN. Cliquez sur un VLAN pour atteindre les détails. "
-"Les machines individuelles sont colorées selon leur emplacement."
+"Aperçu des machines par VLAN. Cliquez sur un VLAN pour atteindre les "
+"détails. Les machines individuelles sont colorées selon leur emplacement."
 
 #: templates/network_map/vlan_element_list.html:30
-#: templates/network_map/vlan_element_list.html:68 views.py:382
+#: templates/network_map/vlan_element_list.html:68 views.py:384
 msgid "No machines"
 msgstr "Aucune machine"
 
@@ -140,7 +140,7 @@ msgstr "Description"
 msgid "Role"
 msgstr "Rôle"
 
-#: templates/network_map/vlan_element_list.html:52 views.py:383
+#: templates/network_map/vlan_element_list.html:52 views.py:385
 msgid "Machines"
 msgstr "Machines"
 
@@ -189,71 +189,75 @@ msgstr "Zoom arrière"
 msgid "Fit"
 msgstr "Ajuster"
 
-#: templates/network_map/vlan_topology.html:35
+#: templates/network_map/vlan_topology.html:27
+msgid "Export as .SVG"
+msgstr "Exporter en .SVG"
+
+#: templates/network_map/vlan_topology.html:38
 msgid "No VLAN topology data available."
 msgstr "Aucune donnée de topologie VLAN disponible."
 
-#: views.py:369
+#: views.py:371
 msgid "Show labels"
 msgstr "Afficher les libellés"
 
-#: views.py:371
+#: views.py:373
 msgid "machine"
 msgstr "machine"
 
-#: views.py:372
+#: views.py:374
 msgid "machines"
 msgstr "machines"
 
-#: views.py:373
+#: views.py:375
 msgid "subnet"
 msgstr "sous-réseau"
 
-#: views.py:374
+#: views.py:376
 msgid "subnets"
 msgstr "sous-réseaux"
 
-#: views.py:375
+#: views.py:377
 msgid "Details"
 msgstr "Détails"
 
-#: views.py:376
+#: views.py:378
 msgid "Floor map"
 msgstr "Plan d'étage"
 
-#: views.py:377
+#: views.py:379
 msgid "House plan"
 msgstr "Plan du bâtiment"
 
-#: views.py:378
+#: views.py:380
 msgid "scroll out to return to the map"
 msgstr "dézoomer pour revenir à la carte"
 
-#: views.py:379
+#: views.py:381
 msgid "logical floor map"
 msgstr "plan d'étage logique"
 
-#: views.py:380
+#: views.py:382
 msgid "generated from NetBox locations"
 msgstr "généré à partir des emplacements NetBox"
 
-#: views.py:381
+#: views.py:383
 msgid "No location"
 msgstr "Aucun emplacement"
 
-#: views.py:384
+#: views.py:386
 msgid "Virtual"
 msgstr "Virtuel"
 
-#: views.py:385
+#: views.py:387
 msgid "Other rooms"
 msgstr "Autres salles"
 
-#: views.py:386
+#: views.py:388
 msgid "VM"
 msgstr "VM"
 
-#: views.py:387
+#: views.py:389
 msgid "VMs"
 msgstr "VM"
 
