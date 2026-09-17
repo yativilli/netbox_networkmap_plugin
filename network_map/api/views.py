@@ -1,7 +1,12 @@
+from collections import OrderedDict
+
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
+from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 
 from .. import svg_render
@@ -10,6 +15,8 @@ from ..views import (
     VlanElementListView,
     VlanTopologyView,
 )
+
+SVG_KINDS = ("machine-list", "logical-map", "topology")
 
 
 class SvgRenderer(BaseRenderer):
@@ -21,7 +28,40 @@ class SvgRenderer(BaseRenderer):
         return str(data).encode(self.charset)
 
 
+class PluginApiRootView(APIView):
+    _ignore_model_permissions = True
+    schema = None
+
+    @extend_schema(exclude=True)
+    def get(self, request, format=None):
+        entries = OrderedDict(
+            (
+                (
+                    "installed-plugins",
+                    reverse("plugins-api:plugins-list", request=request, format=format),
+                ),
+            )
+        )
+        entries.update(
+            (
+                kind,
+                reverse(
+                    "plugins-api:network_map-api:svg-export",
+                    kwargs={"kind": kind},
+                    request=request,
+                    format=format,
+                ),
+            )
+            for kind in SVG_KINDS
+        )
+        return Response(entries)
+
+
 class MapSvgView(APIView):
+    """
+    Renders one of the network map views as a standalone SVG document.
+    """
+
     permission_classes = (IsAuthenticated,)
     renderer_classes = (SvgRenderer,)
 
@@ -30,6 +70,24 @@ class MapSvgView(APIView):
         if not request.user.has_perm("network_map.view_vlanelement"):
             raise PermissionDenied("Missing permission: network_map.view_vlanelement")
 
+    def get_view_name(self):
+        return "Map SVG"
+
+    @extend_schema(
+        tags=["network-map"],
+        summary="Render a network map view as SVG",
+        parameters=[
+            OpenApiParameter(
+                name="kind",
+                type=OpenApiTypes.STR,
+                location="path",
+                required=True,
+                enum=list(SVG_KINDS),
+                description="Which map view to render.",
+            ),
+        ],
+        responses={(200, "image/svg+xml"): OpenApiTypes.BINARY},
+    )
     def get(self, request, kind):
         if kind == "machine-list":
             list_view = VlanElementListView()
