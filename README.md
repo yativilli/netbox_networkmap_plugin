@@ -132,6 +132,9 @@ PLUGINS_CONFIG = {
         "country_codes": "ch",
         "request_interval_seconds": 1.0,
         "request_timeout_seconds": 10,
+        "canton_boundary_code": "BE",
+        "canton_boundary_label": "",
+        "canton_boundary_cache_seconds": 2592000,
     },
 }
 ```
@@ -162,6 +165,33 @@ the NetBox UI afterwards. The following settings control that lookup:
 
 All values are optional; omitting them reproduces the plugin's previous
 hard-coded behaviour.
+
+### Canton border
+
+The Subnet-Map can draw the border of a single canton over the tiles. The
+geometry is **not** shipped with the plugin (no data file lives in the
+repository); it is fetched live from swisstopo and cached, so swapping to
+another canton is a one-line configuration change rather than replacing a
+checked-in file.
+
+- `canton_boundary_code`: the canton to outline, as a two-letter code (e.g.
+  `"BE"`, `"AG"`) or the numeric BFS canton id. **Empty (the default) draws no
+  border.** Change it to e.g. `"AG"` to show Aargau instead of Bern.
+- `canton_boundary_label`: legend text for the border. Shown untranslated
+  (proper noun); defaults to the canton's name (e.g. "Kanton Bern") when left
+  empty.
+- `canton_boundary_url_template`: the swisstopo `map.geo.admin.ch` feature URL
+  used to fetch the geometry, with `{id}` replaced by the canton's BFS feature
+  id. Override it to point at a mirror or a different layer; keep `sr=4326` so
+  the coordinates arrive as WGS84 lon/lat for the map. Requires outbound access
+  to `api3.geo.admin.ch`.
+- `canton_boundary_cache_seconds`: how long the fetched geometry is cached
+  (default 30 days), so the border is fetched at most once per cache period.
+
+The border is fetched and served through the plugin's own API endpoint
+(`/plugins/networkmap/subnet-map/canton-boundary/`) under the same
+`network_map.view_vlanelement` permission as the map itself. If the geometry
+cannot be fetched, the map simply renders without a border.
 
 ## Translations
 

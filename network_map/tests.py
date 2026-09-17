@@ -1,10 +1,16 @@
+import json
+from unittest import mock
+
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from ipam.models import VLAN, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
+from . import swisstopo
 from .models import VlanInfo
+from .views import SubnetLocationView
 
 
 class VlanInfoFromVlanTests(TestCase):
@@ -152,3 +158,194 @@ class SvgApiTests(TestCase):
         User.objects.create_user(username="nosvg", password="pass")  # nosec B106
         self.client.login(username="nosvg", password="pass")  # nosec B106
         self.assertEqual(self.get_svg("machine-list").status_code, 403)
+
+
+SAMPLE_BORDER = {
+    "type": "Feature",
+    "properties": {"canton_no": 2},
+    "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [[[[[7.2, 46.9], [7.3, 46.9], [7.3, 47.0], [7.2, 46.9]]]]],
+    },
+}
+SAMPLE_COLLECTION = {"type": "FeatureCollection", "features": [SAMPLE_BORDER]}
+
+
+class _FakeHTTPResponse:
+    """Minimal stand-in for the object urlopen() returns."""
+
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode("utf-8")
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class SwisstopoResolverTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_resolve_canton_id(self):
+        self.assertEqual(swisstopo.resolve_canton_id("BE"), 2)
+        self.assertEqual(swisstopo.resolve_canton_id("ag"), 19)
+        self.assertEqual(swisstopo.resolve_canton_id("2"), 2)
+        self.assertIsNone(swisstopo.resolve_canton_id("XX"))
+        self.assertIsNone(swisstopo.resolve_canton_id(""))
+        self.assertIsNone(swisstopo.resolve_canton_id(None))
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_boundary_wrapped_in_feature_collection(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(SAMPLE_COLLECTION)
+        result = swisstopo.get_canton_boundary("BE")
+        self.assertEqual(result, SAMPLE_COLLECTION)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_esri_feature_response_is_converted(self, urlopen):
+        # map.geo.admin.ch returns Esri rings (clockwise exterior) + attributes.
+        cw_square = [[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.1, 47.0]]
+        urlopen.return_value = _FakeHTTPResponse(
+            {
+                "feature": {
+                    "attributes": {"ak": "AG", "name": "Aargau"},
+                    "geometry": {
+                        "rings": [cw_square],
+                        "spatialReference": {"wkid": 4326},
+                    },
+                }
+            }
+        )
+        result = swisstopo.get_canton_boundary("AG")
+        feature = result["features"][0]
+        self.assertEqual(result["type"], "FeatureCollection")
+        self.assertEqual(feature["geometry"]["type"], "Polygon")
+        self.assertEqual(feature["properties"]["ak"], "AG")
+        # linear rings are closed (first point repeated at the end)
+        ring = feature["geometry"]["coordinates"][0]
+        self.assertEqual(ring[0], ring[-1])
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_esri_multiple_exterior_rings_become_multipolygon(self, urlopen):
+        cw = lambda a, b: [[a, b], [a, b + 1], [a + 1, b + 1], [a + 1, b]]
+        urlopen.return_value = _FakeHTTPResponse(
+            {"feature": {"attributes": {}, "geometry": {"rings": [cw(0, 0), cw(5, 5)]}}}
+        )
+        result = swisstopo.get_canton_boundary(2)
+        self.assertEqual(result["features"][0]["geometry"]["type"], "MultiPolygon")
+        self.assertEqual(len(result["features"][0]["geometry"]["coordinates"]), 2)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_boundary_cached_after_first_fetch(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(SAMPLE_COLLECTION)
+        swisstopo.get_canton_boundary("BE")
+        swisstopo.get_canton_boundary("BE")
+        self.assertEqual(urlopen.call_count, 1)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen", side_effect=OSError)
+    def test_fetch_failure_returns_none(self, urlopen):
+        self.assertIsNone(swisstopo.get_canton_boundary("BE"))
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_empty_geometry_returns_none(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(
+            {"type": "FeatureCollection", "features": []}
+        )
+        self.assertIsNone(swisstopo.get_canton_boundary("BE"))
+
+    def test_unknown_code_returns_none_without_request(self):
+        with mock.patch("network_map.swisstopo.urllib.request.urlopen") as urlopen:
+            self.assertIsNone(swisstopo.get_canton_boundary("ZZ"))
+            urlopen.assert_not_called()
+
+    @override_settings(
+        PLUGINS_CONFIG={"network_map": {"canton_boundary_label": "Kt. Aargau"}}
+    )
+    def test_explicit_label_wins(self):
+        self.assertEqual(swisstopo.get_canton_label("AG"), "Kt. Aargau")
+
+    def test_derived_label(self):
+        self.assertEqual(swisstopo.get_canton_label("BE"), "Kanton Bern")
+
+    def test_no_label_when_unconfigured(self):
+        self.assertIsNone(swisstopo.get_canton_label(""))
+
+
+class CantonBoundaryViewTests(TestCase):
+    URL = "plugins:network_map:canton_boundary"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.content_type = ContentType.objects.get(
+            app_label="network_map", model="vlanelement"
+        )
+        cls.user = User.objects.create_user(username="boundary", password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name="test-view-boundary", actions=["view"]
+        )
+        permission.object_types.add(cls.content_type)
+        cls.user.object_permissions.add(permission)
+
+    def test_unconfigured_returns_204(self):
+        self.client.force_login(self.user)
+        with mock.patch("network_map.views.get_canton_boundary", return_value=None):
+            response = self.client.get(reverse(self.URL))
+        self.assertEqual(response.status_code, 204)
+
+    def test_configured_returns_geojson(self):
+        self.client.force_login(self.user)
+        with mock.patch(
+            "network_map.views.get_canton_boundary", return_value=SAMPLE_COLLECTION
+        ):
+            response = self.client.get(reverse(self.URL))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/geo+json")
+        self.assertEqual(json.loads(response.content), SAMPLE_COLLECTION)
+
+    def test_user_without_permission_gets_403(self):
+        User.objects.create_user(username="noboundary", password="pass")  # nosec B106
+        self.client.login(username="noboundary", password="pass")  # nosec B106
+        response = self.client.get(reverse(self.URL))
+        self.assertEqual(response.status_code, 403)
+
+    def test_anonymous_is_rejected(self):
+        response = self.client.get(reverse(self.URL))
+        self.assertIn(response.status_code, (302, 401, 403))
+
+
+class MapDataCantonBoundaryTests(TestCase):
+    def test_build_map_data_includes_url_and_label(self):
+        view = SubnetLocationView()
+        boundary_url = reverse("plugins:network_map:canton_boundary")
+        with (
+            mock.patch(
+                "network_map.views.get_plugin_config",
+                side_effect=lambda name, key, default=None: (
+                    "BE" if key == "canton_boundary_code" else default
+                ),
+            ),
+            mock.patch("network_map.views.resolve_canton_id", return_value=2),
+            mock.patch(
+                "network_map.views.get_canton_label", return_value="Kanton Bern"
+            ),
+        ):
+            data = view.build_map_data([])
+        self.assertEqual(data["canton_boundary_url"], boundary_url)
+        self.assertEqual(data["canton_label"], "Kanton Bern")
+
+    def test_build_map_data_omits_boundary_when_unset(self):
+        view = SubnetLocationView()
+        with (
+            mock.patch(
+                "network_map.views.get_plugin_config",
+                side_effect=lambda name, key, default=None: default,
+            ),
+            mock.patch("network_map.views.resolve_canton_id", return_value=None),
+        ):
+            data = view.build_map_data([])
+        self.assertIsNone(data["canton_boundary_url"])
+        self.assertIsNone(data["canton_label"])
