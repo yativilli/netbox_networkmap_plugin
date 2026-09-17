@@ -9,4 +9,9 @@ urlpatterns = [
         "vlan-connections/", views.VlanConnectionView.as_view(), name="vlan_connections"
     ),
     path("subnet-map/", views.SubnetLocationView.as_view(), name="subnet_map"),
+    path(
+        "subnet-map/canton-boundary/",
+        views.CantonBoundaryView.as_view(),
+        name="canton_boundary",
+    ),
 ]

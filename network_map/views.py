@@ -4,7 +4,9 @@ from dcim.models import Device, Location, Site
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from extras.models import ImageAttachment
@@ -23,6 +25,7 @@ from .models import (
     PrefixElement,
     VlanInfo,
 )
+from .swisstopo import get_canton_boundary, get_canton_label, resolve_canton_id
 
 
 class NetworkMapPermissionRequiredMixin(
@@ -363,10 +366,19 @@ class SubnetLocationView(VlanElementListView):
                     }
                 )
 
+        canton_code = get_plugin_config("network_map", "canton_boundary_code", "")
+        canton_url = (
+            reverse("plugins:network_map:canton_boundary")
+            if resolve_canton_id(canton_code) is not None
+            else None
+        )
+
         return {
             "pins": pins,
             "unplaced": unplaced,
             "locations": self.build_site_locations(sites),
+            "canton_boundary_url": canton_url,
+            "canton_label": get_canton_label(canton_code) if canton_url else None,
             "ui": {
                 "labels_show": _("Show labels"),
                 "labels_hide": _("Hide labels"),
@@ -398,6 +410,21 @@ class SubnetLocationView(VlanElementListView):
             "map_data": self.build_map_data(elements),
         }
         return render(request, self.template_name, context)
+
+
+class CantonBoundaryView(NetworkMapPermissionRequiredMixin, View):
+    """
+    Serve the configured canton border as a WGS84 GeoJSON FeatureCollection,
+    fetched from swisstopo and cached. Returns 204 when no canton is
+    configured or the geometry cannot be resolved, so the map draws no border.
+    """
+
+    def get(self, request):
+        canton_code = get_plugin_config("network_map", "canton_boundary_code", "")
+        boundary = get_canton_boundary(canton_code)
+        if boundary is None:
+            return HttpResponse(status=204)
+        return JsonResponse(boundary, content_type="application/geo+json")
 
 
 class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, View):

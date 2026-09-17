@@ -28,6 +28,24 @@ class NetworkMapConfig(PluginConfig):
         "request_interval_seconds": 1.0,
         # Per-request timeout for the geocoding HTTP call
         "request_timeout_seconds": 10,
+        # Canton whose border is drawn on the subnet map, as a two-letter
+        # code (e.g. "BE", "AG") or the numeric BFS canton id. Empty means
+        # no border is drawn. The geometry is fetched live from swisstopo,
+        # so no boundary file is shipped with the plugin.
+        "canton_boundary_code": "BE",
+        # Legend label for the border (a proper noun, shown untranslated).
+        # Defaults to the canton name when left empty.
+        "canton_boundary_label": "",
+        # swisstopo feature URL template used to fetch the border. {id} is
+        # replaced with the canton's feature id (the BFS canton number). Keep
+        # sr=4326 so the coordinates arrive as WGS84 lon/lat for the map.
+        "canton_boundary_url_template": (
+            "https://api3.geo.admin.ch/rest/services/api/MapServer"
+            "/ch.swisstopo.swissboundaries3d-kanton-flaeche.fill/{id}"
+            "?geometry=true&returnGeometry=true&sr=4326&f=json"
+        ),
+        # Cache lifetime (seconds) for the fetched border geometry.
+        "canton_boundary_cache_seconds": 60 * 60 * 24 * 30,
     }
 
 
