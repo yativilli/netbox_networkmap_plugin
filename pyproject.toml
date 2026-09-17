@@ -18,14 +18,13 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["network_map"]
 include-package-data = true
 
 [tool.setuptools.dynamic]
 version = { attr = "network_map.__version__" }
 
-[tool.setuptools.package-dir]
-network_map = "network_map"
+[tool.setuptools.packages.find]
+include = ["network_map", "network_map.*"]
 
 [tool.setuptools.package-data]
 network_map = [
