@@ -175,16 +175,31 @@ another canton is a one-line configuration change rather than replacing a
 checked-in file.
 
 - `canton_boundary_code`: the canton to outline, as a two-letter code (e.g.
-  `"BE"`, `"AG"`) or the numeric BFS canton id. **Empty (the default) draws no
-  border.** Change it to e.g. `"AG"` to show Aargau instead of Bern.
+  `"BE"`, `"AG"`) or the numeric BFS canton id. Defaults to `"BE"`; set it to
+  `""` to draw no border.
 - `canton_boundary_label`: legend text for the border. Shown untranslated
   (proper noun); defaults to the canton's name (e.g. "Kanton Bern") when left
   empty.
-- `canton_boundary_url_template`: the swisstopo `map.geo.admin.ch` feature URL
-  used to fetch the geometry, with `{id}` replaced by the canton's BFS feature
-  id. Override it to point at a mirror or a different layer; keep `sr=4326` so
-  the coordinates arrive as WGS84 lon/lat for the map. Requires outbound access
-  to `api3.geo.admin.ch`.
+- `canton_boundary_url_template`: the primary swisstopo WFS URL used to fetch
+  the geometry, with `{id}` replaced by the canton's BFS feature id. WFS is
+  preferred because its raw feature geometry carries interior rings, so
+  neighbouring-canton pockets such as Steinhof SO are cut out of the drawn
+  canton area. Override it to point at a mirror or another layer; keep
+  `srsName=EPSG%3A4326` so coordinates arrive as WGS84 lon/lat for the map.
+  Requires outbound access to `wfs.geo.admin.ch`.
+- `canton_boundary_fallback_url_template`: hole-carrying fallback geometry
+  URL, with `{code}` replaced by the canton's ISO/CH code (e.g. `CH-BE`). The
+  default uses OpenStreetMap/Nominatim's `polygon_geojson` administrative
+  boundary response, which is used automatically when the swisstopo WFS source
+  is unreachable, malformed, or returns no usable geometry. Set it to `""` to
+  disable this fallback. Requires outbound access to
+  `nominatim.openstreetmap.org` unless disabled.
+- `canton_boundary_last_resort_url_template`: last-resort geometry URL, with
+  `{id}` replaced by the canton's BFS feature id. It is used only when the
+  hole-carrying WFS and Nominatim sources both fail. The default is the
+  hole-less `map.geo.admin.ch` feature endpoint, so the border remains visible
+  but neighbouring pockets may be covered. Set it to `""` to disable it.
+  Requires outbound access to `api3.geo.admin.ch` unless disabled.
 - `canton_boundary_cache_seconds`: how long the fetched geometry is cached
   (default 30 days), so the border is fetched at most once per cache period.
 
