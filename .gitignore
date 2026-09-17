@@ -5,3 +5,7 @@ __pycache__/
 network_map/.vscode/
 
 /build/
+
+# Canton boundary geometry is fetched live from swisstopo. Drop a local
+# copy here for offline development without committing it to git.
+/network_map/static/network_map/kanton_*.geojson
