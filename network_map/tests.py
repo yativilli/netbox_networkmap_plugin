@@ -133,6 +133,17 @@ class SvgApiTests(TestCase):
         self.client.force_login(self.user)
         self.assertEqual(self.get_svg("nope").status_code, 404)
 
+    def test_api_root_lists_svg_endpoints(self):
+        self.client.force_login(self.user)
+        url = reverse("plugins-api:network_map-api:api-root")
+        response = self.client.get(url, headers={"accept": "application/json"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("installed-plugins", data)
+        for kind in self.KINDS:
+            self.assertIn(kind, data)
+            self.assertIn(f"/svg/{kind}/", data[kind])
+
     def test_anonymous_is_rejected(self):
         response = self.get_svg("topology")
         self.assertIn(response.status_code, (401, 403))

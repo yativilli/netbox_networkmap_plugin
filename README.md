@@ -81,6 +81,11 @@ The renderers live in `network_map/svg_render.py` and mirror the browser
 exports; text wrapping uses a character-width estimate, so line breaks can
 differ slightly from the on-page "Export as .SVG" buttons.
 
+The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
+API root (`/api/plugins/networkmap/`) links to the three endpoints above. They
+are also documented in the OpenAPI schema (`/api/schema/`) under the
+`network-map` tag.
+
 ## Publishing a New Version
 
 The version is defined once, as `__version__` in `network_map/__init__.py`.
