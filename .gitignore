@@ -1,10 +1,6 @@
 __pycache__/
 /network_map/migrations/
 /network_map.egg-info
-/scripts/map_capture.py
-/scripts/map_compare.py
-/scripts/map_regression.py
-/scripts/*.json
 /.vscode/
 network_map/.vscode/
 
