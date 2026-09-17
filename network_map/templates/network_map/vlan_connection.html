@@ -18,6 +18,11 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" data-details-toggle="open">
                 {% trans "Unfold All" %}
             </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-export-svg
+                    data-export-target=".vlan-connections" data-export-renderer="logical-tree"
+                    data-export-name="vlan_connections">
+                {% trans "Export as .SVG" %}
+            </button>
         </div>
 
         <!-- Gateway -->
@@ -134,4 +139,5 @@
             });
         })();
     </script>
+    <script src="{% static 'network_map/svg_export.js' %}"></script>
 {% endblock content %}

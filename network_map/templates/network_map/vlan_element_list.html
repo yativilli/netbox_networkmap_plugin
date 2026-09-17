@@ -35,8 +35,13 @@
     </div>
 
     <div class="card">
-      <div class="card-header">
+      <div class="card-header d-flex justify-content-between align-items-center">
         <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
+        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-export-svg
+                data-export-target=".vlan-element-list" data-export-renderer="machine-list"
+                data-export-name="vlan_elements">
+          {% trans "Export as .SVG" %}
+        </button>
       </div>
       <div class="card-body">
         <div class="network-node-grid vlan-grid">
@@ -77,4 +82,6 @@
       </div>
     </div>
   </div>
+
+  <script src="{% static 'network_map/svg_export.js' %}"></script>
 {% endblock content %}
