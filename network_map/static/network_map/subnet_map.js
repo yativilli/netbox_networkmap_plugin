@@ -481,8 +481,8 @@
     }
 
     // Calibrated font/geometry metrics; they keep room labels and
-    // count chips from ever overlapping and were tuned against the
-    // render checks in scripts/map_capture.py + scripts/map_compare.py.
+    // count chips from ever overlapping and were tuned against
+    // real floor-plan renderings.
     const CHIP_CHAR_W = 7.4;         // glyph width of the 14px count chip
     const ROOM_LABEL_CHAR_W = 8.6;   // glyph width of the 17px room label
     const FLOOR_LABEL_CHAR_W = 11.7; // glyph width of the 22px floor label

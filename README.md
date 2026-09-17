@@ -195,7 +195,3 @@ done
 Restart NetBox afterwards; catalogs are read once at startup. The `.mo` files
 are committed because the package is built from this tree and does not
 compile them itself.
-
-Note: the local regression tooling in `scripts/map_regression.py` (Git
-ignored) keeps its own copies of the expected UI strings in `UI_EN`/`UI_DE`;
-update those dictionaries when translatable strings change.
