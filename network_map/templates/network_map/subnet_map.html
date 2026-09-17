@@ -27,10 +27,12 @@
                     <span class="legend-cluster" aria-hidden="true"></span>
                     {% trans "Multiple subnets at one address (click to expand)" %}
                 </span>
-                <span class="legend-item">
-                    <span class="legend-canton-border" aria-hidden="true"></span>
-                    {% trans "Canton Bern" %}
-                </span>
+                {% if map_data.canton_label %}
+                    <span class="legend-item">
+                        <span class="legend-canton-border" aria-hidden="true"></span>
+                        {{ map_data.canton_label }}
+                    </span>
+                {% endif %}
             </div>
 
             <button type="button" id="subnet-labels-toggle" class="btn btn-sm btn-outline-secondary flex-shrink-0" aria-pressed="false" title="{% trans 'Show or hide the labels below the pins' %}">
