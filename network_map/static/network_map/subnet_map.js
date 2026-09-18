@@ -93,7 +93,6 @@
         activeKey: null,
         group: null,
         marker: null,
-        layer: null,
         planOverlay: null,
         machines: null,
         badge: null
@@ -256,7 +255,6 @@
         house.activeKey = null;
         house.group = null;
         house.marker = null;
-        house.layer = null;
         house.planOverlay = null;
         house.machines = null;
         if (house.badge) {
@@ -273,19 +271,18 @@
         dashArray: '8 6', fill: true, fillColor: '#c8102e', fillOpacity: 0.10
     };
     let cantonBoundary = null;
+    let cantonLayers = [];
 
     function addCantonBorder(map) {
         if (!cantonBoundary) {
             return;
         }
         const renderer = L.canvas({padding: 0.2});
-        [{style: CANTON_HALO_STYLE}, {style: CANTON_BORDER_STYLE}].forEach((opts) => {
-            L.geoJSON(cantonBoundary, {
-                renderer: renderer,
-                interactive: false,
-                style: opts.style
-            }).addTo(map);
-        });
+        cantonLayers = [CANTON_HALO_STYLE, CANTON_BORDER_STYLE].map((style) => L.geoJSON(cantonBoundary, {
+            renderer: renderer,
+            interactive: false,
+            style: style
+        }).addTo(map));
     }
 
     const expanded = {};
@@ -820,14 +817,11 @@
         if (tileLayer) {
             map.removeLayer(tileLayer);
         }
+        // The canton fill is a translucent red; left in place it would
+        // tint the plain background behind the plan.
+        cantonLayers.forEach((layer) => map.removeLayer(layer));
         mapContainer.classList.add('house-active');
 
-        house.layer = L.layerGroup([
-            L.rectangle(bounds.pad(0.9), {
-                stroke: false, fillColor: '#edeae0',
-                fillOpacity: 1, interactive: false
-            })
-        ]).addTo(map);
         house.planOverlay = createPlanOverlay(plan, bounds);
         house.planOverlay.attach(map);
         house.machines = addMachineMarkers(group, bounds, plan);
@@ -864,9 +858,6 @@
         }
         const map = currentMap;
         const marker = house.marker;
-        if (house.layer) {
-            map.removeLayer(house.layer);
-        }
         if (house.planOverlay) {
             house.planOverlay.detach(map);
         }
@@ -877,6 +868,7 @@
         if (tileLayer) {
             tileLayer.addTo(map);
         }
+        cantonLayers.forEach((layer) => layer.addTo(map));
         mapContainer.classList.remove('house-active');
         if (marker) {
             marker.addTo(map);
@@ -968,6 +960,7 @@
             clearObj(layoutCache);
             resetHouseState();
             tileLayer = null;
+            cantonLayers = [];
         }
         const map = typeof window.LV03 !== 'undefined'
             ? L.map('subnet-map', {
