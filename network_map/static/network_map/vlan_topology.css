@@ -133,6 +133,11 @@
     font-size: 9.5px;
 }
 
+.topo-machine-description {
+    fill: #667885;
+    font-size: 8.5px;
+}
+
 .vlan-topology-empty {
     padding: 2rem;
     text-align: center;

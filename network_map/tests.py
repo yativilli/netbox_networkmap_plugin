@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.contenttypes.models import ContentType
@@ -8,9 +9,9 @@ from django.urls import reverse
 from ipam.models import VLAN, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
-from . import swisstopo
+from . import svg_render, swisstopo
 from .models import VlanInfo
-from .views import SubnetLocationView
+from .views import SubnetLocationView, VlanTopologyView
 
 
 class VlanInfoFromVlanTests(TestCase):
@@ -99,6 +100,91 @@ class ViewAccessTests(TestCase):
         response = self.client.get(reverse("plugins:network_map:vlan_topology"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-export-svg")
+
+
+class TopologyDescriptionTests(TestCase):
+    def test_serialize_topology_includes_machine_description(self):
+        element = SimpleNamespace(
+            name="Test VLAN",
+            prefix="10.0.0.0/24",
+            url="/vlan/1/",
+            machines=[
+                {
+                    "dns_name": "host01",
+                    "ip": "10.0.0.10",
+                    "url": "/ip/1/",
+                    "location": "Site A",
+                    "description": "Finance backup",
+                }
+            ],
+        )
+        data = VlanTopologyView().serialize_topology([element], None)
+        machine = data["subnets"][0]["machines"][0]
+        self.assertEqual(machine["description"], "Finance backup")
+
+    def test_serialize_topology_defaults_description_to_empty(self):
+        element = SimpleNamespace(
+            name="Test VLAN",
+            prefix="10.0.0.0/24",
+            url="/vlan/1/",
+            machines=[
+                {
+                    "dns_name": "host01",
+                    "ip": "10.0.0.10",
+                    "url": "/ip/1/",
+                    "location": "Site A",
+                }
+            ],
+        )
+        data = VlanTopologyView().serialize_topology([element], None)
+        machine = data["subnets"][0]["machines"][0]
+        self.assertEqual(machine["description"], "")
+
+    def test_render_topology_includes_machine_description(self):
+        data = {
+            "center": {"name": "Gateway", "ip": "", "url": ""},
+            "subnets": [
+                {
+                    "name": "Test VLAN",
+                    "prefix": "10.0.0.0/24",
+                    "url": "/vlan/1/",
+                    "machines": [
+                        {
+                            "name": "host01",
+                            "ip": "10.0.0.10",
+                            "url": "/ip/1/",
+                            "description": "Finance backup",
+                        }
+                    ],
+                }
+            ],
+        }
+        svg = svg_render.render_topology(data)
+        self.assertIn('class="topo-machine-description"', svg)
+        self.assertIn("Finance", svg)
+        self.assertIn("backup", svg)
+
+    def test_render_topology_omits_empty_machine_description(self):
+        data = {
+            "center": {"name": "Gateway", "ip": "", "url": ""},
+            "subnets": [
+                {
+                    "name": "Test VLAN",
+                    "prefix": "10.0.0.0/24",
+                    "url": "/vlan/1/",
+                    "machines": [
+                        {
+                            "name": "host01",
+                            "ip": "10.0.0.10",
+                            "url": "/ip/1/",
+                            "description": "",
+                        }
+                    ],
+                }
+            ],
+        }
+        svg = svg_render.render_topology(data)
+        self.assertNotIn('class="topo-machine-description"', svg)
 
 
 class SvgApiTests(TestCase):

@@ -260,16 +260,40 @@
                 const cy = item.pos.y + offsetY;
                 const link = linkEl(item.machine.url, 'topo-machine');
                 link.appendChild(svgEl('circle', { cx, cy, r: MACH_R }));
+
                 const nameLines = wrapLines(item.machine.name, 11, 2);
                 const ip = item.machine.ip || '';
-                const nameBlock = (nameLines.length - 1) * 11;
-                const nameMid = cy - (ip ? 7 : 0) - nameBlock / 2;
-                addText(link, 'topo-machine-label', cx, nameMid, nameLines, 11);
-                if (ip) {
-                    addText(link, 'topo-machine-ip', cx, nameMid + nameBlock / 2 + 12, [ip], 11);
+                const description = String(item.machine.description || '').trim();
+                const descLines = description ? wrapLines(description, 13, 2) : [];
+                const sections = [{ lines: nameLines, lineHeight: 11, cls: 'topo-machine-label' }];
+                if (ip) sections.push({ lines: [ip], lineHeight: 11, cls: 'topo-machine-ip' });
+                if (descLines.length) {
+                    sections.push({
+                        lines: descLines,
+                        lineHeight: 10,
+                        cls: 'topo-machine-description',
+                    });
                 }
+
+                const gap = 1;
+                const totalHeight = sections.reduce(
+                    (height, section, index) =>
+                        height + section.lines.length * section.lineHeight + (index ? gap : 0),
+                    0
+                );
+                let top = cy - totalHeight / 2;
+                sections.forEach((section, index) => {
+                    const sectionHeight = section.lines.length * section.lineHeight;
+                    addText(link, section.cls, cx, top + sectionHeight / 2, section.lines, section.lineHeight);
+                    top += sectionHeight + (index < sections.length - 1 ? gap : 0);
+                });
+
                 const title = svgEl('title');
-                title.textContent = `${item.machine.ip}${item.machine.location ? ` \u00b7 ${item.machine.location}` : ''}`;
+                title.textContent = [
+                    item.machine.ip,
+                    item.machine.location,
+                    description,
+                ].filter(Boolean).join(' \u00b7 ');
                 link.appendChild(title);
                 svg.appendChild(link);
             });
