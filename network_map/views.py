@@ -17,6 +17,7 @@ from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
 from .colors import color_for_location, color_for_location_hex
+from .defaults import DEFAULT_CANTON_BOUNDARY_CODE, DEFAULT_GATEWAY_SEARCH_TAG
 from .geocoding import geocode_sites
 from .models import (
     DetailsElement,
@@ -205,6 +206,7 @@ class VlanTopologyView(CenterDeviceMixin, VlanElementListView):
                             "ip": str(machine["ip"]),
                             "url": machine["url"] or "",
                             "location": str(machine["location"]),
+                            "description": str(machine.get("description") or ""),
                         }
                         for machine in element.machines
                     ],
@@ -366,7 +368,9 @@ class SubnetLocationView(VlanElementListView):
                     }
                 )
 
-        canton_code = get_plugin_config("network_map", "canton_boundary_code", "")
+        canton_code = get_plugin_config(
+            "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
+        )
         canton_url = (
             reverse("plugins:network_map:canton_boundary")
             if resolve_canton_id(canton_code) is not None
@@ -420,7 +424,9 @@ class CantonBoundaryView(NetworkMapPermissionRequiredMixin, View):
     """
 
     def get(self, request):
-        canton_code = get_plugin_config("network_map", "canton_boundary_code", "")
+        canton_code = get_plugin_config(
+            "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
+        )
         boundary = get_canton_boundary(canton_code)
         if boundary is None:
             return HttpResponse(status=204)
@@ -432,7 +438,9 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
         element_obj = []
 
         results = search_backend.search(
-            get_plugin_config("network_map", "gateway_search_tag", "GATEWAY-TAG"),
+            get_plugin_config(
+                "network_map", "gateway_search_tag", DEFAULT_GATEWAY_SEARCH_TAG
+            ),
             lookup=LookupTypes.EXACT,
         )
 

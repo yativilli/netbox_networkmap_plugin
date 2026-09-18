@@ -11,6 +11,7 @@ from . import __version__
 logger = logging.getLogger(__name__)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+COUNTRY_CODES = "ch"
 USER_AGENT = f"network_map_plugin/{__version__} (NetBox network topology plugin)"
 REQUEST_INTERVAL_SECONDS = 1.0
 REQUEST_TIMEOUT_SECONDS = 10
@@ -36,7 +37,9 @@ def geocode_site(site):
             "q": query,
             "format": "jsonv2",
             "limit": 1,
-            "countrycodes": get_plugin_config("network_map", "country_codes", "ch"),
+            "countrycodes": get_plugin_config(
+                "network_map", "country_codes", COUNTRY_CODES
+            ),
         }
     )
     request = urllib.request.Request(

@@ -1,6 +1,8 @@
 # NetBox Network Map Plugin
 
 A plugin for NetBox to display machines on a network map.
+It was developed as a short-term project to improve a companies overview of their installed machines.
+The company is from switzerland, therefore some of the views (esp. Map-View) are swiss-centric.
 
 ## Development
 
@@ -122,25 +124,35 @@ disables the plugin outside that range.
 
 ## Configuration
 
-Optional entry in NetBox's `configuration.py`:
+The two settings normally needed are `gateway_search_tag` and
+`canton_boundary_code`:
 
 ```python
 PLUGINS_CONFIG = {
     "network_map": {
         "gateway_search_tag": "GATEWAY-TAG",
-        "nominatim_url": "https://nominatim.openstreetmap.org/search",
-        "country_codes": "ch",
-        "request_interval_seconds": 1.0,
-        "request_timeout_seconds": 10,
         "canton_boundary_code": "BE",
-        "canton_boundary_label": "",
-        "canton_boundary_cache_seconds": 2592000,
     },
 }
 ```
 
 - `gateway_search_tag`: the device tag (or other exact-match search term)
   the Vlan-Connections view uses to locate the central gateway object.
+- `canton_boundary_code`: the canton border drawn on the Subnet-Map, as a
+  two-letter code (e.g. `"BE"`, `"AG"`) or numeric BFS canton id. Defaults to
+  `"BE"`; set it to `""` to disable the border.
+
+All other settings have sensible code defaults and can remain unset.
+
+The canton geometry is fetched live and cached; it is not shipped with the
+plugin. The border is served through `/plugins/networkmap/subnet-map/canton-boundary/`
+under the same `network_map.view_vlanelement` permission as the map itself. If
+the geometry cannot be fetched, the map renders without a border.
+
+<details>
+<summary>Advanced settings</summary>
+
+Advanced overrides can be added to the same `PLUGINS_CONFIG` dictionary.
 
 ### Site geocoding
 
@@ -148,65 +160,33 @@ Sites shown on the Subnet-Map need coordinates. If a site has no latitude and
 longitude stored in NetBox, the plugin looks them up from the site's physical
 address (or name) via a geocoding service and writes the result back to the
 Site, so every site is geocoded only once and the values can be corrected in
-the NetBox UI afterwards. The following settings control that lookup:
+the NetBox UI afterwards.
 
-- `nominatim_url`: the geocoding endpoint used for the lookup. Defaults to
-  OpenStreetMap's public Nominatim service; point it at a self-hosted instance
-  for privacy or to avoid public rate limits.
-- `country_codes`: comma-separated country filter for the address search
-  (default `"ch"`), so an address such as "Bahnhofstrasse 1" resolves in
-  Switzerland instead of Germany.
-- `request_interval_seconds`: minimum delay between geocoding requests
-  (default 1.0, per Nominatim's usage policy) when several sites need to be
-  geocoded during one page load.
-- `request_timeout_seconds`: how long a single lookup may take (default 10)
-  before it is given up; without a timeout a hanging request would stall
-  rendering of the Subnet-Map page.
+- `nominatim_url`: geocoding endpoint; defaults to OpenStreetMap's public
+  Nominatim service.
+- `country_codes`: comma-separated country filter for the address search;
+  defaults to `"ch"`.
+- `request_interval_seconds`: minimum delay between geocoding requests;
+  defaults to `1.0`.
+- `request_timeout_seconds`: timeout for a single lookup; defaults to `10`.
 
-All values are optional; omitting them reproduces the plugin's previous
-hard-coded behaviour.
+### Canton border sources
 
-### Canton border
+- `canton_boundary_label`: legend text for the border; defaults to the canton
+  name when left empty.
+- `canton_boundary_url_template`: primary swisstopo WFS URL, with `{id}`
+  replaced by the BFS canton id. WFS is preferred because it carries interior
+  rings, preserving canton pockets such as Steinhof SO. Keep
+  `srsName=EPSG%3A4326` for WGS84 coordinates.
+- `canton_boundary_fallback_url_template`: hole-carrying Nominatim fallback
+  URL, with `{code}` replaced by the canton's ISO/CH code, e.g. `CH-BE`. Used
+  automatically when WFS is unavailable.
+- `canton_boundary_last_resort_url_template`: hole-less `map.geo.admin.ch`
+  feature endpoint, used when both hole-carrying sources fail.
+- `canton_boundary_cache_seconds`: cache lifetime for fetched geometry;
+  defaults to 30 days.
 
-The Subnet-Map can draw the border of a single canton over the tiles. The
-geometry is **not** shipped with the plugin (no data file lives in the
-repository); it is fetched live from swisstopo and cached, so swapping to
-another canton is a one-line configuration change rather than replacing a
-checked-in file.
-
-- `canton_boundary_code`: the canton to outline, as a two-letter code (e.g.
-  `"BE"`, `"AG"`) or the numeric BFS canton id. Defaults to `"BE"`; set it to
-  `""` to draw no border.
-- `canton_boundary_label`: legend text for the border. Shown untranslated
-  (proper noun); defaults to the canton's name (e.g. "Kanton Bern") when left
-  empty.
-- `canton_boundary_url_template`: the primary swisstopo WFS URL used to fetch
-  the geometry, with `{id}` replaced by the canton's BFS feature id. WFS is
-  preferred because its raw feature geometry carries interior rings, so
-  neighbouring-canton pockets such as Steinhof SO are cut out of the drawn
-  canton area. Override it to point at a mirror or another layer; keep
-  `srsName=EPSG%3A4326` so coordinates arrive as WGS84 lon/lat for the map.
-  Requires outbound access to `wfs.geo.admin.ch`.
-- `canton_boundary_fallback_url_template`: hole-carrying fallback geometry
-  URL, with `{code}` replaced by the canton's ISO/CH code (e.g. `CH-BE`). The
-  default uses OpenStreetMap/Nominatim's `polygon_geojson` administrative
-  boundary response, which is used automatically when the swisstopo WFS source
-  is unreachable, malformed, or returns no usable geometry. Set it to `""` to
-  disable this fallback. Requires outbound access to
-  `nominatim.openstreetmap.org` unless disabled.
-- `canton_boundary_last_resort_url_template`: last-resort geometry URL, with
-  `{id}` replaced by the canton's BFS feature id. It is used only when the
-  hole-carrying WFS and Nominatim sources both fail. The default is the
-  hole-less `map.geo.admin.ch` feature endpoint, so the border remains visible
-  but neighbouring pockets may be covered. Set it to `""` to disable it.
-  Requires outbound access to `api3.geo.admin.ch` unless disabled.
-- `canton_boundary_cache_seconds`: how long the fetched geometry is cached
-  (default 30 days), so the border is fetched at most once per cache period.
-
-The border is fetched and served through the plugin's own API endpoint
-(`/plugins/networkmap/subnet-map/canton-boundary/`) under the same
-`network_map.view_vlanelement` permission as the map itself. If the geometry
-cannot be fetched, the map simply renders without a border.
+</details>
 
 ## Translations
 
