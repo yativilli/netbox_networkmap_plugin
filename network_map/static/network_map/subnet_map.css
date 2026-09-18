@@ -321,7 +321,7 @@
 /* house-plan mode */
 .subnet-map.house-active,
 .subnet-map.house-active .leaflet-container {
-    background: #edeae0;
+    background: #f8f5ec;
 }
 
 .house-plan-badge {
