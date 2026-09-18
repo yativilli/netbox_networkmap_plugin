@@ -54,6 +54,7 @@ TOPO_STYLE = "\n".join(
         ".topo-machine circle { fill: #c9ecf2; stroke: #8fbcc6; stroke-width: 1.5; }",
         ".topo-machine-label { fill: #163a47; font-size: 10.5px; }",
         ".topo-machine-ip { fill: #8598a3; font-size: 9.5px; }",
+        ".topo-machine-description { fill: #667885; font-size: 8.5px; }",
     )
 )
 
@@ -468,6 +469,37 @@ def _add_text(out, cls, x, y, lines, line_height):
     out.append(f'<text x="{x}" text-anchor="middle" class="{cls}">{spans}</text>')
 
 
+def _machine_sections(machine):
+    sections = [
+        (wrap_lines(machine["name"], 11, 2), 11, "topo-machine-label"),
+    ]
+
+    ip = str(machine.get("ip") or "")
+    if ip:
+        sections.append(([ip], 11, "topo-machine-ip"))
+
+    description = str(machine.get("description") or "").strip()
+    if description:
+        sections.append(
+            (wrap_lines(description, 13, 2), 10, "topo-machine-description")
+        )
+    return sections
+
+
+def _draw_machine_text(out, cx, cy, machine):
+    sections = _machine_sections(machine)
+    gap = 1
+    total_height = sum(
+        len(lines) * line_height + (gap if index else 0)
+        for index, (lines, line_height, _cls) in enumerate(sections)
+    )
+    top = cy - total_height / 2
+    for lines, line_height, cls in sections:
+        section_height = len(lines) * line_height
+        _add_text(out, cls, cx, top + section_height / 2, lines, line_height)
+        top += section_height + gap
+
+
 def render_topology(topology_data):
     subnets = topology_data.get("subnets", [])
     center = topology_data.get("center", {})
@@ -550,20 +582,7 @@ def render_topology(topology_data):
             out.append(
                 f'<g class="topo-machine"><circle cx="{cx}" cy="{cy}" r="{MACH_R}"/>'
             )
-            name_lines = wrap_lines(machine["name"], 11, 2)
-            ip = machine["ip"]
-            name_block = (len(name_lines) - 1) * 11
-            name_mid = cy - (7 if ip else 0) - name_block / 2
-            _add_text(out, "topo-machine-label", cx, name_mid, name_lines, 11)
-            if ip:
-                _add_text(
-                    out,
-                    "topo-machine-ip",
-                    cx,
-                    name_mid + name_block / 2 + 12,
-                    [ip],
-                    11,
-                )
+            _draw_machine_text(out, cx, cy, machine)
             out.append("</g>")
 
     for subnet, x, y, _machines in layout:
