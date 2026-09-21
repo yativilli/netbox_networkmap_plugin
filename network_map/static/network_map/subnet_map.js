@@ -93,6 +93,7 @@
         activeKey: null,
         group: null,
         marker: null,
+        layer: null,
         planOverlay: null,
         machines: null,
         badge: null
@@ -255,6 +256,7 @@
         house.activeKey = null;
         house.group = null;
         house.marker = null;
+        house.layer = null;
         house.planOverlay = null;
         house.machines = null;
         if (house.badge) {
@@ -822,6 +824,12 @@
         cantonLayers.forEach((layer) => map.removeLayer(layer));
         mapContainer.classList.add('house-active');
 
+        house.layer = L.layerGroup([
+            L.rectangle(bounds.pad(0.9), {
+                stroke: false, fillColor: '#f8f5ec',
+                fillOpacity: 1, interactive: false
+            })
+        ]).addTo(map);
         house.planOverlay = createPlanOverlay(plan, bounds);
         house.planOverlay.attach(map);
         house.machines = addMachineMarkers(group, bounds, plan);
@@ -858,6 +866,9 @@
         }
         const map = currentMap;
         const marker = house.marker;
+        if (house.layer) {
+            map.removeLayer(house.layer);
+        }
         if (house.planOverlay) {
             house.planOverlay.detach(map);
         }
