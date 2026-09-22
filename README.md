@@ -107,7 +107,10 @@ ends with the canton on every side instead of only where its shape happens to
 touch the bounding box (Bern's south-east corner is the canton's south, while
 the Valais lies south of the rest of it). Sites outside the cutout are clamped
 to its edge and counted. Tiles and border are cut at the map's own edge, and the
-list of sites starts below the picture. A site is drawn as one pin rather
+list of sites starts below the picture. That list is ordered by proximity - a
+nearest-neighbour walk over the pins from the north-west - so the places that
+lie together are listed together rather than in the order their subnets happen
+to arrive. A site is drawn as one pin rather
 than one per subnet: it carries its number, is coloured like the location it
 stands for and listed below the picture with the subnets that belong to it,
 which stays readable in a dense canton where name boxes would overlap. A

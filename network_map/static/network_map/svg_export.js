@@ -1010,6 +1010,27 @@
                         point.x > width || point.y > height)
                 };
             });
+            // Sites that are close together on the map belong next to each
+            // other in the list too: start in the north-west and always take
+            // the closest site that is still missing. Sites of one place share
+            // their coordinates and therefore end up side by side.
+            const pool = listed.slice().sort((a, b) => (a.x + a.y) - (b.x + b.y));
+            let previous = pool.shift();
+            listed.length = 0;
+            listed.push(previous);
+            while (pool.length) {
+                let nearest = 0;
+                let shortest = Infinity;
+                pool.forEach((site, index) => {
+                    const distance = Math.hypot(site.x - previous.x, site.y - previous.y);
+                    if (distance < shortest) {
+                        shortest = distance;
+                        nearest = index;
+                    }
+                });
+                previous = pool.splice(nearest, 1)[0];
+                listed.push(previous);
+            }
             // Pins may not sit on top of each other either; one that has to
             // move stays near the site it stands for.
             const inset = MAP_PIN_R + 4;
