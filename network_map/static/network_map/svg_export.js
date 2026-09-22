@@ -23,7 +23,10 @@
         '.n-sub { font-size: 11px; fill: #6c757d; }',
         '.i-label { font-size: 11.5px; font-weight: 700; fill: #6b7280; }',
         '.i-value { font-size: 11.5px; }',
-        '.map-border { fill: none; stroke: #c8102e; stroke-width: 2; stroke-dasharray: 8 6; }',
+        '.map-border { fill: none; stroke: #c8102e; stroke-width: 2;',
+        '  stroke-dasharray: 8 6; }',
+        '.map-border-fill { fill: #c8102e; fill-opacity: 0.1;',
+        '  fill-rule: evenodd; }',
         '.map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7; stroke-opacity: 0.4; }',
         '.map-pin { stroke: #ffffff; stroke-width: 2; }',
         '.map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }',
@@ -34,9 +37,6 @@
         '.map-scale-label { font-size: 10px; fill: #212529; }',
         '.map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }',
         '.map-plan { fill: #f8f5ec; stroke: #8a8378; stroke-width: 2; }',
-        '.map-tip { fill: rgba(255, 255, 255, 0.92); stroke: #ced4da; stroke-width: 1; }',
-        '.map-tip-site { font-size: 11px; font-weight: 700; fill: #212529; }',
-        '.map-tip-sub { font-size: 10.5px; fill: #6c757d; }',
         '.map-machine { stroke-width: 2; }',
         '.map-machine.is-vm { stroke-width: 3; }',
         '.map-machine-name { font-size: 10.5px; font-weight: 700; fill: #1f2937;',
@@ -342,40 +342,12 @@
     const MAP_PIN_R = 6;
     const MAP_PIN_STEP = 15;
     const MAP_PIN_COLS = 6;
-    const MAP_MAX_TILES = 320;
+    const MAP_MAX_TILES = 64;
+    // The map picture is drawn for this long edge, and its tiles are fetched
+    // at the zoom that fills that size: an overview comes out readable whether
+    // the screen was zoomed to the canton or to a single street.
+    const MAP_EDGE = 1200;
     const SCALE_STEPS_M = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
-
-    async function waitForTiles(container, frame) {
-        let lastTotal = -1;
-        let stableAttempts = 0;
-        for (let attempt = 0; attempt < 400; attempt += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 150));
-            let total = 0;
-            let ready = 0;
-            container.querySelectorAll('.leaflet-tile-pane img').forEach((img) => {
-                if (frame) {
-                    const box = img.getBoundingClientRect();
-                    if (box.right < frame.x || box.bottom < frame.y ||
-                        box.left > frame.x + frame.width || box.top > frame.y + frame.height) {
-                        return;
-                    }
-                }
-                total += 1;
-                const src = img.currentSrc || img.src || '';
-                const failed = img.complete && !img.naturalWidth && !src.startsWith('data:');
-                if ((img.complete && (img.naturalWidth || src.startsWith('data:'))) ||
-                    failed || img.classList.contains('leaflet-tile-loaded')) {
-                    ready += 1;
-                }
-            });
-            if (total && ready === total) return;
-            stableAttempts = total && total === lastTotal ? stableAttempts + 1 : 0;
-            lastTotal = total;
-            // A few permanently failing tiles must not turn the spinner into
-            // an endless wait; give them a few seconds after the count settles.
-            if (total && stableAttempts > 20) return;
-        }
-    }
 
     function mapRings(geojson) {
         const rings = [];
@@ -401,60 +373,141 @@
         return parts.join('');
     }
 
-    function boundaryRingPoints(boundary) {
-        return mapRings(boundary || {features: []}).flat().map(
-            (position) => L.latLng(Number(position[1]), Number(position[0])));
+    // Tiles are drawn cross origin, which taints the canvas, so each one is
+    // fetched again (plain CORS GET) and re-encoded through a canvas. A tile
+    // the server refuses simply stays out of the picture.
+    function embedTile(url) {
+        return fetch(url, { mode: 'cors', credentials: 'omit' })
+            .then((response) => (response.ok ? response.blob() : null))
+            .then((blob) => {
+                if (!blob) return null;
+                const objectUrl = URL.createObjectURL(blob);
+                return new Promise((resolve) => {
+                    const image = new Image();
+                    image.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = image.naturalWidth;
+                        canvas.height = image.naturalHeight;
+                        canvas.getContext('2d').drawImage(image, 0, 0);
+                        URL.revokeObjectURL(objectUrl);
+                        resolve(canvas.toDataURL('image/jpeg', 0.82));
+                    };
+                    image.onerror = () => {
+                        URL.revokeObjectURL(objectUrl);
+                        resolve(null);
+                    };
+                    image.src = objectUrl;
+                });
+            })
+            .catch(() => null);
     }
 
-    // The live tiles are drawn cross origin, which taints the canvas, so the
-    // same URLs are fetched again (plain CORS GET) and re-encoded. When the
-    // tile server refuses, the export stays vector-only.
-    async function embedTile(entry, url) {
-        let objectUrl = null;
-        try {
-            const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
-            if (!response.ok) return null;
-            objectUrl = URL.createObjectURL(await response.blob());
-            const image = await new Promise((resolve, reject) => {
-                const loaded = new Image();
-                loaded.onload = () => resolve(loaded);
-                loaded.onerror = () => reject(new Error('tile load failed'));
-                loaded.src = objectUrl;
-            });
-            const canvas = document.createElement('canvas');
-            canvas.width = image.naturalWidth;
-            canvas.height = image.naturalHeight;
-            canvas.getContext('2d').drawImage(image, 0, 0);
-            return {
-                x: entry.x, y: entry.y, w: entry.w, h: entry.h,
-                href: canvas.toDataURL('image/jpeg', 0.82)
-            };
-        } catch (error) {
-            // No CORS on the tile server: keep the export vector-only.
-            return null;
-        } finally {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-        }
-    }
-
-    async function rasterizeTiles(entries) {
-        const wanted = [];
-        entries.slice(0, MAP_MAX_TILES).forEach((entry) => {
-            const url = entry.img.currentSrc || entry.img.src;
-            if (url && !url.startsWith('data:')) wanted.push({entry, url});
-        });
-        // One tile after another costs several seconds for a whole viewport,
-        // which the user watches as a spinning button; a few parallel
-        // requests keep that wait short.
-        const BATCH = 8;
-        const images = [];
-        for (let start = 0; start < wanted.length; start += BATCH) {
-            const batch = await Promise.all(wanted.slice(start, start + BATCH).map(
-                (tile) => embedTile(tile.entry, tile.url)
+    // One tile after another costs seconds for a whole canton, which the user
+    // watches as a spinning button; a few parallel requests keep it short
+    // without flooding the tile server.
+    async function embedTiles(items) {
+        const step = 8;
+        const done = [];
+        for (let start = 0; start < items.length; start += step) {
+            const settled = await Promise.all(items.slice(start, start + step).map(
+                async (item) => {
+                    const href = await embedTile(item.url);
+                    if (!href) return null;
+                    return {x: item.x, y: item.y, w: item.w, h: item.h, href};
+                }
             ));
-            images.push(...batch.filter(Boolean));
+            done.push(...settled.filter(Boolean));
         }
-        return images;
+        return done;
+    }
+
+    // The tiles the view happens to hold, for a page that does not say how its
+    // grid is addressed.
+    function screenTiles(container, origin, frame, scale) {
+        const entries = [];
+        container.querySelectorAll('.leaflet-tile-pane img').forEach((img) => {
+            const box = img.getBoundingClientRect();
+            if (box.right < frame.x || box.bottom < frame.y ||
+                box.left > frame.x + frame.width || box.top > frame.y + frame.height) return;
+            const url = img.currentSrc || img.src;
+            if (!url || url.startsWith('data:')) return;
+            entries.push({
+                url,
+                x: (box.left - origin.left - frame.x) * scale,
+                y: (box.top - origin.top - frame.y) * scale,
+                w: box.width * scale,
+                h: box.height * scale
+            });
+        });
+        return entries.slice(0, MAP_MAX_TILES);
+    }
+
+    // Tile columns and rows covering a frame at a zoom, together with the
+    // frame's own place in that grid, so the tiles can be laid down without a
+    // second projection step.
+    function tileSpan(map, frame, info, zoom) {
+        const tileSize = Number(info.tileSize) || 256;
+        const nw = map.project(map.containerPointToLatLng([frame.x, frame.y]), zoom);
+        const se = map.project(
+            map.containerPointToLatLng([frame.x + frame.width, frame.y + frame.height]),
+            zoom);
+        const fromX = Math.floor(nw.x / tileSize);
+        const fromY = Math.floor(nw.y / tileSize);
+        const toX = Math.floor((se.x - 1) / tileSize);
+        const toY = Math.floor((se.y - 1) / tileSize);
+        return {
+            tileSize, originX: nw.x, originY: nw.y, fromX, fromY, toX, toY,
+            count: Math.max(0, toX - fromX + 1) * Math.max(0, toY - fromY + 1)
+        };
+    }
+
+    // Zoom whose tiles fill the frame at MAP_EDGE px on the long edge. The
+    // LV03 grid does not simply halve its resolution per step, so the zooms
+    // are measured against the target and the closest one wins; the tile
+    // budget has the last word.
+    function pickTileZoom(map, frame, info) {
+        const crs = map.options.crs;
+        const viewZoom = map.getZoom();
+        const long = Math.max(frame.width, frame.height, 1);
+        const edgeAt = (zoom) => long * crs.scale(zoom) / crs.scale(viewZoom);
+        const lowest = Math.max(0, Number(info.minNativeZoom) || 0);
+        const highest = Number(info.maxNativeZoom) || 27;
+        let best = viewZoom;
+        let gap = Math.abs(Math.log(edgeAt(viewZoom) / MAP_EDGE));
+        for (let zoom = lowest; zoom <= highest; zoom += 1) {
+            const candidate = Math.abs(Math.log(edgeAt(zoom) / MAP_EDGE));
+            if (candidate < gap) {
+                best = zoom;
+                gap = candidate;
+            }
+        }
+        while (best > lowest && tileSpan(map, frame, info, best).count > MAP_MAX_TILES) {
+            best -= 1;
+        }
+        return best;
+    }
+
+    // The grid for a frame at a zoom: complete whatever the screen shows,
+    // because these tiles are requested for the picture instead of read off
+    // the map.
+    async function gridTiles(map, frame, info, zoom) {
+        const span = tileSpan(map, frame, info, zoom);
+        const wanted = [];
+        for (let x = span.fromX; x <= span.toX; x += 1) {
+            for (let y = span.fromY; y <= span.toY; y += 1) {
+                // The LV03 grid starts at 0/0; the tile server answers 400
+                // for the negative indices outside the country.
+                if (x < 0 || y < 0) continue;
+                wanted.push({
+                    url: L.Util.template(info.url, {z: zoom, x, y}),
+                    x: x * span.tileSize - span.originX,
+                    y: y * span.tileSize - span.originY,
+                    w: span.tileSize,
+                    h: span.tileSize
+                });
+            }
+        }
+        return embedTiles(wanted.slice(0, MAP_MAX_TILES));
     }
 
     function mapClusters(pins) {
@@ -482,18 +535,26 @@
         return { bar, label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m` };
     }
 
-    function mapCropPoints(map, size, points) {
+    function mapCrop(map, size, boundary) {
         const full = {x: 0, y: 0, width: size.x, height: size.y};
-        if (!points.length) return full;
-        const projected = points.map((point) => map.latLngToContainerPoint(point));
-        const xs = projected.map((point) => point.x);
-        const ys = projected.map((point) => point.y);
-        const inset = 24;
+        if (!boundary) return full;
+        let bounds;
+        try {
+            bounds = L.geoJSON(boundary).getBounds();
+        } catch (error) {
+            return full;
+        }
+        if (!bounds.isValid()) return full;
+        const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+        const se = map.latLngToContainerPoint(bounds.getSouthEast());
+        // As snug as the drawing allows: only the border line and its white
+        // halo hang over the bounding box. The canton stays the frame even
+        // when the screen shows less of it, because the tiles of the picture
+        // are fetched for that frame rather than read off the screen.
+        const inset = 4;
         return {
-            x: Math.min(...xs) - inset,
-            y: Math.min(...ys) - inset,
-            width: Math.max(...xs) - Math.min(...xs) + 2 * inset,
-            height: Math.max(...ys) - Math.min(...ys) + 2 * inset
+            x: nw.x - inset, y: nw.y - inset,
+            width: se.x - nw.x + 2 * inset, height: se.y - nw.y + 2 * inset
         };
     }
 
@@ -532,20 +593,6 @@
 
     // Labels are always exported, also while the page hides them: the file
     // is meant to be read on its own.
-    function pinLabel(out, x, y, site, sub) {
-        const siteFont = `700 11px ${FONT}`;
-        const subFont = `400 10.5px ${FONT}`;
-        const siteText = clipTo(site, siteFont, 180);
-        const subText = clipTo(sub, subFont, 180);
-        const boxW = Math.max(textWidth(siteText, siteFont), textWidth(subText, subFont)) + 12;
-        out.push(
-            `<rect class="map-tip" x="${(x - boxW / 2).toFixed(1)}" y="${y.toFixed(1)}" ` +
-            `width="${boxW.toFixed(1)}" height="27" rx="4"/>`
-        );
-        out.push(text(Math.round(x - boxW / 2 + 6), y + 11, siteText, 'map-tip-site'));
-        out.push(text(Math.round(x - boxW / 2 + 6), y + 23, subText, 'map-tip-sub'));
-    }
-
     function clipTo(value, font, maxWidth) {
         const text2 = String(value || '');
         if (textWidth(text2, font) <= maxWidth) return text2;
@@ -782,26 +829,6 @@
         const pins = data.pins || [];
         const house = window.__subnetMapHouse;
         const boundary = window.__subnetMapBoundary;
-        const boundaryPoints = boundaryRingPoints(boundary);
-        let restoreView = null;
-        let boundaryFrame = null;
-
-        if (!house && boundaryPoints.length) {
-            restoreView = {center: map.getCenter(), zoom: map.getZoom()};
-            try {
-                map.invalidateSize({animate: false});
-                if (!window.__subnetMapFitPoints(boundaryPoints, 0.92)) {
-                    map.fitBounds(L.latLngBounds(boundaryPoints).pad(0.08), {animate: false});
-                }
-                map.invalidateSize({animate: false});
-                boundaryFrame = mapCropPoints(map, map.getSize(), boundaryPoints);
-                await waitForTiles(container, boundaryFrame);
-            } catch (error) {
-                boundaryFrame = null;
-                restoreView = null;
-            }
-        }
-
         const origin = container.getBoundingClientRect();
         const size = map.getSize();
         const machines = house
@@ -810,12 +837,15 @@
 
         // A floor plan is stretched until every machine has room for its
         // label, so a dense plan comes out larger instead of turning its
-        // labels into noise. Region views keep the screen's scale.
+        // labels into noise. A regional view picks its scale from the tile
+        // grid it fetches for the picture instead.
         const rawProject = (latlng) => map.latLngToContainerPoint(latlng);
         const rawFrame = house ? planRect(house, rawProject) : null;
         let mapScale = 1;
         let crowded = false;
         let frame;
+        let gridZoom = null;
+        const tileInfo = window.__subnetMapTiles;
         if (rawFrame) {
             frame = {
                 x: rawFrame.x - PLAN_MARGIN, y: rawFrame.y - PLAN_MARGIN,
@@ -836,7 +866,15 @@
         } else {
             frame = house
                 ? {x: 0, y: 0, width: size.x, height: size.y}
-                : (boundaryFrame || mapCropPoints(map, size, boundaryPoints));
+                : mapCrop(map, size, boundary);
+            if (!house && tileInfo && tileInfo.url) {
+                // Tiles come for the picture, not off the screen, so the frame
+                // may reach beyond the viewport and keep its detail however
+                // far the view happens to be zoomed.
+                gridZoom = pickTileZoom(map, frame, tileInfo);
+                mapScale = map.options.crs.scale(gridZoom) /
+                    map.options.crs.scale(map.getZoom());
+            }
         }
         const width = frame.width * mapScale;
         const height = frame.height * mapScale;
@@ -845,20 +883,9 @@
             return {x: (p.x - frame.x) * mapScale, y: (p.y - frame.y) * mapScale};
         };
 
-        const tileEntries = [];
-        container.querySelectorAll('.leaflet-tile-pane img').forEach((img) => {
-            const box = img.getBoundingClientRect();
-            if (box.right < frame.x || box.bottom < frame.y ||
-                box.left > frame.x + frame.width || box.top > frame.y + frame.height) return;
-            tileEntries.push({
-                img,
-                x: (box.left - origin.left - frame.x) * mapScale,
-                y: (box.top - origin.top - frame.y) * mapScale,
-                w: box.width * mapScale,
-                h: box.height * mapScale
-            });
-        });
-        const tiles = await rasterizeTiles(tileEntries);
+        const tiles = gridZoom === null
+            ? await embedTiles(screenTiles(container, origin, frame, mapScale))
+            : await gridTiles(map, frame, tileInfo, gridZoom);
 
         const out = [];
         out.push(
@@ -879,18 +906,28 @@
             const rings = mapRings(boundary || { features: [] });
             if (rings.length) {
                 const path = mapBorderPath(rings, toExport);
+                // The canton tint the page shows over its area, holes and
+                // all; it goes under the line so the dashes stay crisp.
+                out.push(`<path class="map-border-fill" d="${path}"/>`);
                 out.push(`<path class="map-border-halo" d="${path}"/>`);
                 out.push(`<path class="map-border" d="${path}"/>`);
             }
         }
 
         let outside = 0;
-        const numbered = house && crowded ? machines : [];
+        let numbered = house && crowded ? machines : [];
         if (house) {
             drawMachines(house, toExport, crowded,
                 { x: 0, y: 0, width, height }, out);
         } else {
-            mapClusters(pins).forEach((cluster) => {
+            // Sites carry a number and are listed below the map. A name box
+            // per site has to overlap its neighbour in a dense canton - a
+            // number never does, and the list underneath has room for the
+            // subnets that belong to it.
+            const clusters = mapClusters(pins);
+            const listed = [];
+            const badges = [];
+            clusters.forEach((cluster) => {
                 const point = toExport(L.latLng(cluster.pins[0].lat, cluster.pins[0].lon));
                 const inset = MAP_PIN_R + 4;
                 const clamped = point.x < 0 || point.y < 0 ||
@@ -903,7 +940,6 @@
                         `<circle class="map-offframe" cx="${x.toFixed(1)}" ` +
                         `cy="${y.toFixed(1)}" r="4"/>`
                     );
-                    return;
                 }
                 const cols = Math.min(MAP_PIN_COLS, cluster.pins.length);
                 const rows = Math.ceil(cluster.pins.length / cols);
@@ -916,9 +952,33 @@
                         `fill="${pin.color || '#6c757d'}"/>`
                     );
                 });
-                const sub = cluster.pins.map((pin) => pin.prefix || pin.subnet).join(', ');
-                pinLabel(out, x, y + ((rows - 1) * MAP_PIN_STEP) / 2 + 10, cluster.site, sub);
+                badges.push({
+                    x: x - ((cols - 1) * MAP_PIN_STEP) / 2 - MAP_PIN_R - 5,
+                    y: y - ((rows - 1) * MAP_PIN_STEP) / 2 - MAP_PIN_R - 5
+                });
+                listed.push({
+                    name: cluster.site,
+                    description: cluster.pins.map((pin) =>
+                        (pin.prefix ? `${pin.subnet} \u2014 ${pin.prefix}` : pin.subnet)
+                    ).join(' \u00b7 '),
+                    ip: '',
+                    color: cluster.pins[0].color || '#6c757d',
+                    physical: true
+                });
             });
+            // Numbers may not sit on top of each other either; a badge that
+            // has to move stays near its dots.
+            spreadOut(badges, MACHINE_BADGE, { x: 0, y: 0, width, height });
+            badges.forEach((badge, index) => {
+                out.push(
+                    `<circle class="map-machine" cx="${badge.x.toFixed(1)}" ` +
+                    `cy="${badge.y.toFixed(1)}" r="${MAP_PIN_R + 3}" ` +
+                    `fill="${listed[index].color}" stroke="#ffffff"/>`
+                );
+                out.push(text(Math.round(badge.x), Math.round(badge.y + 3), index + 1,
+                    'map-machine-num'));
+            });
+            numbered = listed;
         }
 
         const scale = scaleBar(map, frame, mapScale);
@@ -939,30 +999,37 @@
             seen.add(key);
             return true;
         });
-        // Numbered lists want more width than a narrow plan strip offers.
+        // Numbered lists want more width than a narrow plan strip offers; a
+        // site list is short, so it may spread over columns early.
         const listColumns = numbered.length
-            ? Math.max(1, Math.min(4, Math.ceil(numbered.length / 40)))
+            ? Math.max(1, Math.min(4, Math.ceil(numbered.length / (house ? 40 : 6))))
             : 1;
         const listWidth = (listColumns * 320 + 24) * TF;
         const outWidth = Math.max(width, listWidth);
         const step = 16 * TF;
         let y = height + 26 * TF;
         y = machineList(numbered, listWidth, y, out);
-        entries.slice(0, 14).forEach((pin) => {
-            const value = pin.prefix ? `${pin.subnet} — ${pin.prefix}` : pin.subnet;
-            out.push(
-                `<circle class="map-pin" cx="${30 * TF}" cy="${(y - 4 * TF).toFixed(1)}" ` +
-                `r="${((MAP_PIN_R - 1) * TF).toFixed(1)}" ` +
-                `fill="${pin.color || '#6c757d'}"/>`
-            );
-            out.push(text(42 * TF, y, value, 'map-legend'));
-            y += step;
-        });
-        if (entries.length > 14) {
-            const further = (data.ui || {}).export_further_subnets ||
-                '… further subnets not listed';
-            out.push(text(42 * TF, y, `… ${entries.length - 14} ${further}`, 'map-note'));
-            y += step;
+        // A floor plan only shows one site, so its legend lists the subnets
+        // that are visible on it; the regional picture lists them per site
+        // above and needs no second legend.
+        if (house) {
+            entries.slice(0, 14).forEach((pin) => {
+                const value = pin.prefix ? `${pin.subnet} — ${pin.prefix}` : pin.subnet;
+                out.push(
+                    `<circle class="map-pin" cx="${30 * TF}" ` +
+                    `cy="${(y - 4 * TF).toFixed(1)}" ` +
+                    `r="${((MAP_PIN_R - 1) * TF).toFixed(1)}" ` +
+                    `fill="${pin.color || '#6c757d'}"/>`
+                );
+                out.push(text(42 * TF, y, value, 'map-legend'));
+                y += step;
+            });
+            if (entries.length > 14) {
+                const further = (data.ui || {}).export_further_subnets ||
+                    '… further subnets not listed';
+                out.push(text(42 * TF, y, `… ${entries.length - 14} ${further}`, 'map-note'));
+                y += step;
+            }
         }
         if (data.canton_label && !house) {
             out.push(`<path class="map-legend-border" d="M${24 * TF},${(y - 4 * TF).toFixed(1)} ` +
@@ -981,10 +1048,6 @@
             (data.ui || {}).attribution || 'Map data: © swisstopo',
             'map-attribution'
         ));
-        if (restoreView) {
-            map.setView(restoreView.center, restoreView.zoom, {animate: false});
-            map.invalidateSize({animate: false});
-        }
         // A floor plan is a drawing meant to be printed at any size; the
         // regional map is a picture of map tiles, which comes out as PNG.
         return {
@@ -1002,8 +1065,8 @@
     // Rasterising multiplies the canvas, because a canton map printed at its
     // natural size has labels too small to read; browsers cap canvas sizes,
     // so the factor shrinks for very large pictures.
-    const PNG_SCALE = 3;
-    const PNG_MAX_EDGE = 12000;
+    const PNG_SCALE = 2;
+    const PNG_MAX_EDGE = 2400;
 
     function rasterize(source, width, height) {
         const scale = Math.min(PNG_SCALE, PNG_MAX_EDGE / Math.max(width, height, 1));
@@ -1064,20 +1127,8 @@
         const target = document.querySelector(button.dataset.exportTarget || 'body');
         const draw = RENDERERS[button.dataset.exportRenderer];
         if (!target || !draw) return;
-        // Fetching the visible tiles and rasterising the picture takes a few
-        // seconds, so the button spins while it runs and ignores a second
-        // click. A caption change meanwhile simply drops the spinner again.
-        const spinner = document.createElement('span');
-        spinner.className = 'spinner-border spinner-border-sm me-1';
-        spinner.setAttribute('role', 'status');
-        spinner.setAttribute('aria-hidden', 'true');
-        button.prepend(spinner);
         button.disabled = true;
-        button.setAttribute('aria-busy', 'true');
         try {
-            // Let the spinner reach the screen before the drawing blocks the
-            // thread again.
-            await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
             const { width, height, markup, format } = await draw(target);
             const source = '<?xml version="1.0" encoding="UTF-8"?>\n' +
                 `<svg xmlns="${SVG_NS}" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
@@ -1110,11 +1161,9 @@
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('export failed', error);
-            window.alert(`${dataExportFailed() || 'The export could not be created'}:\n` +
-                `${error && error.message ? error.message : error}`);
+            window.alert((dataExportFailed() || 'The export could not be created') +
+                `\n${error && error.message ? error.message : error}`);
         } finally {
-            spinner.remove();
-            button.removeAttribute('aria-busy');
             button.disabled = false;
         }
     }
