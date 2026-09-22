@@ -118,8 +118,9 @@ location holding more than one machine gets a thick white border, one holding
 a single machine a thin one, as in the floor plan; several subnets of one
 location are listed side by side and wrapped into the column instead of being
 squeezed onto a single line. Every pin sits on a dark disc, because the tiles
-are coloured and light in places. The canton keeps the red tint the map shows
-on screen.
+are coloured and light in places. The canton border is drawn as on the page, but
+the export leaves the canton untinted; the fill is only commented out
+(`map-border-fill` in `svg_export.js`) should the tint be wanted again.
 
 Zoomed into a building the button reads "Export as .SVG" and draws the floor
 plan (a real plan or the generated logical floor map) at its geographic frame,

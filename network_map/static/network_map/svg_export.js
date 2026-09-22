@@ -962,9 +962,11 @@
                     `V${height.toFixed(1)} H0 Z${path}"/>`
                 );
                 out.push('<g clip-path="url(#map-area)">');
-                // The canton tint the page shows over its area, holes and
-                // all; it goes under the line so the dashes stay crisp.
-                out.push(`<path class="map-border-fill" d="${path}"/>`);
+                // The canton tint the page shows over its area, holes and all;
+                // it goes under the line so the dashes stay crisp. Left out of
+                // the export, where the tiles are coloured enough already -
+                // uncomment to restore it.
+                // out.push(`<path class="map-border-fill" d="${path}"/>`);
                 out.push(`<path class="map-border-halo" d="${path}"/>`);
                 out.push(`<path class="map-border" d="${path}"/>`);
                 out.push('</g>');
