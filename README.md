@@ -243,10 +243,12 @@ After adding or changing translatable strings, update every catalog:
 ```bash
 cd /opt/netbox/network_map_plugin
 DJANGO_SETTINGS_MODULE=netbox.settings PYTHONPATH=/opt/netbox/netbox \
-  /opt/netbox/venv/bin/django-admin makemessages -l de -l fr
+  /opt/netbox/venv/bin/django-admin makemessages -l de -l fr --keep-pot
 ```
 
-This marks new and changed entries in each `.po` file; fill in the `msgstr`
+`--keep-pot` retains the master catalog; without it `makemessages` deletes it
+after merging, and `--all` is not usable here because it pulls in NetBox's own
+language list. This marks new and changed entries in each `.po` file; fill in the `msgstr`
 values (by hand or with a tool like Poedit), then rebuild the binary `.mo`
 catalogs that NetBox actually loads:
 
