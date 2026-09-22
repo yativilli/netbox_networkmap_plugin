@@ -393,7 +393,7 @@
                 canvas.getContext('2d').drawImage(image, 0, 0);
                 URL.revokeObjectURL(objectUrl);
                 images.push({
-                    x: entry.x, y: entry.y, width: entry.w, height: entry.h,
+                    x: entry.x, y: entry.y, w: entry.w, h: entry.h,
                     href: canvas.toDataURL('image/jpeg', 0.82)
                 });
             } catch (error) {
