@@ -800,6 +800,36 @@ class SubnetShadeColorsTests(TestCase):
         self.assertEqual(described["description"], "Web frontend")
         self.assertEqual(blank["description"], "")
 
+    def test_sites_are_coloured_apart_even_inside_one_subnet(self):
+        Site.objects.create(name="DC", slug="dc", latitude=46.948, longitude=7.447)
+        Site.objects.create(name="Office", slug="office", latitude=47.0, longitude=7.5)
+        element = SimpleNamespace(
+            name="Prod",
+            prefix="10.1.0.0/24",
+            url="/vlan/",
+            machines=[
+                {
+                    "dns_name": "host0",
+                    "ip": "10.1.0.1",
+                    "url": "/ip/",
+                    "location": "DC",
+                    "prefix": "10.1.0.0/24",
+                },
+                {
+                    "dns_name": "host1",
+                    "ip": "10.1.0.2",
+                    "url": "/ip/",
+                    "location": "Office",
+                    "prefix": "10.1.0.0/24",
+                },
+            ],
+        )
+        pins = SubnetLocationView().build_map_data([element])["pins"]
+        self.assertEqual(len({pin["color"] for pin in pins}), 1)
+        colors = {pin["site"]: pin["site_color"] for pin in pins}
+        self.assertEqual(colors, {"DC": mock.ANY, "Office": mock.ANY})
+        self.assertEqual(len(set(colors.values())), 2)
+
     def test_prefixes_of_one_subnet_share_a_shade_family(self):
         Site.objects.create(name="DC", latitude=46.948, longitude=7.447)
         elements = [

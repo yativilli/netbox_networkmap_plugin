@@ -16,7 +16,12 @@ from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
-from .colors import color_for_location, color_for_location_hex, shade_of
+from .colors import (
+    LOCATION_COLORS,
+    color_for_location,
+    color_for_location_hex,
+    shade_of,
+)
 from .defaults import DEFAULT_CANTON_BOUNDARY_CODE, DEFAULT_GATEWAY_SEARCH_TAG
 from .geocoding import geocode_sites
 from .models import (
@@ -292,8 +297,19 @@ class SubnetLocationView(VlanElementListView):
             for machine in element.machines
             if machine["location"]
         }
-        sites = list(Site.objects.filter(name__in=site_names))
+        sites = list(Site.objects.filter(name__in=site_names).order_by("name"))
         coordinates = geocode_sites(sites)
+        # One colour per site, cycled through the location palette and shaded
+        # once it runs out: the regional picture colours the locations apart,
+        # which colours by subnet cannot do for two sites holding no subnet in
+        # common.
+        palette = len(LOCATION_COLORS)
+        site_colors = {
+            site.name: shade_of(
+                color_for_location_hex(index % palette), index // palette
+            )
+            for index, site in enumerate(sites)
+        }
 
         site_plans = self.build_site_plans(sites)
 
@@ -349,6 +365,7 @@ class SubnetLocationView(VlanElementListView):
                         "prefix": placement["prefix"],
                         "url": placement["url"],
                         "color": subnet_colors[color_key],
+                        "site_color": site_colors.get(location),
                         "site": str(location),
                         "lat": coords[0],
                         "lon": coords[1],
