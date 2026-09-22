@@ -1,9 +1,10 @@
 {% extends 'generic/_base.html' %}
 {% load i18n %}
 {% load static %}
+{% load network_map_static %}
 
 {% block head %}
-    <link rel="stylesheet" href="{% static 'network_map/vlan_connections.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/vlan_connections.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Connections" %}{% endblock %}
@@ -139,5 +140,5 @@
             });
         })();
     </script>
-    <script src="{% static 'network_map/svg_export.js' %}"></script>
+    <script src="{% static_url 'network_map/svg_export.js' %}"></script>
 {% endblock content %}

@@ -150,12 +150,19 @@ cd /opt/netbox/netbox
 ```
 
 For a production deployment, install the updated plugin from the same source
-directory and restart NetBox using the service manager used by the deployment,
-for example:
+directory, collect its static files and restart NetBox using the service
+manager used by the deployment, for example:
 
 ```bash
+/opt/netbox/venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart netbox
 ```
+
+Collecting matters: a production NetBox serves `/static/` from the collected
+copy, so a web server pointing at it otherwise keeps handing out the previous
+scripts. The plugin's own scripts are linked with a modification-time query
+string, so a browser reloads them instead of replaying the copy it cached
+during its last visit.
 
 Do not commit generated `*.egg-info/` directories. They are recreated by
 `pip install` and should be ignored by Git.

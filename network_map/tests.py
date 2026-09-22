@@ -5,6 +5,7 @@ from unittest import mock
 from dcim.models import Site
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from ipam.models import VLAN, Prefix, Role, VLANGroup
@@ -13,6 +14,7 @@ from users.models import ObjectPermission, User
 from . import svg_render, swisstopo
 from .colors import shade_of
 from .models import VlanInfo
+from .templatetags.network_map_static import static_url
 from .views import SubnetLocationView, VlanTopologyView
 
 
@@ -814,3 +816,15 @@ class SubnetShadeColorsTests(TestCase):
         self.assertNotEqual(first, second)
         self.assertEqual(shade_of(first, 1), second)
         self.assertNotIn(colors[("Office", "10.3.0.0/24")], (first, second))
+
+
+class StaticUrlTagTests(TestCase):
+    def test_the_url_carries_the_files_modification_time(self):
+        url = static_url("network_map/svg_export.js")
+        self.assertTrue(url.startswith(f"{static('network_map/svg_export.js')}?v="))
+
+    def test_an_unknown_file_keeps_the_plain_url(self):
+        self.assertEqual(
+            static_url("network_map/nothing_here.js"),
+            static("network_map/nothing_here.js"),
+        )

@@ -1,9 +1,10 @@
 {% extends 'generic/_base.html' %}
 {% load i18n %}
 {% load static %}
+{% load network_map_static %}
 
 {% block head %}
-    <link rel="stylesheet" href="{% static 'network_map/vlan_topology.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/vlan_topology.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Topology" %}{% endblock %}
@@ -42,5 +43,5 @@
         </div>
     </div>
 
-    <script src="{% static 'network_map/vlan_topology.js' %}"></script>
+    <script src="{% static_url 'network_map/vlan_topology.js' %}"></script>
 {% endblock %}

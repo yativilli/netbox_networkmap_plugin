@@ -1,10 +1,11 @@
 {% extends 'generic/_base.html' %}
 {% load static %}
 {% load i18n %}
+{% load network_map_static %}
 
 {% block head %}
-    <link rel="stylesheet" href="{% static 'network_map/leaflet/leaflet.css' %}">
-    <link rel="stylesheet" href="{% static 'network_map/subnet_map.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/leaflet/leaflet.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/subnet_map.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "Subnet Locations" %}{% endblock %}
@@ -82,8 +83,8 @@
         </div>
     </div>
 
-    <script src="{% static 'network_map/leaflet/leaflet.js' %}"></script>
-    <script src="{% static 'network_map/lv03_grid.js' %}"></script>
-    <script src="{% static 'network_map/subnet_map.js' %}"></script>
-    <script src="{% static 'network_map/svg_export.js' %}"></script>
+    <script src="{% static_url 'network_map/leaflet/leaflet.js' %}"></script>
+    <script src="{% static_url 'network_map/lv03_grid.js' %}"></script>
+    <script src="{% static_url 'network_map/subnet_map.js' %}"></script>
+    <script src="{% static_url 'network_map/svg_export.js' %}"></script>
 {% endblock %}
