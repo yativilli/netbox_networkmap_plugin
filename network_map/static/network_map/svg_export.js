@@ -27,6 +27,7 @@
         '  stroke-dasharray: 8 6; }',
         '.map-border-fill { fill: #c8102e; fill-opacity: 0.1;',
         '  fill-rule: evenodd; }',
+        '.map-outside { fill: #ffffff; fill-rule: evenodd; }',
         '.map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7; stroke-opacity: 0.4; }',
         '.map-pin { stroke: #ffffff; stroke-width: 2; }',
         '.map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }',
@@ -892,6 +893,16 @@
             `<rect x="0" y="0" width="${width.toFixed(1)}" height="${height.toFixed(1)}" ` +
             `fill="${house ? '#f8f5ec' : '#eef1f4'}"/>`
         );
+        // Tiles come in whole squares and the canton border is whatever it is,
+        // so both are cut at the edge of the map: nothing may run into the
+        // space the list of sites uses underneath the picture.
+        out.push(
+            '<defs><clipPath id="map-area">' +
+            `<rect x="0" y="0" width="${width.toFixed(1)}" ` +
+            `height="${height.toFixed(1)}"/>` +
+            '</clipPath></defs>'
+        );
+        out.push('<g clip-path="url(#map-area)">');
         tiles.forEach((tile) => {
             out.push(
                 `<image href="${tile.href}" xlink:href="${tile.href}" ` +
@@ -899,6 +910,7 @@
                 `width="${tile.w.toFixed(1)}" height="${tile.h.toFixed(1)}"/>`
             );
         });
+        out.push('</g>');
         const planFrame = rawFrame ? planRect(house, toExport) : null;
         if (house) {
             out.push(planGraphics(container, house, planFrame));
@@ -906,11 +918,22 @@
             const rings = mapRings(boundary || { features: [] });
             if (rings.length) {
                 const path = mapBorderPath(rings, toExport);
+                // A bounding box can only hug the canton where its shape
+                // touches the box, which leaves the map of the neighbouring
+                // cantons standing around the empty corners - the south of
+                // Bern for one. Painting over everything outside the border
+                // cuts the picture with the border itself, on every side.
+                out.push(
+                    `<path class="map-outside" d="M0,0 H${width.toFixed(1)} ` +
+                    `V${height.toFixed(1)} H0 Z${path}"/>`
+                );
+                out.push('<g clip-path="url(#map-area)">');
                 // The canton tint the page shows over its area, holes and
                 // all; it goes under the line so the dashes stay crisp.
                 out.push(`<path class="map-border-fill" d="${path}"/>`);
                 out.push(`<path class="map-border-halo" d="${path}"/>`);
                 out.push(`<path class="map-border" d="${path}"/>`);
+                out.push('</g>');
             }
         }
 
@@ -1007,7 +1030,9 @@
         const listWidth = (listColumns * 320 + 24) * TF;
         const outWidth = Math.max(width, listWidth);
         const step = 16 * TF;
-        let y = height + 26 * TF;
+        // Below the map, with room enough that the last row of tiles and the
+        // first line of the list never touch.
+        let y = height + 42 * TF;
         y = machineList(numbered, listWidth, y, out);
         // A floor plan only shows one site, so its legend lists the subnets
         // that are visible on it; the regional picture lists them per site

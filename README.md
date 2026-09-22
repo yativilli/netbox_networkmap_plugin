@@ -94,13 +94,23 @@ write to those Site records. Both subnet-map exports carry the swisstopo
 attribution the tiles and boundary geometry require.
 
 The Subnet-Map page has an export button whose format follows the view.
-Zoomed out it reads "Export as .PNG" and delivers the visible map section
-rendered at double size, except when the whole configured canton border fits
-into the view: then the picture is cropped to that border, so an overview
-export always shows the canton instead of the surrounding country. Sites
-outside the cropped area are clamped to its edge and counted. Pin labels (site
-plus subnet and prefix) are always part of the file, also while
-"Beschriftungen ausblenden" hides them on screen.
+Zoomed out it reads "Export as .PNG" and shows the canton, whatever the screen
+was zoomed to when the button was pressed. The tiles are requested for the
+picture rather than copied off the map: the zoom is picked so the canton is
+about 1200 px across (`MAP_EDGE` in `svg_export.js`, at most `MAP_MAX_TILES`
+tiles), which keeps the background sharp whether the view sat on the whole
+canton or on one street, and no area is left without tiles because none were
+loaded. The cutout follows the canton border as snugly as the drawing allows: the
+frame is the border's bounding box with only the border line and its white halo
+sticking out, and everything outside the border is painted over, so the picture
+ends with the canton on every side instead of only where its shape happens to
+touch the bounding box (Bern's south-east corner is the canton's south, while
+the Valais lies south of the rest of it). Sites outside the cutout are clamped
+to its edge and counted. Tiles and border are cut at the map's own edge, and the
+list of sites starts below the picture. Every site is marked with a
+number in its own colour and listed below the picture together with the
+subnets that belong to it, which stays readable in a dense canton where name
+boxes would overlap; the canton keeps the red tint the map shows on screen.
 
 Zoomed into a building the button reads "Export as .SVG" and draws the floor
 plan (a real plan or the generated logical floor map) at its geographic frame,
