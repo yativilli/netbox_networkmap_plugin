@@ -1002,7 +1002,7 @@
     // Rasterising multiplies the canvas, because a canton map printed at its
     // natural size has labels too small to read; browsers cap canvas sizes,
     // so the factor shrinks for very large pictures.
-    const PNG_SCALE = 2;
+    const PNG_SCALE = 3;
     const PNG_MAX_EDGE = 12000;
 
     function rasterize(source, width, height) {
@@ -1064,8 +1064,20 @@
         const target = document.querySelector(button.dataset.exportTarget || 'body');
         const draw = RENDERERS[button.dataset.exportRenderer];
         if (!target || !draw) return;
+        // Fetching the visible tiles and rasterising the picture takes a few
+        // seconds, so the button spins while it runs and ignores a second
+        // click. A caption change meanwhile simply drops the spinner again.
+        const spinner = document.createElement('span');
+        spinner.className = 'spinner-border spinner-border-sm me-1';
+        spinner.setAttribute('role', 'status');
+        spinner.setAttribute('aria-hidden', 'true');
+        button.prepend(spinner);
         button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
         try {
+            // Let the spinner reach the screen before the drawing blocks the
+            // thread again.
+            await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
             const { width, height, markup, format } = await draw(target);
             const source = '<?xml version="1.0" encoding="UTF-8"?>\n' +
                 `<svg xmlns="${SVG_NS}" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
@@ -1098,9 +1110,11 @@
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('export failed', error);
-            window.alert((dataExportFailed() || 'The export could not be created') +
-                `\n${error && error.message ? error.message : error}`);
+            window.alert(`${dataExportFailed() || 'The export could not be created'}:\n` +
+                `${error && error.message ? error.message : error}`);
         } finally {
+            spinner.remove();
+            button.removeAttribute('aria-busy');
             button.disabled = false;
         }
     }
