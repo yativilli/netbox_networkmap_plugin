@@ -63,16 +63,17 @@ NETBOX_CONFIGURATION=netbox.configuration_testing \
 
 ## SVG API Endpoints
 
-The three map views are also served as server-side rendered SVG (no
+The four map views are also served as server-side rendered SVG (no
 `foreignObject`/HTML, so they open in any picture viewer). NetBox API token
 authentication applies, and the caller needs the `network_map.view_vlanelement`
 permission like for the web views:
 
-| Kind           | URL                                              |
-| -------------- | ------------------------------------------------ |
-| Machine list   | `/api/plugins/networkmap/svg/machine-list/`      |
-| Logical map    | `/api/plugins/networkmap/svg/logical-map/`       |
-| Topology map   | `/api/plugins/networkmap/svg/topology/`          |
+| Kind            | URL                                              |
+| --------------- | ------------------------------------------------ |
+| Machine list    | `/api/plugins/networkmap/svg/machine-list/`      |
+| Logical map     | `/api/plugins/networkmap/svg/logical-map/`       |
+| Subnet map      | `/api/plugins/networkmap/svg/subnet-map/`        |
+| Topology map    | `/api/plugins/networkmap/svg/topology/`          |
 
 ```bash
 curl -H "Authorization: Token <token>" \
@@ -83,13 +84,22 @@ The renderers live in `network_map/svg_render.py` and mirror the browser
 exports; text wrapping uses a character-width estimate, so line breaks can
 differ slightly from the on-page "Export as .SVG" buttons.
 
+The subnet map is drawn geographically: pins are grouped per site, and the
+extent is the bounding box of the configured `canton_boundary_code` border so
+exports stay comparable. Sites outside that border are clamped to the frame
+edge and counted rather than dropped; without a configured (or reachable)
+border the padded pin bounding box is used instead. Like the web map, building
+the data geocodes any site that has no coordinates yet, so the endpoint may
+write to those Site records. Both subnet-map exports carry the swisstopo
+attribution the tiles and boundary geometry require.
+
 Subnet colours form a family: each subnet gets one colour from the location
 palette and its prefixes are drawn in alternating lighter and darker shades of
 it (`network_map/colors.py:shade_of`), on the map, in the floor plan and in
 both exports.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
-API root (`/api/plugins/networkmap/`) links to the three endpoints above. They
+API root (`/api/plugins/networkmap/`) links to the four endpoints above. They
 are also documented in the OpenAPI schema (`/api/schema/`) under the
 `network-map` tag.
 

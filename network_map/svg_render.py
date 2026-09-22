@@ -620,3 +620,283 @@ def render_topology(topology_data):
     out.append("</g>")
 
     return build_svg(width, height, "".join(out), TOPO_STYLE)
+
+
+# ----------------------------------------------------------------------
+# Subnet location map
+# ----------------------------------------------------------------------
+
+MAP_WIDTH = WIDTH
+MAP_MARGIN = 24
+MAP_HEADER = 34
+MAP_MIN_H = 300
+MAP_MAX_H = 760
+PIN_R = 6
+PIN_STEP = 15
+PIN_COLS = 6
+LEGEND_ROWS = 14
+KM_PER_DEG = 111.32  # kilometres per degree of latitude
+SCALE_STEPS_KM = (1, 2, 5, 10, 20, 50, 100, 200, 500)
+
+MAP_STYLE = "\n".join(
+    (
+        f"text {{ font-family: {FONT}; }}",
+        ".map-title { font-size: 16px; font-weight: 700; fill: #1f2937; }",
+        ".map-frame { fill: #eef1f4; stroke: #c6cccb; stroke-width: 1; }",
+        ".map-border { fill: #f8f7f2; fill-rule: evenodd; stroke: #c8102e;",
+        "  stroke-width: 2; stroke-dasharray: 8 6; }",
+        ".map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7;",
+        "  stroke-opacity: 0.4; }",
+        ".map-pin { stroke: #ffffff; stroke-width: 2; }",
+        ".map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }",
+        ".map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }",
+        ".map-legend { font-size: 11.5px; fill: #212529; }",
+        ".map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2;",
+        "  stroke-dasharray: 8 6; }",
+        ".map-note { font-size: 11px; fill: #6c757d; }",
+        ".map-scale { fill: none; stroke: #212529; stroke-width: 1.5; }",
+        ".map-scale-label { font-size: 10px; fill: #212529; }",
+        ".map-attribution { font-size: 10px; fill: #6c757d; }",
+    )
+)
+
+
+def _geojson_bounds(geojson):
+    """lon/lat extent of a GeoJSON collection, or None when it has none."""
+    lons, lats = [], []
+
+    def walk(coords):
+        if not coords:
+            return
+        if isinstance(coords[0], (int, float)):
+            lons.append(coords[0])
+            lats.append(coords[1])
+            return
+        for child in coords:
+            walk(child)
+
+    for feature in (geojson or {}).get("features", []):
+        geometry = feature.get("geometry") or {}
+        walk(geometry.get("coordinates") or [])
+    if not lons:
+        return None
+    return min(lons), min(lats), max(lons), max(lats)
+
+
+def _pins_bounds(pins, pad=0.12):
+    """lon/lat extent of the placed pins, generously padded."""
+    lats = [pin["lat"] for pin in pins]
+    lons = [pin["lon"] for pin in pins]
+    if not lats:
+        return None
+    dlat = (max(lats) - min(lats)) * pad or 0.01
+    dlon = (max(lons) - min(lons)) * pad or 0.01
+    return (
+        min(lons) - dlon,
+        min(lats) - dlat,
+        max(lons) + dlon,
+        max(lats) + dlat,
+    )
+
+
+def _polygon_rings(geojson):
+    """Every polygon ring of a collection, holes included."""
+    rings = []
+    for feature in (geojson or {}).get("features", []):
+        geometry = feature.get("geometry") or {}
+        kind = geometry.get("type")
+        coordinates = geometry.get("coordinates") or []
+        if kind == "Polygon":
+            rings.extend(coordinates)
+        elif kind == "MultiPolygon":
+            for polygon in coordinates:
+                rings.extend(polygon)
+    return [ring for ring in rings if len(ring) > 2]
+
+
+def _ring_path(ring, project):
+    parts = []
+    for lon, lat in ring:
+        x, y = project(lon, lat)
+        parts.append(f"M{x:.1f},{y:.1f}" if not parts else f"L{x:.1f},{y:.1f}")
+    return "".join(parts) + "Z"
+
+
+def _map_clusters(pins):
+    """Pins grouped by coordinate, so a site is drawn as one cluster."""
+    clusters = {}
+    for pin in pins:
+        key = (round(pin["lat"], 5), round(pin["lon"], 5))
+        clusters.setdefault(key, {"site": pin.get("site") or "", "pins": []})
+        clusters[key]["pins"].append(pin)
+    return clusters.values()
+
+
+def _draw_cluster(out, cluster, x, y):
+    count = len(cluster["pins"])
+    cols = min(PIN_COLS, count)
+    rows = math.ceil(count / cols)
+    for index, pin in enumerate(cluster["pins"]):
+        dx = (index % cols - (cols - 1) / 2) * PIN_STEP
+        dy = (index // cols - (rows - 1) / 2) * PIN_STEP
+        out.append(
+            f'<circle class="map-pin" cx="{x + dx:.1f}" cy="{y + dy:.1f}" '
+            f'r="{PIN_R}" fill="{pin.get("color") or DEFAULT_ACCENT}"/>'
+        )
+    if not cluster["site"]:
+        return
+    line_width = chars(150, 11.5)
+    for line_index, line in enumerate(wrap_lines(cluster["site"], line_width, 2)):
+        offset = len(line) * 11.5 * CHAR_FACTOR / 2
+        out.append(
+            text(
+                round(x - offset),
+                round(y + (rows - 1) * PIN_STEP / 2 + 18 + line_index * 13),
+                line,
+                "map-site",
+            )
+        )
+
+
+def _draw_scale(out, scale, origin_x, origin_y, map_w, map_h):
+    """Round-kilometre scale bar in the frame's lower left corner."""
+    wanted = 120 / scale * KM_PER_DEG
+    km = next((step for step in SCALE_STEPS_KM if step >= wanted), SCALE_STEPS_KM[-1])
+    bar = km / KM_PER_DEG * scale
+    x, y = origin_x + 12, origin_y + map_h - 16
+    out.append(f'<path class="map-scale" d="M{x:.1f},{y:.1f} v-6 H{x + bar:.1f} v-6"/>')
+    out.append(text(round(x + bar + 6), round(y), f"{km} km", "map-scale-label"))
+
+
+def _draw_legend(out, pins, label, off_frame, start_y):
+    entries, seen = [], set()
+    for pin in pins:
+        key = (pin.get("color"), pin.get("subnet"), pin.get("prefix"))
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(pin)
+
+    y = start_y
+    for pin in entries[:LEGEND_ROWS]:
+        name = pin.get("subnet") or ""
+        prefix = pin.get("prefix") or ""
+        value = f"{name} \u2014 {prefix}" if prefix else name
+        out.append(
+            f'<circle class="map-pin" cx="{MAP_MARGIN + 6}" cy="{y - 4:.1f}" '
+            f'r="{PIN_R - 1}" fill="{pin.get("color") or DEFAULT_ACCENT}"/>'
+        )
+        out.append(text(MAP_MARGIN + 18, round(y), value, "map-legend"))
+        y += 16
+    if len(entries) > LEGEND_ROWS:
+        out.append(
+            text(
+                MAP_MARGIN + 18,
+                round(y),
+                _("… further subnets not listed"),
+                "map-note",
+            )
+        )
+        y += 16
+    if label:
+        out.append(
+            f'<path class="map-legend-border" d="M{MAP_MARGIN},{y - 4:.1f} h14"/>'
+        )
+        out.append(text(MAP_MARGIN + 22, round(y), label, "map-legend"))
+        y += 16
+    if off_frame:
+        out.append(
+            text(
+                MAP_MARGIN + 18,
+                round(y),
+                f"{off_frame} {_('site(s) outside the drawn area')}",
+                "map-note",
+            )
+        )
+        y += 16
+    out.append(
+        text(MAP_MARGIN, round(y + 12), _("Map data: © swisstopo"), "map-attribution")
+    )
+    return y + 26
+
+
+def render_subnet_map(map_data, boundary=None, label=None):
+    """
+    Geographic overview of the subnet pins, optionally framed by the
+    configured canton border. The extent is the border's bounding box when it
+    is available, so exports taken at different times stay comparable, and the
+    padded pin bounding box otherwise. Pins outside a configured border are
+    clamped to the frame edge and counted, never silently dropped.
+
+    Coordinates go through a plain equirectangular projection with x scaled by
+    cos(latitude): the LV03 grid the browser uses only matters to align HTML
+    pins with the swisstopo tiles, which a standalone document carries none of.
+    """
+    pins = [
+        pin
+        for pin in (map_data.get("pins") or [])
+        if pin.get("lat") is not None and pin.get("lon") is not None
+    ]
+    extent = _geojson_bounds(boundary) or _pins_bounds(pins)
+    if extent is None:
+        return build_svg(400, 80, "", MAP_STYLE)
+
+    min_lon, min_lat, max_lon, max_lat = extent
+    kx = max(math.cos(math.radians((min_lat + max_lat) / 2)), 0.1)
+    span_x = max((max_lon - min_lon) * kx, 1e-6)
+    span_y = max(max_lat - min_lat, 1e-6)
+
+    avail_w = MAP_WIDTH - 2 * MAP_MARGIN
+    scale = avail_w / span_x
+    map_h = span_y * scale
+    if map_h < MAP_MIN_H or map_h > MAP_MAX_H:
+        map_h = min(max(map_h, MAP_MIN_H), MAP_MAX_H)
+        scale = map_h / span_y
+    map_w = min(span_x * scale, avail_w)
+
+    origin_x = MAP_MARGIN + (avail_w - map_w) / 2
+    origin_y = MAP_HEADER + MAP_MARGIN
+
+    def project(lon, lat):
+        return (
+            origin_x + (lon - min_lon) * kx * scale,
+            origin_y + (max_lat - lat) * scale,
+        )
+
+    out = [text(MAP_MARGIN, 22, _("Subnet Locations"), "map-title")]
+    frame = (
+        f'x="{origin_x:.1f}" y="{origin_y:.1f}" '
+        f'width="{map_w:.1f}" height="{map_h:.1f}"'
+    )
+    out.append(f'<rect class="map-frame" {frame}/>')
+    out.append(f'<defs><clipPath id="map-clip"><rect {frame}/></clipPath></defs>')
+
+    rings = _polygon_rings(boundary)
+    if rings:
+        path = "".join(_ring_path(ring, project) for ring in rings)
+        out.append(
+            '<g clip-path="url(#map-clip)">'
+            f'<path class="map-border-halo" d="{path}"/>'
+            f'<path class="map-border" d="{path}"/></g>'
+        )
+
+    inset = PIN_R + 4
+    off_frame = 0
+    for cluster in _map_clusters(pins):
+        x, y = project(cluster["pins"][0]["lon"], cluster["pins"][0]["lat"])
+        if not (
+            origin_x <= x <= origin_x + map_w and origin_y <= y <= origin_y + map_h
+        ):
+            off_frame += 1
+            out.append(
+                '<circle class="map-offframe" '
+                f'cx="{min(max(x, origin_x + inset), origin_x + map_w - inset):.1f}" '
+                f'cy="{min(max(y, origin_y + inset), origin_y + map_h - inset):.1f}" '
+                'r="4"/>'
+            )
+            continue
+        _draw_cluster(out, cluster, round(x, 1), round(y, 1))
+
+    _draw_scale(out, scale, origin_x, origin_y, map_w, map_h)
+    height = _draw_legend(out, pins, label, off_frame, origin_y + map_h + 26)
+    return build_svg(MAP_WIDTH, height + BOTTOM_PAD, "".join(out), MAP_STYLE)

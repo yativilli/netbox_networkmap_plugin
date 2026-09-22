@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from netbox.plugins import get_plugin_config
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import BaseRenderer
@@ -10,13 +11,16 @@ from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 
 from .. import svg_render
+from ..defaults import DEFAULT_CANTON_BOUNDARY_CODE
+from ..swisstopo import get_canton_boundary, get_canton_label
 from ..views import (
+    SubnetLocationView,
     VlanConnectionView,
     VlanElementListView,
     VlanTopologyView,
 )
 
-SVG_KINDS = ("machine-list", "logical-map", "topology")
+SVG_KINDS = ("machine-list", "logical-map", "subnet-map", "topology")
 
 
 class SvgRenderer(BaseRenderer):
@@ -98,6 +102,20 @@ class MapSvgView(APIView):
             connection_view = VlanConnectionView()
             svg = svg_render.render_logical_tree(
                 connection_view.build_elements(), connection_view.get_center_device()
+            )
+        elif kind == "subnet-map":
+            subnet_view = SubnetLocationView()
+            map_data = subnet_view.build_map_data(
+                subnet_view.build_elements(subnet_view.get_queryset())
+            )
+            canton_code = get_plugin_config(
+                "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
+            )
+            boundary = get_canton_boundary(canton_code)
+            svg = svg_render.render_subnet_map(
+                map_data,
+                boundary,
+                get_canton_label(canton_code) if boundary else None,
             )
         elif kind == "topology":
             topology_view = VlanTopologyView()

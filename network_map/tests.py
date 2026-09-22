@@ -190,7 +190,7 @@ class TopologyDescriptionTests(TestCase):
 
 
 class SvgApiTests(TestCase):
-    KINDS = ("machine-list", "logical-map", "topology")
+    KINDS = ("machine-list", "logical-map", "subnet-map", "topology")
 
     @classmethod
     def setUpTestData(cls):
@@ -218,10 +218,29 @@ class SvgApiTests(TestCase):
     def test_svg_endpoints_render(self):
         self.client.force_login(self.user)
         for kind in self.KINDS:
-            response = self.get_svg(kind)
+            with mock.patch(
+                "network_map.api.views.get_canton_boundary", return_value=None
+            ):
+                response = self.get_svg(kind)
             self.assertEqual(response.status_code, 200, kind)
             self.assertTrue(response["Content-Type"].startswith("image/svg+xml"), kind)
             self.assertIn(b"<svg", response.content)
+
+    def test_subnet_map_svg_uses_the_configured_border(self):
+        self.client.force_login(self.user)
+        with (
+            mock.patch(
+                "network_map.api.views.get_canton_boundary", return_value=MAP_BORDER
+            ),
+            mock.patch(
+                "network_map.api.views.get_canton_label", return_value="Kanton Bern"
+            ),
+        ):
+            response = self.get_svg("subnet-map")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"map-frame", response.content)
+        self.assertIn(b'class="map-border"', response.content)
+        self.assertIn(b"Kanton Bern", response.content)
 
     def test_unknown_kind_returns_404(self):
         self.client.force_login(self.user)
@@ -593,6 +612,99 @@ class MapDataCantonBoundaryTests(TestCase):
             data = view.build_map_data([])
         self.assertIsNone(data["canton_boundary_url"])
         self.assertIsNone(data["canton_label"])
+
+
+# Well-nested GeoJSON, unlike SAMPLE_BORDER: the map renderer reads the
+# polygon rings themselves, so it needs real MultiPolygon nesting.
+MAP_BORDER = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"canton_no": 2},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [6.2, 46.9],
+                        [7.6, 47.3],
+                        [8.3, 46.6],
+                        [6.4, 46.2],
+                        [6.2, 46.9],
+                    ],
+                    [[7.4, 47.0], [7.5, 47.0], [7.5, 46.9], [7.4, 47.0]],
+                ],
+            },
+        }
+    ],
+}
+
+MAP_PINS = [
+    {
+        "subnet": "Prod-Web",
+        "prefix": "10.10.10.0/24",
+        "url": "",
+        "color": "#0072b2",
+        "site": "RZ Bern",
+        "lat": 46.948,
+        "lon": 7.447,
+        "machines": [],
+    },
+    {
+        "subnet": "Prod-DB",
+        "prefix": "10.10.20.0/24",
+        "url": "",
+        "color": "#d55e00",
+        "site": "RZ Bern",
+        "lat": 46.948,
+        "lon": 7.447,
+        "machines": [],
+    },
+    {
+        "subnet": "Genf",
+        "prefix": "10.20.0.0/16",
+        "url": "",
+        "color": "#009e73",
+        "site": "Filiale Genf",
+        "lat": 46.204,
+        "lon": 6.143,
+        "machines": [],
+    },
+]
+
+
+class SubnetMapSvgTests(TestCase):
+    def test_border_extent_frames_the_export(self):
+        svg = svg_render.render_subnet_map(
+            {"pins": MAP_PINS}, MAP_BORDER, "Kanton Bern"
+        )
+        self.assertIn('class="map-border" d=', svg)
+        self.assertIn("Kanton Bern", svg)
+        # One border path, drawn twice (halo and fill), carrying the
+        # exterior ring and the hole as two subpaths.
+        self.assertEqual(svg.count('class="map-border" d='), 1)
+        self.assertEqual(svg.count("ZM"), 2)
+        # Pins outside the configured border are clamped, never dropped.
+        self.assertIn('class="map-offframe"', svg)
+        self.assertIn("outside the drawn area", svg)
+
+    def test_pin_extent_used_without_border(self):
+        svg = svg_render.render_subnet_map({"pins": MAP_PINS})
+        self.assertNotIn('class="map-border"', svg)
+        self.assertNotIn('class="map-offframe"', svg)
+        self.assertIn("Filiale Genf", svg)
+        self.assertIn("10.10.10.0/24", svg)
+        self.assertIn("swisstopo", svg)
+
+    def test_subnets_at_one_site_share_a_cluster_label(self):
+        svg = svg_render.render_subnet_map({"pins": MAP_PINS})
+        self.assertEqual(svg.count(">RZ Bern<"), 1)
+        self.assertEqual(svg.count(">Filiale Genf<"), 1)
+
+    def test_map_without_pins_renders_a_stub(self):
+        svg = svg_render.render_subnet_map({"pins": []})
+        self.assertIn("<svg", svg)
+        self.assertNotIn('class="map-pin"', svg)
 
 
 class ShadeOfTests(TestCase):
