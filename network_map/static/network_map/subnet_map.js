@@ -953,6 +953,33 @@
         }
     }
 
+    function fitLatLngPoints(map, points, fill) {
+        const size = map.getSize();
+        const crs = map.options.crs;
+        const projected = points.map((point) => crs.projection.project(point));
+        const easting = projected.map((p) => p.x);
+        const northing = projected.map((p) => p.y);
+        const spanX = Math.max(...easting) - Math.min(...easting);
+        const spanY = Math.max(...northing) - Math.min(...northing);
+        const used = fill || 0.85;
+        let zoom = map.getZoom();
+
+        for (let z = 0; z < LV03_RESOLUTIONS.length; z += 1) {
+            const res = LV03_RESOLUTIONS[z];
+            if (spanX / res <= size.x * used && spanY / res <= size.y * used) {
+                zoom = z;
+            } else {
+                break;
+            }
+        }
+        zoom = Math.min(zoom, map.getMaxZoom());
+        const center = L.point(
+            (Math.min(...easting) + Math.max(...easting)) / 2,
+            (Math.min(...northing) + Math.max(...northing)) / 2
+        );
+        map.setView(crs.projection.unproject(center), zoom, {animate: false});
+    }
+
     function fitView(map) {
         const bounds = L.latLngBounds(pins.map((pin) => [pin.lat, pin.lon]));
         if (!bounds.isValid()) {
@@ -996,6 +1023,19 @@
             map.fitBounds(bounds.pad(0.15));
         }
     }
+
+    window.__subnetMapFitPoints = function (points, fill) {
+        if (!currentMap || !Array.isArray(points) || !points.length) {
+            return false;
+        }
+        const crs = currentMap.options.crs;
+        if (crs && crs.code === 'EPSG:21781') {
+            fitLatLngPoints(currentMap, points, fill);
+        } else {
+            currentMap.fitBounds(L.latLngBounds(points).pad(0.08), {animate: false});
+        }
+        return true;
+    };
 
     function buildMap() {
         if (currentMap) {

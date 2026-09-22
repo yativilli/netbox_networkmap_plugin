@@ -342,8 +342,40 @@
     const MAP_PIN_R = 6;
     const MAP_PIN_STEP = 15;
     const MAP_PIN_COLS = 6;
-    const MAP_MAX_TILES = 64;
+    const MAP_MAX_TILES = 320;
     const SCALE_STEPS_M = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+
+    async function waitForTiles(container, frame) {
+        let lastTotal = -1;
+        let stableAttempts = 0;
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            let total = 0;
+            let ready = 0;
+            container.querySelectorAll('.leaflet-tile-pane img').forEach((img) => {
+                if (frame) {
+                    const box = img.getBoundingClientRect();
+                    if (box.right < frame.x || box.bottom < frame.y ||
+                        box.left > frame.x + frame.width || box.top > frame.y + frame.height) {
+                        return;
+                    }
+                }
+                total += 1;
+                const src = img.currentSrc || img.src || '';
+                const failed = img.complete && !img.naturalWidth && !src.startsWith('data:');
+                if ((img.complete && (img.naturalWidth || src.startsWith('data:'))) ||
+                    failed || img.classList.contains('leaflet-tile-loaded')) {
+                    ready += 1;
+                }
+            });
+            if (total && ready === total) return;
+            stableAttempts = total && total === lastTotal ? stableAttempts + 1 : 0;
+            lastTotal = total;
+            // A few permanently failing tiles must not turn the spinner into
+            // an endless wait; give them a few seconds after the count settles.
+            if (total && stableAttempts > 20) return;
+        }
+    }
 
     function mapRings(geojson) {
         const rings = [];
@@ -369,36 +401,58 @@
         return parts.join('');
     }
 
+    function boundaryRingPoints(boundary) {
+        return mapRings(boundary || {features: []}).flat().map(
+            (position) => L.latLng(Number(position[1]), Number(position[0])));
+    }
+
     // The live tiles are drawn cross origin, which taints the canvas, so the
     // same URLs are fetched again (plain CORS GET) and re-encoded. When the
     // tile server refuses, the export stays vector-only.
+    async function embedTile(entry, url) {
+        let objectUrl = null;
+        try {
+            const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!response.ok) return null;
+            objectUrl = URL.createObjectURL(await response.blob());
+            const image = await new Promise((resolve, reject) => {
+                const loaded = new Image();
+                loaded.onload = () => resolve(loaded);
+                loaded.onerror = () => reject(new Error('tile load failed'));
+                loaded.src = objectUrl;
+            });
+            const canvas = document.createElement('canvas');
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            canvas.getContext('2d').drawImage(image, 0, 0);
+            return {
+                x: entry.x, y: entry.y, w: entry.w, h: entry.h,
+                href: canvas.toDataURL('image/jpeg', 0.82)
+            };
+        } catch (error) {
+            // No CORS on the tile server: keep the export vector-only.
+            return null;
+        } finally {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        }
+    }
+
     async function rasterizeTiles(entries) {
-        const images = [];
-        for (const entry of entries.slice(0, MAP_MAX_TILES)) {
+        const wanted = [];
+        entries.slice(0, MAP_MAX_TILES).forEach((entry) => {
             const url = entry.img.currentSrc || entry.img.src;
-            if (!url || url.startsWith('data:')) continue;
-            try {
-                const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
-                if (!response.ok) continue;
-                const objectUrl = URL.createObjectURL(await response.blob());
-                const image = await new Promise((resolve, reject) => {
-                    const loaded = new Image();
-                    loaded.onload = () => resolve(loaded);
-                    loaded.onerror = () => reject(new Error('tile load failed'));
-                    loaded.src = objectUrl;
-                });
-                const canvas = document.createElement('canvas');
-                canvas.width = image.naturalWidth;
-                canvas.height = image.naturalHeight;
-                canvas.getContext('2d').drawImage(image, 0, 0);
-                URL.revokeObjectURL(objectUrl);
-                images.push({
-                    x: entry.x, y: entry.y, w: entry.w, h: entry.h,
-                    href: canvas.toDataURL('image/jpeg', 0.82)
-                });
-            } catch (error) {
-                // No CORS on the tile server: keep the export vector-only.
-            }
+            if (url && !url.startsWith('data:')) wanted.push({entry, url});
+        });
+        // One tile after another costs several seconds for a whole viewport,
+        // which the user watches as a spinning button; a few parallel
+        // requests keep that wait short.
+        const BATCH = 8;
+        const images = [];
+        for (let start = 0; start < wanted.length; start += BATCH) {
+            const batch = await Promise.all(wanted.slice(start, start + BATCH).map(
+                (tile) => embedTile(tile.entry, tile.url)
+            ));
+            images.push(...batch.filter(Boolean));
         }
         return images;
     }
@@ -428,22 +482,18 @@
         return { bar, label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m` };
     }
 
-    function mapCrop(map, size, boundary) {
+    function mapCropPoints(map, size, points) {
         const full = {x: 0, y: 0, width: size.x, height: size.y};
-        if (!boundary) return full;
-        let bounds;
-        try {
-            bounds = L.geoJSON(boundary).getBounds();
-        } catch (error) {
-            return full;
-        }
-        if (!bounds.isValid() || !map.getBounds().contains(bounds)) return full;
-        const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-        const se = map.latLngToContainerPoint(bounds.getSouthEast());
-        const inset = 12;
+        if (!points.length) return full;
+        const projected = points.map((point) => map.latLngToContainerPoint(point));
+        const xs = projected.map((point) => point.x);
+        const ys = projected.map((point) => point.y);
+        const inset = 24;
         return {
-            x: nw.x - inset, y: nw.y - inset,
-            width: se.x - nw.x + 2 * inset, height: se.y - nw.y + 2 * inset
+            x: Math.min(...xs) - inset,
+            y: Math.min(...ys) - inset,
+            width: Math.max(...xs) - Math.min(...xs) + 2 * inset,
+            height: Math.max(...ys) - Math.min(...ys) + 2 * inset
         };
     }
 
@@ -732,6 +782,26 @@
         const pins = data.pins || [];
         const house = window.__subnetMapHouse;
         const boundary = window.__subnetMapBoundary;
+        const boundaryPoints = boundaryRingPoints(boundary);
+        let restoreView = null;
+        let boundaryFrame = null;
+
+        if (!house && boundaryPoints.length) {
+            restoreView = {center: map.getCenter(), zoom: map.getZoom()};
+            try {
+                map.invalidateSize({animate: false});
+                if (!window.__subnetMapFitPoints(boundaryPoints, 0.92)) {
+                    map.fitBounds(L.latLngBounds(boundaryPoints).pad(0.08), {animate: false});
+                }
+                map.invalidateSize({animate: false});
+                boundaryFrame = mapCropPoints(map, map.getSize(), boundaryPoints);
+                await waitForTiles(container, boundaryFrame);
+            } catch (error) {
+                boundaryFrame = null;
+                restoreView = null;
+            }
+        }
+
         const origin = container.getBoundingClientRect();
         const size = map.getSize();
         const machines = house
@@ -766,7 +836,7 @@
         } else {
             frame = house
                 ? {x: 0, y: 0, width: size.x, height: size.y}
-                : mapCrop(map, size, boundary);
+                : (boundaryFrame || mapCropPoints(map, size, boundaryPoints));
         }
         const width = frame.width * mapScale;
         const height = frame.height * mapScale;
@@ -911,6 +981,10 @@
             (data.ui || {}).attribution || 'Map data: © swisstopo',
             'map-attribution'
         ));
+        if (restoreView) {
+            map.setView(restoreView.center, restoreView.zoom, {animate: false});
+            map.invalidateSize({animate: false});
+        }
         // A floor plan is a drawing meant to be printed at any size; the
         // regional map is a picture of map tiles, which comes out as PNG.
         return {
