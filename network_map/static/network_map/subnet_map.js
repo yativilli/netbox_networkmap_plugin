@@ -292,11 +292,7 @@
         if (!cantonBoundary) {
             return;
         }
-        // The border must not go through a canvas renderer: Leaflet only
-        // clears the redraw bounds of a canvas, so the previous view's
-        // border survives a zoom as a blocky ghost of itself. SVG paths are
-        // rebuilt on every view change and therefore always match the map.
-        const renderer = L.svg({padding: 0.2});
+        const renderer = L.canvas({padding: 0.2});
         cantonLayers = [CANTON_HALO_STYLE, CANTON_BORDER_STYLE].map((style) => L.geoJSON(cantonBoundary, {
             renderer: renderer,
             interactive: false,
@@ -953,33 +949,6 @@
         }
     }
 
-    function fitLatLngPoints(map, points, fill) {
-        const size = map.getSize();
-        const crs = map.options.crs;
-        const projected = points.map((point) => crs.projection.project(point));
-        const easting = projected.map((p) => p.x);
-        const northing = projected.map((p) => p.y);
-        const spanX = Math.max(...easting) - Math.min(...easting);
-        const spanY = Math.max(...northing) - Math.min(...northing);
-        const used = fill || 0.85;
-        let zoom = map.getZoom();
-
-        for (let z = 0; z < LV03_RESOLUTIONS.length; z += 1) {
-            const res = LV03_RESOLUTIONS[z];
-            if (spanX / res <= size.x * used && spanY / res <= size.y * used) {
-                zoom = z;
-            } else {
-                break;
-            }
-        }
-        zoom = Math.min(zoom, map.getMaxZoom());
-        const center = L.point(
-            (Math.min(...easting) + Math.max(...easting)) / 2,
-            (Math.min(...northing) + Math.max(...northing)) / 2
-        );
-        map.setView(crs.projection.unproject(center), zoom, {animate: false});
-    }
-
     function fitView(map) {
         const bounds = L.latLngBounds(pins.map((pin) => [pin.lat, pin.lon]));
         if (!bounds.isValid()) {
@@ -1024,19 +993,6 @@
         }
     }
 
-    window.__subnetMapFitPoints = function (points, fill) {
-        if (!currentMap || !Array.isArray(points) || !points.length) {
-            return false;
-        }
-        const crs = currentMap.options.crs;
-        if (crs && crs.code === 'EPSG:21781') {
-            fitLatLngPoints(currentMap, points, fill);
-        } else {
-            currentMap.fitBounds(L.latLngBounds(points).pad(0.08), {animate: false});
-        }
-        return true;
-    };
-
     function buildMap() {
         if (currentMap) {
             currentMap.remove();
@@ -1048,6 +1004,7 @@
             clearObj(layoutCache);
             resetHouseState();
             tileLayer = null;
+            window.__subnetMapTiles = null;
             cantonLayers = [];
         }
         const map = typeof window.LV03 !== 'undefined'
@@ -1084,6 +1041,15 @@
         };
         layer.addTo(map);
         tileLayer = layer;
+        // The exporter fetches the tile grid itself (see svg_export.js), so
+        // its picture is not limited to the tiles this view happens to hold.
+        // For that it needs to know how the grid is addressed.
+        window.__subnetMapTiles = {
+            url: SWISSSTOPO_URL,
+            tileSize: layer.options.tileSize || 256,
+            minNativeZoom: layer.options.minNativeZoom,
+            maxNativeZoom: layer.options.maxNativeZoom
+        };
         // Leaflet rebuilds the attribution control HTML whenever
         // layers are added; re-apply the new-tab target each time.
         const openAttributionLinks = () => {
