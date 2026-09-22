@@ -31,6 +31,7 @@
         '.map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7; stroke-opacity: 0.4; }',
         '.map-pin { stroke: #ffffff; stroke-width: 1.2; }',
         '.map-pin.is-many { stroke-width: 4; }',
+        '.map-pin-back { fill: #212529; }',
         '.map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }',
         '.map-legend { font-size: 11.5px; fill: #212529; }',
         '.map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2; stroke-dasharray: 8 6; }',
@@ -1044,14 +1045,23 @@
                 if (site.offframe) {
                     outside += 1;
                     out.push(
-                        `<circle class="map-offframe" cx="${(spot.x - 9).toFixed(1)}" ` +
-                        `cy="${(spot.y - 9).toFixed(1)}" r="4"/>`
+                        `<circle class="map-offframe" cx="${(spot.x - 13).toFixed(1)}" ` +
+                        `cy="${(spot.y - 13).toFixed(1)}" r="4"/>`
                     );
                 }
                 // A thick border marks a site holding more than one machine,
                 // a thin one a site with a single machine - as in the plan.
+                const many = site.machines > 1;
+                // Tiles are coloured and light in places, so the pin sits on a
+                // dark disc: the white border stays the marker of how many
+                // machines a site holds, and the pin stands out either way.
                 out.push(
-                    `<circle class="map-pin${site.machines > 1 ? ' is-many' : ''}" ` +
+                    '<circle class="map-pin-back" ' +
+                    `cx="${spot.x.toFixed(1)}" cy="${spot.y.toFixed(1)}" ` +
+                    `r="${(MAP_PIN_R + 3 + (many ? 4 : 1.2) / 2 + 2).toFixed(1)}"/>`
+                );
+                out.push(
+                    `<circle class="map-pin${many ? ' is-many' : ''}" ` +
                     `cx="${spot.x.toFixed(1)}" cy="${spot.y.toFixed(1)}" ` +
                     `r="${MAP_PIN_R + 3}" fill="${site.color}"/>`
                 );

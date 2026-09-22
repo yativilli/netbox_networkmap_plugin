@@ -117,8 +117,9 @@ which stays readable in a dense canton where name boxes would overlap. A
 location holding more than one machine gets a thick white border, one holding
 a single machine a thin one, as in the floor plan; several subnets of one
 location are listed side by side and wrapped into the column instead of being
-squeezed onto a single line. The canton keeps the red tint the map shows on
-screen.
+squeezed onto a single line. Every pin sits on a dark disc, because the tiles
+are coloured and light in places. The canton keeps the red tint the map shows
+on screen.
 
 Zoomed into a building the button reads "Export as .SVG" and draws the floor
 plan (a real plan or the generated logical floor map) at its geographic frame,
