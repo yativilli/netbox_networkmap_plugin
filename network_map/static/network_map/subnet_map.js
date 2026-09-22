@@ -292,7 +292,11 @@
         if (!cantonBoundary) {
             return;
         }
-        const renderer = L.canvas({padding: 0.2});
+        // The border must not go through a canvas renderer: Leaflet only
+        // clears the redraw bounds of a canvas, so the previous view's
+        // border survives a zoom as a blocky ghost of itself. SVG paths are
+        // rebuilt on every view change and therefore always match the map.
+        const renderer = L.svg({padding: 0.2});
         cantonLayers = [CANTON_HALO_STYLE, CANTON_BORDER_STYLE].map((style) => L.geoJSON(cantonBoundary, {
             renderer: renderer,
             interactive: false,
