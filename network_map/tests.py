@@ -707,6 +707,47 @@ class SubnetMapSvgTests(TestCase):
         self.assertNotIn('class="map-pin"', svg)
 
 
+EMPTY_MAP_DATA = {
+    "pins": [],
+    "unplaced": [],
+    "locations": {},
+    "ui": {},
+    "canton_boundary_url": None,
+    "canton_label": None,
+}
+
+
+class SubnetMapExportButtonTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.map_content_type = ContentType.objects.get(
+            app_label="network_map", model="vlanelement"
+        )
+        cls.user = User.objects.create_user(username="mapexporter", password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name="test-view-networkmap-subnet",
+            actions=["view"],
+        )
+        permission.object_types.add(cls.map_content_type)
+        cls.user.object_permissions.add(permission)
+
+    def get_page(self, map_data):
+        self.client.force_login(self.user)
+        with mock.patch.object(
+            SubnetLocationView, "build_map_data", return_value=map_data
+        ):
+            return self.client.get(reverse("plugins:network_map:subnet_map"))
+
+    def test_page_offers_svg_export(self):
+        response = self.get_page({**EMPTY_MAP_DATA, "pins": MAP_PINS})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-export-svg")
+        self.assertContains(response, "svg_export.js")
+
+    def test_no_export_button_without_pins(self):
+        self.assertNotContains(self.get_page(EMPTY_MAP_DATA), "data-export-svg")
+
+
 class ShadeOfTests(TestCase):
     def test_first_index_keeps_the_base_colour(self):
         self.assertEqual(shade_of("#0072b2", 0), "#0072b2")
@@ -744,6 +785,18 @@ class SubnetShadeColorsTests(TestCase):
                 for index, ip in enumerate(machines)
             ],
         )
+
+    def test_machines_carry_their_legend_fields(self):
+        Site.objects.create(name="DC", latitude=46.948, longitude=7.447)
+        elements = [self._element("Prod", "10.1.0.0/24", ["10.1.0.1", "10.1.0.2"])]
+        elements[0].machines[0]["description"] = "Web frontend"
+        pin = SubnetLocationView().build_map_data(elements)["pins"][0]
+        self.assertRegex(pin["color"], r"^#[0-9a-f]{6}$")
+        described, blank = pin["machines"]
+        self.assertEqual(described["name"], "host0")
+        self.assertEqual(described["ip"], "10.1.0.1")
+        self.assertEqual(described["description"], "Web frontend")
+        self.assertEqual(blank["description"], "")
 
     def test_prefixes_of_one_subnet_share_a_shade_family(self):
         Site.objects.create(name="DC", latitude=46.948, longitude=7.447)

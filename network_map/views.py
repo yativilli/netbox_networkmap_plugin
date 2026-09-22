@@ -359,6 +359,7 @@ class SubnetLocationView(VlanElementListView):
                             {
                                 "name": str(machine["dns_name"] or machine["ip"]),
                                 "ip": str(machine["ip"]),
+                                "description": str(machine.get("description") or ""),
                                 "url": machine["url"] or "",
                                 "room": machine.get("room"),
                                 "physical": machine.get("physical", True),
@@ -396,6 +397,9 @@ class SubnetLocationView(VlanElementListView):
             "ui": {
                 "labels_show": _("Show labels"),
                 "labels_hide": _("Hide labels"),
+                "export_svg": _("Export as .SVG"),
+                "export_png": _("Export as .PNG"),
+                "export_failed": _("The export could not be created"),
                 "machine": _("machine"),
                 "machines": _("machines"),
                 "subnet": _("subnet"),
@@ -413,6 +417,9 @@ class SubnetLocationView(VlanElementListView):
                 "other_rooms": _("Other rooms"),
                 "vm": _("VM"),
                 "vms": _("VMs"),
+                "export_further_subnets": _("… further subnets not listed"),
+                "export_outside_area": _("site(s) outside the drawn area"),
+                "attribution": _("Map data: © swisstopo"),
             },
         }
 

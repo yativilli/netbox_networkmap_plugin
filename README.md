@@ -82,7 +82,7 @@ curl -H "Authorization: Token <token>" \
 
 The renderers live in `network_map/svg_render.py` and mirror the browser
 exports; text wrapping uses a character-width estimate, so line breaks can
-differ slightly from the on-page "Export as .SVG" buttons.
+differ slightly from the on-page export buttons.
 
 The subnet map is drawn geographically: pins are grouped per site, and the
 extent is the bounding box of the configured `canton_boundary_code` border so
@@ -93,10 +93,37 @@ the data geocodes any site that has no coordinates yet, so the endpoint may
 write to those Site records. Both subnet-map exports carry the swisstopo
 attribution the tiles and boundary geometry require.
 
+The Subnet-Map page has an export button whose format follows the view.
+Zoomed out it reads "Export as .PNG" and delivers the visible map section
+rendered at double size, except when the whole configured canton border fits
+into the view: then the picture is cropped to that border, so an overview
+export always shows the canton instead of the surrounding country. Sites
+outside the cropped area are clamped to its edge and counted. Pin labels (site
+plus subnet and prefix) are always part of the file, also while
+"Beschriftungen ausblenden" hides them on screen.
+
+Zoomed into a building the button reads "Export as .SVG" and draws the floor
+plan (a real plan or the generated logical floor map) at its geographic frame,
+grown to at least 1100 px across and further as far as the machines need, so
+the picture is readable when printed. Dots carry name and IP label wherever
+those fit without touching; where they cannot, the dots are numbered, dots
+that would collide are nudged apart, and the machines are listed in columns
+below the map. That list repeats the colour coding of the dots and gives each
+machine's name, description and IP address, and the legend lists only the
+subnets visible on the plan, not every subnet of the inventory.
+
+The export's own lettering grows with the plan it annotates (`MAX_TEXT_SCALE`
+in `svg_export.js`), so plan room labels and legend text stay comparable
+instead of a magnified plan above footnote-sized print. If the browser refuses
+to rasterise the map view, the PNG button falls back to the equivalent SVG and
+says so in the console.
+
 Subnet colours form a family: each subnet gets one colour from the location
 palette and its prefixes are drawn in alternating lighter and darker shades of
 it (`network_map/colors.py:shade_of`), on the map, in the floor plan and in
-both exports.
+both exports. The swisstopo tiles are re-fetched over CORS and embedded as JPEG
+data; if the tile server does not allow that, the export falls back to the
+vector-only version.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the four endpoints above. They

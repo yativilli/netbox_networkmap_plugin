@@ -128,6 +128,17 @@
         });
     }
 
+    // The regional map is exported as a raster picture, a building's floor
+    // plan as a scalable drawing that stays sharp when printed large.
+    function setExportCaption(inHouse) {
+        const exportButton = document.querySelector('[data-export-svg]');
+        if (exportButton) {
+            exportButton.textContent = inHouse
+                ? t('export_svg', 'Export as .SVG')
+                : t('export_png', 'Export as .PNG');
+        }
+    }
+
     function openPanel() {
         panel.classList.add('is-open');
         if (window.__subnetMap) {
@@ -169,6 +180,7 @@
         group.pins.forEach((pin) => {
             pin.machines.forEach((machine) => machines.push({
                 name: machine.name, ip: machine.ip,
+                description: machine.description || '',
                 url: machine.url, color: pin.color,
                 room: machine.room || '',
                 physical: machine.physical !== false
@@ -263,6 +275,7 @@
             house.badge.remove();
             house.badge = null;
         }
+        window.__subnetMapHouse = null;
     }
 
     const CANTON_HALO_STYLE = {
@@ -771,7 +784,12 @@
             const style = machine.physical
                 ? `background:${machine.color}`
                 : `background:#fff;border-color:${machine.color}`;
-            const marker = L.marker(slotToLatLng(bounds, fx, fy), {
+            const at = slotToLatLng(bounds, fx, fy);
+            // The SVG export draws permanent name/IP labels for these
+            // dots; on screen the same data is only a hover tooltip.
+            machine.lat = at.lat;
+            machine.lng = at.lng;
+            const marker = L.marker(at, {
                 icon: L.divIcon({
                     className: 'subnet-machine-icon',
                     html: `<div class="subnet-machine-pin` +
@@ -791,12 +809,26 @@
             marker.addTo(layer);
         });
         layer.addTo(currentMap);
+        window.__subnetMapHouse = {
+            site: group.site,
+            machines: machines,
+            // The SVG export places the plan in the very same geographic
+            // frame these dots sit in, instead of the overlay node's live
+            // CSS box, which is stale after a panel toggle or resize.
+            bounds: {
+                n: bounds.getNorth(), s: bounds.getSouth(),
+                e: bounds.getEast(), w: bounds.getWest()
+            },
+            planW: plan.w,
+            planH: plan.h
+        };
         return layer;
     }
 
     function enterHouse(key, group) {
         const map = currentMap;
         collapseAll(map);
+        setExportCaption(true);
         const plan = housePlanOf(group);
         if (plan.logical) {
             // Data is static for the page's lifetime; build each
@@ -884,6 +916,7 @@
         if (marker) {
             marker.addTo(map);
         }
+        setExportCaption(false);
     }
 
     function updateHouseMode() {
@@ -1048,9 +1081,13 @@
             .then((response) => (response.ok ? response.json() : null))
             .then((geojson) => {
                 cantonBoundary = geojson;
+                // Read by the SVG exporter to draw the border at the
+                // exact position the map shows it.
+                window.__subnetMapBoundary = geojson;
             })
             .catch(() => {
                 cantonBoundary = null;
+                window.__subnetMapBoundary = null;
             })
             .finally(() => {
                 if (!currentMap) {
