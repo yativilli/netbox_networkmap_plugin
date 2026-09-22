@@ -29,7 +29,8 @@
         '  fill-rule: evenodd; }',
         '.map-outside { fill: #ffffff; fill-rule: evenodd; }',
         '.map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7; stroke-opacity: 0.4; }',
-        '.map-pin { stroke: #ffffff; stroke-width: 2; }',
+        '.map-pin { stroke: #ffffff; stroke-width: 1.2; }',
+        '.map-pin.is-many { stroke-width: 4; }',
         '.map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }',
         '.map-legend { font-size: 11.5px; fill: #212529; }',
         '.map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2; stroke-dasharray: 8 6; }',
@@ -341,8 +342,6 @@
        ------------------------------------------------------------------ */
 
     const MAP_PIN_R = 6;
-    const MAP_PIN_STEP = 15;
-    const MAP_PIN_COLS = 6;
     const MAP_MAX_TILES = 64;
     // The map picture is drawn for this long edge, and its tiles are fetched
     // at the zoom that fills that size: an overview comes out readable whether
@@ -511,14 +510,16 @@
         return embedTiles(wanted.slice(0, MAP_MAX_TILES));
     }
 
-    function mapClusters(pins) {
-        const clusters = new Map();
+    // One entry per site: a location is one thing on the map, also when
+    // several of its subnets are pinned there.
+    function mapSites(pins) {
+        const sites = new Map();
         pins.forEach((pin) => {
-            const key = `${pin.lat.toFixed(5)},${pin.lon.toFixed(5)}`;
-            if (!clusters.has(key)) clusters.set(key, { site: pin.site, pins: [] });
-            clusters.get(key).pins.push(pin);
+            const key = String(pin.site || '');
+            if (!sites.has(key)) sites.set(key, { name: pin.site, pins: [] });
+            sites.get(key).pins.push(pin);
         });
-        return Array.from(clusters.values());
+        return Array.from(sites.values());
     }
 
     // Metres per exported pixel and a bar of a round length for it. A
@@ -796,11 +797,13 @@
         const rowHeight = 30 * TF;
         const columns = Math.max(1, Math.floor(width / colWidth));
         const perColumn = Math.ceil(machines.length / columns);
-        let rows = 0;
+        // Entries are as tall as the subnets under them need, so a column
+        // stacks them up instead of spacing every entry the same.
+        const bottoms = new Array(columns).fill(0);
         machines.forEach((machine, index) => {
-            const x = 24 * TF + Math.floor(index / perColumn) * colWidth;
-            const y = startY + (index % perColumn) * rowHeight;
-            rows = Math.max(rows, (index % perColumn) + 1);
+            const column = Math.floor(index / perColumn);
+            const x = 24 * TF + column * colWidth;
+            const y = startY + bottoms[column];
             const color = machine.color || '#6c757d';
             const fill = machine.physical ? color : '#ffffff';
             out.push(
@@ -811,11 +814,41 @@
             const label = `${index + 1}  ${machine.name}${machine.physical ? '' : ' (VM)'}`;
             out.push(text(x + 20 * TF, y, clipTo(label, listNameFont(), colWidth - 34 * TF),
                 'map-list-name', ` style="fill:${color}"`));
-            const sub = [machine.description, machine.ip].filter(Boolean).join(' — ');
-            out.push(text(x + 20 * TF, y + 12 * TF,
-                clipTo(sub, listSubFont(), colWidth - 34 * TF), 'map-list-sub'));
+            if (machine.subnets && machine.subnets.length > 1) {
+                // Several subnets are listed side by side and wrapped into the
+                // column, instead of one line that has to be cut off.
+                const font = listSubFont();
+                const room = colWidth - 34 * TF;
+                const gap = textWidth(' · ', font);
+                const limit = x + 20 * TF + room;
+                let left = x + 20 * TF;
+                let line = y + 12 * TF;
+                let lines = 1;
+                machine.subnets.forEach((subnet, position) => {
+                    const value = clipTo(subnet, font, room);
+                    const room2 = textWidth(value, font);
+                    if (position) {
+                        if (left + gap + room2 > limit) {
+                            left = x + 20 * TF;
+                            line += 12 * TF;
+                            lines += 1;
+                        } else {
+                            out.push(text(left, line, '·', 'map-list-sub'));
+                            left += gap;
+                        }
+                    }
+                    out.push(text(left, line, value, 'map-list-sub'));
+                    left += room2 + gap;
+                });
+                bottoms[column] += 30 * TF + (lines - 1) * 12 * TF;
+            } else {
+                const sub = [machine.description, machine.ip].filter(Boolean).join(' — ');
+                out.push(text(x + 20 * TF, y + 12 * TF,
+                    clipTo(sub, listSubFont(), colWidth - 34 * TF), 'map-list-sub'));
+                bottoms[column] += rowHeight;
+            }
         });
-        return startY + rows * rowHeight + 6 * TF;
+        return startY + Math.max(...bottoms) + 6 * TF;
     }
 
     async function drawSubnetMap() {
@@ -947,58 +980,61 @@
             // per site has to overlap its neighbour in a dense canton - a
             // number never does, and the list underneath has room for the
             // subnets that belong to it.
-            const clusters = mapClusters(pins);
-            const listed = [];
-            const badges = [];
-            clusters.forEach((cluster) => {
-                const point = toExport(L.latLng(cluster.pins[0].lat, cluster.pins[0].lon));
-                const inset = MAP_PIN_R + 4;
-                const clamped = point.x < 0 || point.y < 0 ||
-                    point.x > width || point.y > height;
-                const x = Math.min(Math.max(point.x, inset), width - inset);
-                const y = Math.min(Math.max(point.y, inset), height - inset);
-                if (clamped) {
+            // One pin per site, coloured per site and carrying its number; a
+            // name box per site has to overlap its neighbour in a dense canton,
+            // a number never does, and the list underneath has room for the
+            // subnets that belong to the site.
+            const listed = mapSites(pins).map((site) => {
+                const placed = site.pins.map(
+                    (pin) => toExport(L.latLng(pin.lat, pin.lon))
+                );
+                const subnets = [];
+                site.pins.forEach((pin) => {
+                    const value = pin.prefix
+                        ? `${pin.subnet} — ${pin.prefix}` : String(pin.subnet);
+                    if (!subnets.includes(value)) subnets.push(value);
+                });
+                return {
+                    name: site.name,
+                    description: subnets.length === 1 ? subnets[0] : '',
+                    ip: '',
+                    subnets: subnets.length > 1 ? subnets : [],
+                    machines: site.pins.reduce(
+                        (count, pin) => count + (pin.machines || []).length, 0
+                    ),
+                    color: site.pins[0].site_color || site.pins[0].color || '#6c757d',
+                    physical: true,
+                    x: placed.reduce((sum, point) => sum + point.x, 0) / placed.length,
+                    y: placed.reduce((sum, point) => sum + point.y, 0) / placed.length,
+                    offframe: placed.some((point) => point.x < 0 || point.y < 0 ||
+                        point.x > width || point.y > height)
+                };
+            });
+            // Pins may not sit on top of each other either; one that has to
+            // move stays near the site it stands for.
+            const inset = MAP_PIN_R + 4;
+            const spots = listed.map((site) => ({
+                x: Math.min(Math.max(site.x, inset), width - inset),
+                y: Math.min(Math.max(site.y, inset), height - inset)
+            }));
+            spreadOut(spots, MACHINE_BADGE, { x: 0, y: 0, width, height });
+            spots.forEach((spot, index) => {
+                const site = listed[index];
+                if (site.offframe) {
                     outside += 1;
                     out.push(
-                        `<circle class="map-offframe" cx="${x.toFixed(1)}" ` +
-                        `cy="${y.toFixed(1)}" r="4"/>`
+                        `<circle class="map-offframe" cx="${(spot.x - 9).toFixed(1)}" ` +
+                        `cy="${(spot.y - 9).toFixed(1)}" r="4"/>`
                     );
                 }
-                const cols = Math.min(MAP_PIN_COLS, cluster.pins.length);
-                const rows = Math.ceil(cluster.pins.length / cols);
-                cluster.pins.forEach((pin, index) => {
-                    const dx = ((index % cols) - (cols - 1) / 2) * MAP_PIN_STEP;
-                    const dy = (Math.floor(index / cols) - (rows - 1) / 2) * MAP_PIN_STEP;
-                    out.push(
-                        `<circle class="map-pin" cx="${(x + dx).toFixed(1)}" ` +
-                        `cy="${(y + dy).toFixed(1)}" r="${MAP_PIN_R}" ` +
-                        `fill="${pin.color || '#6c757d'}"/>`
-                    );
-                });
-                badges.push({
-                    x: x - ((cols - 1) * MAP_PIN_STEP) / 2 - MAP_PIN_R - 5,
-                    y: y - ((rows - 1) * MAP_PIN_STEP) / 2 - MAP_PIN_R - 5
-                });
-                listed.push({
-                    name: cluster.site,
-                    description: cluster.pins.map((pin) =>
-                        (pin.prefix ? `${pin.subnet} \u2014 ${pin.prefix}` : pin.subnet)
-                    ).join(' \u00b7 '),
-                    ip: '',
-                    color: cluster.pins[0].color || '#6c757d',
-                    physical: true
-                });
-            });
-            // Numbers may not sit on top of each other either; a badge that
-            // has to move stays near its dots.
-            spreadOut(badges, MACHINE_BADGE, { x: 0, y: 0, width, height });
-            badges.forEach((badge, index) => {
+                // A thick border marks a site holding more than one machine,
+                // a thin one a site with a single machine - as in the plan.
                 out.push(
-                    `<circle class="map-machine" cx="${badge.x.toFixed(1)}" ` +
-                    `cy="${badge.y.toFixed(1)}" r="${MAP_PIN_R + 3}" ` +
-                    `fill="${listed[index].color}" stroke="#ffffff"/>`
+                    `<circle class="map-pin${site.machines > 1 ? ' is-many' : ''}" ` +
+                    `cx="${spot.x.toFixed(1)}" cy="${spot.y.toFixed(1)}" ` +
+                    `r="${MAP_PIN_R + 3}" fill="${site.color}"/>`
                 );
-                out.push(text(Math.round(badge.x), Math.round(badge.y + 3), index + 1,
+                out.push(text(Math.round(spot.x), Math.round(spot.y + 3), index + 1,
                     'map-machine-num'));
             });
             numbered = listed;

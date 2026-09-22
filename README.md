@@ -107,10 +107,15 @@ ends with the canton on every side instead of only where its shape happens to
 touch the bounding box (Bern's south-east corner is the canton's south, while
 the Valais lies south of the rest of it). Sites outside the cutout are clamped
 to its edge and counted. Tiles and border are cut at the map's own edge, and the
-list of sites starts below the picture. Every site is marked with a
-number in its own colour and listed below the picture together with the
-subnets that belong to it, which stays readable in a dense canton where name
-boxes would overlap; the canton keeps the red tint the map shows on screen.
+list of sites starts below the picture. A site is drawn as one pin rather
+than one per subnet: it carries its number, is coloured like the location it
+stands for and listed below the picture with the subnets that belong to it,
+which stays readable in a dense canton where name boxes would overlap. A
+location holding more than one machine gets a thick white border, one holding
+a single machine a thin one, as in the floor plan; several subnets of one
+location are listed side by side and wrapped into the column instead of being
+squeezed onto a single line. The canton keeps the red tint the map shows on
+screen.
 
 Zoomed into a building the button reads "Export as .SVG" and draws the floor
 plan (a real plan or the generated logical floor map) at its geographic frame,
@@ -131,7 +136,9 @@ says so in the console.
 Subnet colours form a family: each subnet gets one colour from the location
 palette and its prefixes are drawn in alternating lighter and darker shades of
 it (`network_map/colors.py:shade_of`), on the map, in the floor plan and in
-both exports. The swisstopo tiles are re-fetched over CORS and embedded as JPEG
+both exports. The regional picture colours by location instead - every site
+carries its own `site_color` from the same palette - because sites that hold no
+subnet in common would otherwise share a colour. The swisstopo tiles are re-fetched over CORS and embedded as JPEG
 data; if the tile server does not allow that, the export falls back to the
 vector-only version.
 
