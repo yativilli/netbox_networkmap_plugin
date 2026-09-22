@@ -83,6 +83,11 @@ The renderers live in `network_map/svg_render.py` and mirror the browser
 exports; text wrapping uses a character-width estimate, so line breaks can
 differ slightly from the on-page "Export as .SVG" buttons.
 
+Subnet colours form a family: each subnet gets one colour from the location
+palette and its prefixes are drawn in alternating lighter and darker shades of
+it (`network_map/colors.py:shade_of`), on the map, in the floor plan and in
+both exports.
+
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the three endpoints above. They
 are also documented in the OpenAPI schema (`/api/schema/`) under the

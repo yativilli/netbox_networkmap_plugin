@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 from unittest import mock
 
+from dcim.models import Site
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.test import TestCase, override_settings
@@ -10,6 +11,7 @@ from ipam.models import VLAN, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
 from . import svg_render, swisstopo
+from .colors import shade_of
 from .models import VlanInfo
 from .views import SubnetLocationView, VlanTopologyView
 
@@ -591,3 +593,59 @@ class MapDataCantonBoundaryTests(TestCase):
             data = view.build_map_data([])
         self.assertIsNone(data["canton_boundary_url"])
         self.assertIsNone(data["canton_label"])
+
+
+class ShadeOfTests(TestCase):
+    def test_first_index_keeps_the_base_colour(self):
+        self.assertEqual(shade_of("#0072b2", 0), "#0072b2")
+
+    def test_indexes_produce_distinct_shades(self):
+        shades = [shade_of("#0072b2", index) for index in range(9)]
+        self.assertEqual(len(set(shades)), 9)
+        for shade in shades:
+            self.assertRegex(shade, r"^#[0-9a-f]{6}$")
+
+    def test_shades_alternate_lighter_and_darker(self):
+        self.assertGreater(shade_of("#0072b2", 1), "#0072b2")
+        self.assertLess(shade_of("#0072b2", 2), "#0072b2")
+
+    def test_unparsable_colour_is_returned_unchanged(self):
+        self.assertEqual(shade_of("bogus", 3), "bogus")
+        self.assertIsNone(shade_of(None, 3))
+
+
+class SubnetShadeColorsTests(TestCase):
+    @staticmethod
+    def _element(name, prefix, machines):
+        return SimpleNamespace(
+            name=name,
+            prefix=prefix,
+            url="/vlan/",
+            machines=[
+                {
+                    "dns_name": f"host{index}",
+                    "ip": ip,
+                    "url": "/ip/",
+                    "location": "DC",
+                    "prefix": prefix,
+                }
+                for index, ip in enumerate(machines)
+            ],
+        )
+
+    def test_prefixes_of_one_subnet_share_a_shade_family(self):
+        Site.objects.create(name="DC", latitude=46.948, longitude=7.447)
+        elements = [
+            self._element("Prod", "10.1.0.0/24", ["10.1.0.1"]),
+            self._element("Prod", "10.2.0.0/24", ["10.2.0.1"]),
+            self._element("Office", "10.3.0.0/24", ["10.3.0.1"]),
+        ]
+        data = SubnetLocationView().build_map_data(elements)
+        colors = {(pin["subnet"], pin["prefix"]): pin["color"] for pin in data["pins"]}
+        self.assertEqual(len(colors), 3)
+        first = colors[("Prod", "10.1.0.0/24")]
+        second = colors[("Prod", "10.2.0.0/24")]
+        # Same subnet, second prefix: the base colour lightened one step.
+        self.assertNotEqual(first, second)
+        self.assertEqual(shade_of(first, 1), second)
+        self.assertNotIn(colors[("Office", "10.3.0.0/24")], (first, second))

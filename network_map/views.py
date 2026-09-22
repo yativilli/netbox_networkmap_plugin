@@ -16,7 +16,7 @@ from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
-from .colors import color_for_location, color_for_location_hex
+from .colors import color_for_location, color_for_location_hex, shade_of
 from .defaults import DEFAULT_CANTON_BOUNDARY_CODE, DEFAULT_GATEWAY_SEARCH_TAG
 from .geocoding import geocode_sites
 from .models import (
@@ -320,11 +320,21 @@ class SubnetLocationView(VlanElementListView):
 
         pins = []
         unplaced = []
+        # One base colour per subnet, its prefixes drawn in lighter and
+        # darker shades of it, so several prefixes of one subnet read as a
+        # family in the map, the floor plan and the SVG exports.
+        subnet_base = {}
+        subnet_prefixes = {}
         subnet_colors = {}
         for placement in placements.values():
-            color_key = f"{placement['subnet']}|{placement['prefix']}"
+            subnet = placement["subnet"]
+            if subnet not in subnet_base:
+                subnet_base[subnet] = color_for_location_hex(len(subnet_base))
+            color_key = f"{subnet}|{placement['prefix']}"
             if color_key not in subnet_colors:
-                subnet_colors[color_key] = color_for_location_hex(len(subnet_colors))
+                seen = subnet_prefixes.setdefault(subnet, [])
+                subnet_colors[color_key] = shade_of(subnet_base[subnet], len(seen))
+                seen.append(placement["prefix"])
 
             placed_any = False
             for location, machines in placement["sites"].items():
