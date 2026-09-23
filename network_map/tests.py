@@ -594,7 +594,9 @@ class SvgApiTests(TestCase):
         self.assertIn("installed-plugins", data)
         for kind in self.KINDS:
             self.assertIn(kind, data)
-            self.assertIn(f"/{kind}/", data[kind])
+            # The API root links the address as it is meant to be used: the
+            # kind alone, the format belonging on the query string.
+            self.assertTrue(data[kind].endswith(f"/{kind}"), data[kind])
             self.assertEqual(data[f"{kind}.png"], f"{data[kind]}?format=png")
 
     def test_a_picture_answers_with_and_without_a_trailing_slash(self):
@@ -605,11 +607,13 @@ class SvgApiTests(TestCase):
         url = reverse(
             "plugins-api:network_map-api:svg-export", kwargs={"kind": "topology"}
         )
+        # The address the root links is the one without the slash.
+        self.assertFalse(url.endswith("/"))
         with mock.patch("network_map.api.views.get_canton_boundary", return_value=None):
-            slashed = self.client.get(f"{url}?format=svg")
-            plain = self.client.get(f"{url[:-1]}?format=svg")
-        self.assertEqual(slashed.status_code, 200)
+            plain = self.client.get(f"{url}?format=svg")
+            slashed = self.client.get(f"{url}/?format=svg")
         self.assertEqual(plain.status_code, 200)
+        self.assertEqual(slashed.status_code, 200)
         self.assertTrue(plain["Content-Type"].startswith("image/svg+xml"))
         self.assertEqual(plain.content, slashed.content)
 

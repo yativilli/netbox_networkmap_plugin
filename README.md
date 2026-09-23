@@ -186,7 +186,8 @@ for the drawing alone.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
-them twice: as SVG, and as the same address with `?format=png` on it. They
+them twice and without a trailing slash: as SVG, and as the same address with
+`?format=png` on it. They
 are also documented in the OpenAPI schema (`/api/schema/`) under the
 `network-map` tag.
 
