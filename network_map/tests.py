@@ -11,7 +11,7 @@ from django.urls import reverse
 from ipam.models import VLAN, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
-from . import svg_render, swisstopo
+from . import png_render, svg_render, swisstopo
 from .colors import shade_of
 from .models import VlanInfo
 from .templatetags.network_map_static import static_url
@@ -189,6 +189,49 @@ class TopologyDescriptionTests(TestCase):
         }
         svg = svg_render.render_topology(data)
         self.assertNotIn('class="topo-machine-description"', svg)
+
+
+class PngRenderTests(TestCase):
+    def test_the_vector_library_is_preferred_to_the_command_line(self):
+        cairosvg = mock.Mock()
+        with mock.patch("network_map.png_render._cairosvg", return_value=cairosvg):
+            png_render.render_png("<svg/>")
+        cairosvg.svg2png.assert_called_once()
+
+    def test_imagemagick_is_asked_for_a_raster(self):
+        finished = mock.Mock(returncode=0, stdout=b"\x89PNG..", stderr=b"")
+        with (
+            mock.patch("network_map.png_render._cairosvg", return_value=None),
+            mock.patch(
+                "network_map.png_render.shutil.which", return_value="/usr/bin/magick"
+            ),
+            mock.patch(
+                "network_map.png_render.subprocess.run", return_value=finished
+            ) as run,
+        ):
+            self.assertEqual(png_render.render_png("<svg/>"), b"\x89PNG..")
+        self.assertIn("-density", run.call_args.args[0])
+
+    def test_a_failing_rasteriser_is_reported(self):
+        finished = mock.Mock(returncode=1, stdout=b"", stderr=b"boom")
+        with (
+            mock.patch("network_map.png_render._cairosvg", return_value=None),
+            mock.patch(
+                "network_map.png_render.shutil.which", return_value="/usr/bin/magick"
+            ),
+            mock.patch("network_map.png_render.subprocess.run", return_value=finished),
+            self.assertRaisesRegex(png_render.PngRenderError, "boom"),
+        ):
+            png_render.render_png("<svg/>")
+
+    def test_no_rasteriser_at_all_is_reported(self):
+        with (
+            mock.patch("network_map.png_render._cairosvg", return_value=None),
+            mock.patch("network_map.png_render.shutil.which", return_value=None),
+            self.assertRaises(png_render.PngRenderError),
+        ):
+            self.assertFalse(png_render.available())
+            png_render.render_png("<svg/>")
 
 
 class SvgApiTests(TestCase):
