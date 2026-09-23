@@ -33,11 +33,11 @@
         '.map-pin.is-many { stroke-width: 4; }',
         '.map-pin-back { fill: #212529; }',
         '.map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }',
-        '.map-legend { font-size: 11.5px; fill: #212529; }',
+        '.map-legend { font-size: 15px; fill: #212529; }',
         '.map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2; stroke-dasharray: 8 6; }',
-        '.map-note { font-size: 11px; fill: #6c757d; }',
+        '.map-note { font-size: 13.5px; fill: #6c757d; }',
         '.map-scale { fill: none; stroke: #212529; stroke-width: 1.5; }',
-        '.map-scale-label { font-size: 10px; fill: #212529; }',
+        '.map-scale-label { font-size: 13.5px; fill: #212529; }',
         '.map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }',
         '.map-plan { fill: #f8f5ec; stroke: #8a8378; stroke-width: 2; }',
         '.map-machine { stroke-width: 2; }',
@@ -50,9 +50,9 @@
         '  text-anchor: middle; paint-order: stroke;',
         '  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }',
         '.map-machine-num.is-vm { fill: #1f2937; stroke: #ffffff; }',
-        '.map-list-name { font-size: 10.5px; font-weight: 700; }',
-        '.map-list-sub { font-size: 10px; fill: #6c757d; }',
-        '.map-attribution { font-size: 10px; fill: #6c757d; }',
+        '.map-list-name { font-size: 15px; font-weight: 700; }',
+        '.map-list-sub { font-size: 13.5px; fill: #6c757d; }',
+        '.map-attribution { font-size: 13.5px; fill: #6c757d; }',
     ].join('\n');
 
     const measureCtx = document.createElement('canvas').getContext('2d');
@@ -650,8 +650,10 @@
     const px = (base) => String(+(base * TF).toFixed(2));
     const nameFont = () => `700 ${px(10.5)}px ${FONT}`;
     const ipFont = () => `400 ${px(9.5)}px ${FONT}`;
-    const listNameFont = () => `700 ${px(10.5)}px ${FONT}`;
-    const listSubFont = () => `400 ${px(10)}px ${FONT}`;
+    // The list and the legend below the picture, at the sizes the served
+    // picture uses too, so both say the same thing in the same voice.
+    const listNameFont = () => `700 ${px(15)}px ${FONT}`;
+    const listSubFont = () => `400 ${px(13.5)}px ${FONT}`;
 
     // Room a label has before it hits a neighbour, measured on the dots
     // themselves: dots in a row decide the width, dots below each other the
@@ -815,8 +817,8 @@
     // IP address underneath.
     function machineList(machines, width, startY, out) {
         if (!machines.length) return startY;
-        const colWidth = 320 * TF;
-        const rowHeight = 30 * TF;
+        const colWidth = 384 * TF;
+        const rowHeight = 40 * TF;
         const columns = Math.max(1, Math.floor(width / colWidth));
         const perColumn = Math.ceil(machines.length / columns);
         // Entries are as tall as the subnets under them need, so a column
@@ -838,13 +840,14 @@
                 'map-list-name', ` style="fill:${color}"`));
             if (machine.subnets && machine.subnets.length > 1) {
                 // Several subnets are listed side by side and wrapped into the
-                // column, instead of one line that has to be cut off.
+                // column, instead of one line that has to be cut off, so every
+                // subnet of an entry is said.
                 const font = listSubFont();
                 const room = colWidth - 34 * TF;
                 const gap = textWidth(' · ', font);
                 const limit = x + 20 * TF + room;
                 let left = x + 20 * TF;
-                let line = y + 12 * TF;
+                let line = y + 16 * TF;
                 let lines = 1;
                 machine.subnets.forEach((subnet, position) => {
                     const value = clipTo(subnet, font, room);
@@ -852,7 +855,7 @@
                     if (position) {
                         if (left + gap + room2 > limit) {
                             left = x + 20 * TF;
-                            line += 12 * TF;
+                            line += 16 * TF;
                             lines += 1;
                         } else {
                             out.push(text(left, line, '·', 'map-list-sub'));
@@ -862,10 +865,10 @@
                     out.push(text(left, line, value, 'map-list-sub'));
                     left += room2 + gap;
                 });
-                bottoms[column] += 30 * TF + (lines - 1) * 12 * TF;
+                bottoms[column] += rowHeight + (lines - 1) * 16 * TF;
             } else {
                 const sub = [machine.description, machine.ip].filter(Boolean).join(' — ');
-                out.push(text(x + 20 * TF, y + 12 * TF,
+                out.push(text(x + 20 * TF, y + 16 * TF,
                     clipTo(sub, listSubFont(), colWidth - 34 * TF), 'map-list-sub'));
                 bottoms[column] += rowHeight;
             }
@@ -1136,9 +1139,9 @@
         const listColumns = numbered.length
             ? Math.max(1, Math.min(4, Math.ceil(numbered.length / (house ? 40 : 6))))
             : 1;
-        const listWidth = (listColumns * 320 + 24) * TF;
+        const listWidth = (listColumns * 384 + 24) * TF;
         const outWidth = Math.max(width, listWidth);
-        const step = 16 * TF;
+        const step = 21 * TF;
         // Below the map, with room enough that the last row of tiles and the
         // first line of the list never touch.
         let y = height + 42 * TF;

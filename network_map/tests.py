@@ -1282,7 +1282,8 @@ class SubnetMapSvgTests(TestCase):
         # The ground is kept for the area and a band around it, so the picture
         # is not cut on the line itself: a mask of a filled shape and the same
         # shape stroked twice as wide is what leaves that band standing.
-        svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 10}}):
+            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
         self.assertIn('stroke-width="20"', svg)
         with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 40}}):
             svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
@@ -1364,10 +1365,31 @@ class SubnetMapSvgTests(TestCase):
         )
 
     def test_several_subnets_of_one_site_are_listed_side_by_side(self):
+        # Neither subnet is dropped when the line of one site fills up, which a
+        # wide lettering does sooner: the line simply continues underneath.
         svg = self.render(MAP_PINS)
-        self.assertIn(
-            "Prod-Web \u2014 10.10.10.0/24 \u00b7 Prod-DB \u2014 10.10.20.0/24", svg
-        )
+        self.assertIn("Prod-Web \u2014 10.10.10.0/24", svg)
+        self.assertIn("Prod-DB \u2014 10.10.20.0/24", svg)
+        # A pair with room left is set side by side rather than under each
+        # other, whatever the width of the lettering is.
+        short = [
+            {**MAP_PINS[0], "subnet": "Web", "prefix": "10.0.0.0/24"},
+            {**MAP_PINS[1], "subnet": "DB", "prefix": "10.1.1.0/24"},
+        ]
+        svg = self.render(short)
+        self.assertIn("Web \u2014 10.0.0.0/24 \u00b7 DB \u2014 10.1.1.0/24", svg)
+
+    def test_every_subnet_of_a_busy_site_is_listed(self):
+        # A site with many subnets is not stopped short and not summarised: its
+        # lines simply grow, wrapping into the column however long the row is.
+        many = [
+            {**MAP_PINS[0], "subnet": f"Net{i}", "prefix": f"10.0.{i}.0/24"}
+            for i in range(40)
+        ]
+        svg = self.render(many)
+        self.assertIn("Net3 \u2014 10.0.3.0/24", svg)
+        self.assertIn("Net39 \u2014 10.0.39.0/24", svg)
+        self.assertNotIn("further subnets not listed", svg)
 
     def test_map_without_pins_renders_a_stub(self):
         svg = self.render([])

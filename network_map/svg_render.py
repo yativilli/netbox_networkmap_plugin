@@ -662,9 +662,9 @@ SITE_SPACE = 26
 # their subnets flowing side by side underneath the name.
 LIST_ROWS = 6
 LIST_COLUMNS = 3
-LIST_COL_WIDTH = 320
-LIST_ROW = 30
-LIST_SUB_ROW = 12
+LIST_COL_WIDTH = 384
+LIST_ROW = 40
+LIST_SUB_ROW = 16
 SUBNET_GAP = " · "
 LEGEND_ROWS = 14
 SCALE_STEPS_M = (100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000)
@@ -690,15 +690,18 @@ MAP_STYLE = "\n".join(
         "  text-anchor: middle; paint-order: stroke;",
         "  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }",
         ".map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }",
-        ".map-list-name { font-size: 10.5px; font-weight: 700; }",
-        ".map-list-sub { font-size: 10px; fill: #6c757d; }",
-        ".map-legend { font-size: 11.5px; fill: #212529; }",
+        # Two sizes for everything the picture says about itself, so the
+        # lettering reads as one voice next to a map of real place names:
+        # entries and their legend in one, everything underneath in the other.
+        ".map-list-name { font-size: 15px; font-weight: 700; }",
+        ".map-list-sub { font-size: 13.5px; fill: #6c757d; }",
+        ".map-legend { font-size: 15px; fill: #212529; }",
         ".map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2;",
         "  stroke-dasharray: 8 6; }",
-        ".map-note { font-size: 11px; fill: #6c757d; }",
+        ".map-note { font-size: 13.5px; fill: #6c757d; }",
         ".map-scale { fill: none; stroke: #212529; stroke-width: 1.5; }",
-        ".map-scale-label { font-size: 10px; fill: #212529; }",
-        ".map-attribution { font-size: 10px; fill: #6c757d; }",
+        ".map-scale-label { font-size: 13.5px; fill: #212529; }",
+        ".map-attribution { font-size: 13.5px; fill: #6c757d; }",
     )
 )
 
@@ -891,8 +894,8 @@ def _draw_site_pin(out, site, number):
 
 def _subnet_lines(subnets, max_chars):
     """
-    Several subnets flow side by side and wrap into the column, instead of one
-    line that has to be cut off.
+    Every subnet of a site is listed: they flow side by side and wrap into the
+    column, so a long row becomes several lines rather than a cut-off one.
     """
     lines, line = [], ""
     for subnet in subnets:
@@ -914,7 +917,7 @@ def _draw_site_list(out, sites, start_y):
     """
     columns = max(1, min(LIST_COLUMNS, math.ceil(len(sites) / LIST_ROWS)))
     per_column = math.ceil(len(sites) / columns)
-    budget = chars(LIST_COL_WIDTH - 34, 10)
+    budget = chars(LIST_COL_WIDTH - 34, 13.5)
     bottoms = [0] * columns
     for index, site in enumerate(sites):
         column = index // per_column
@@ -928,7 +931,7 @@ def _draw_site_list(out, sites, start_y):
             text(
                 x + 20,
                 round(y),
-                _cut(f"{index + 1}  {site['name']}", chars(LIST_COL_WIDTH - 34, 10.5)),
+                _cut(f"{index + 1}  {site['name']}", chars(LIST_COL_WIDTH - 34, 15)),
                 "map-list-name",
                 f' style="fill:{site["color"]}"',
             )
@@ -949,7 +952,7 @@ def _draw_site_list(out, sites, start_y):
                     "map-list-sub",
                 )
             )
-        bottoms[column] += max(LIST_ROW, LIST_SUB_ROW * len(lines) + 18)
+        bottoms[column] += max(LIST_ROW, LIST_SUB_ROW * len(lines) + 24)
     return start_y + max(bottoms) + 8
 
 
@@ -1005,7 +1008,7 @@ def _draw_subnet_legend(out, pins, start_y):
             f'r="{PIN_R - 1}" fill="{pin.get("color") or DEFAULT_ACCENT}"/>'
         )
         out.append(text(MAP_MARGIN + 18, round(y), value, "map-legend"))
-        y += 16
+        y += 21
     if len(entries) > LEGEND_ROWS:
         out.append(
             text(
@@ -1015,7 +1018,7 @@ def _draw_subnet_legend(out, pins, start_y):
                 "map-note",
             )
         )
-        y += 16
+        y += 21
     return y
 
 
@@ -1027,7 +1030,7 @@ def _draw_footnotes(out, label, off_frame, start_y, attribution=None):
             f'<path class="map-legend-border" d="M{MAP_MARGIN},{y - 4:.1f} h14"/>'
         )
         out.append(text(MAP_MARGIN + 22, round(y), label, "map-legend"))
-        y += 16
+        y += 21
     if off_frame:
         out.append(
             text(
@@ -1037,7 +1040,7 @@ def _draw_footnotes(out, label, off_frame, start_y, attribution=None):
                 "map-note",
             )
         )
-        y += 16
+        y += 21
     out.append(
         text(
             MAP_MARGIN,
