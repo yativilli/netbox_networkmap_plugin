@@ -1110,6 +1110,16 @@ MAP_TIGHT_BORDER = {
     ],
 }
 
+# What room a picture leaves around its border, and how far its cut stands
+# beyond the border, are settings that whoever installed the plugin may have
+# moved - so the tests about the frame say plainly what they assume.
+MAP_FRAME = {
+    "map_border_room": 22,
+    "map_room_left": 20,
+    "map_room_bottom": 20,
+    "map_border_cut": 10,
+}
+
 MAP_PINS = [
     {
         "subnet": "Prod-Web",
@@ -1187,6 +1197,11 @@ class SubnetMapSvgTests(TestCase):
     def render(pins, boundary=None, label=None, **kwargs):
         return svg_render.render_subnet_map({"pins": pins}, boundary, label, **kwargs)
 
+    def render_framed(self, pins, boundary=None, label=None, **kwargs):
+        """A picture whose frame is stated rather than whatever is configured."""
+        with override_settings(PLUGINS_CONFIG={"network_map": MAP_FRAME}):
+            return self.render(pins, boundary, label, **kwargs)
+
     def test_the_ground_lies_under_the_painted_border(self):
         tile = {
             "href": "data:image/jpeg;base64,TESTTILE",
@@ -1198,7 +1213,7 @@ class SubnetMapSvgTests(TestCase):
             asked.append((extent, metres_per_pixel))
             return [tile]
 
-        svg = self.render(
+        svg = self.render_framed(
             MAP_PINS,
             MAP_BORDER,
             "Kanton Bern",
@@ -1268,7 +1283,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertIn('class="map-back"', svg)
 
     def test_border_extent_frames_the_export(self):
-        svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+        svg = self.render_framed(MAP_PINS, MAP_BORDER, "Kanton Bern")
         self.assertIn("Kanton Bern", svg)
         # One border path, carrying the exterior ring and the hole.
         self.assertEqual(svg.count('class="map-border" d='), 1)
@@ -1282,12 +1297,11 @@ class SubnetMapSvgTests(TestCase):
         # The ground is kept for the area and a band around it, so the picture
         # is not cut on the line itself: a mask of a filled shape and the same
         # shape stroked twice as wide is what leaves that band standing.
-        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 10}}):
-            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
-        self.assertIn('stroke-width="20"', svg)
-        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 40}}):
-            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
-        self.assertIn('stroke-width="80"', svg)
+        for asked, stroke in ((10, 20), (40, 80)):
+            config = dict(MAP_FRAME, map_border_cut=asked)
+            with override_settings(PLUGINS_CONFIG={"network_map": config}):
+                svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+            self.assertIn(f'stroke-width="{stroke}"', svg)
 
     def test_the_cut_can_run_on_the_border_itself(self):
         # Without a mask the picture is cut on the line, which is the old
@@ -1300,7 +1314,7 @@ class SubnetMapSvgTests(TestCase):
     def test_a_site_outside_the_border_is_clamped_and_counted(self):
         # Geneva lies far outside a canton drawn around Bern alone - far enough
         # that the room around the border cannot bring it into the picture.
-        svg = self.render(MAP_PINS, MAP_TIGHT_BORDER, "Kanton Bern")
+        svg = self.render_framed(MAP_PINS, MAP_TIGHT_BORDER, "Kanton Bern")
         self.assertIn('class="map-offframe"', svg)
         self.assertIn("outside the drawn area", svg)
 
