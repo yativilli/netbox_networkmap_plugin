@@ -68,16 +68,25 @@ The four map views are also served as server-side rendered SVG (no
 authentication applies, and the caller needs the `network_map.view_vlanelement`
 permission like for the web views:
 
-| Kind            | URL                                              |
-| --------------- | ------------------------------------------------ |
-| Machine list    | `/api/plugins/networkmap/svg/machine-list/`      |
-| Logical map     | `/api/plugins/networkmap/svg/logical-map/`       |
-| Subnet map      | `/api/plugins/networkmap/svg/subnet-map/`        |
-| Topology map    | `/api/plugins/networkmap/svg/topology/`          |
+| Kind            | URL                                                   |
+| --------------- | ----------------------------------------------------- |
+| Machine list    | `/api/plugins/networkmap/machine-list?format=svg`     |
+| Logical map     | `/api/plugins/networkmap/logical-map?format=svg`      |
+| Subnet map      | `/api/plugins/networkmap/subnet-map?format=svg`       |
+| Topology map    | `/api/plugins/networkmap/topology?format=svg`         |
+
+The kind of picture stands in the path and its format on the query string:
+`?format=svg` or `?format=png`, SVG when nothing is asked for. The trailing
+slash is optional, so the address of a raster of the subnet map is
+
+```
+http://localhost:8000/api/plugins/networkmap/subnet-map?format=png
+```
 
 ```bash
 curl -H "Authorization: Token <token>" \
-  https://netbox.example.com/api/plugins/networkmap/svg/topology/ -o topology.svg
+  "https://netbox.example.com/api/plugins/networkmap/topology?format=svg" \
+  -o topology.svg
 ```
 
 The renderers live in `network_map/svg_render.py` and mirror the browser
@@ -177,7 +186,7 @@ for the drawing alone.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
-them twice: as SVG and as `<kind>.png` with the format on the query string. They
+them twice: as SVG, and as the same address with `?format=png` on it. They
 are also documented in the OpenAPI schema (`/api/schema/`) under the
 `network-map` tag.
 

@@ -493,7 +493,7 @@ class SvgApiTests(TestCase):
     def get_svg(self, kind, query=None):
         # The mount prefix derives from the plugin's base_url/module name.
         for prefix in ("networkmap", "network_map"):
-            url = f"/api/plugins/{prefix}/svg/{kind}/"
+            url = f"/api/plugins/{prefix}/{kind}/"
             if query:
                 url = f"{url}?{query}"
             response = self.client.get(url)
@@ -594,8 +594,29 @@ class SvgApiTests(TestCase):
         self.assertIn("installed-plugins", data)
         for kind in self.KINDS:
             self.assertIn(kind, data)
-            self.assertIn(f"/svg/{kind}/", data[kind])
+            self.assertIn(f"/{kind}/", data[kind])
             self.assertEqual(data[f"{kind}.png"], f"{data[kind]}?format=png")
+
+    def test_a_picture_answers_with_and_without_a_trailing_slash(self):
+        # The address of a picture is its kind with the format on the query
+        # string, and a script that leaves the slash out gets the same document
+        # instead of a redirect it has to follow.
+        self.client.force_login(self.user)
+        url = reverse(
+            "plugins-api:network_map-api:svg-export", kwargs={"kind": "topology"}
+        )
+        with mock.patch("network_map.api.views.get_canton_boundary", return_value=None):
+            slashed = self.client.get(f"{url}?format=svg")
+            plain = self.client.get(f"{url[:-1]}?format=svg")
+        self.assertEqual(slashed.status_code, 200)
+        self.assertEqual(plain.status_code, 200)
+        self.assertTrue(plain["Content-Type"].startswith("image/svg+xml"))
+        self.assertEqual(plain.content, slashed.content)
+
+    def test_the_kind_no_longer_wants_an_svg_segment(self):
+        self.client.force_login(self.user)
+        root = reverse("plugins-api:network_map-api:api-root")
+        self.assertEqual(self.client.get(f"{root}svg/topology/").status_code, 404)
 
     def test_anonymous_is_rejected(self):
         response = self.get_svg("topology")
