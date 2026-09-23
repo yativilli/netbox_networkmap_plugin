@@ -225,6 +225,23 @@ class PngRenderTests(TestCase):
         ):
             png_render.render_png("<svg/>")
 
+    def test_a_document_no_raster_can_hold_comes_out_smaller(self):
+        cairosvg = mock.Mock()
+        giant = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="71148"/>'
+        with mock.patch("network_map.png_render._cairosvg", return_value=cairosvg):
+            png_render.render_png(giant)
+        scale = cairosvg.svg2png.call_args.kwargs["scale"]
+        self.assertLess(scale, 1)
+        self.assertAlmostEqual(71148 * scale, png_render.PNG_MAX_EDGE, places=3)
+
+    def test_an_ordinary_document_keeps_its_scale(self):
+        cairosvg = mock.Mock()
+        with mock.patch("network_map.png_render._cairosvg", return_value=cairosvg):
+            png_render.render_png('<svg xmlns="x" width="1200" height="1100"/>')
+        self.assertEqual(
+            cairosvg.svg2png.call_args.kwargs["scale"], png_render.PNG_SCALE
+        )
+
     def test_no_rasteriser_at_all_is_reported(self):
         with (
             mock.patch("network_map.png_render._cairosvg", return_value=None),

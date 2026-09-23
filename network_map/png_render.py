@@ -10,6 +10,7 @@ understand (dashed strokes for one, so the canton border disappears). Without
 either, a PNG request says so rather than sending a broken picture.
 """
 
+import re
 import shutil
 import subprocess  # nosec B404 - only a fixed rasteriser command is run
 
@@ -17,6 +18,11 @@ import subprocess  # nosec B404 - only a fixed rasteriser command is run
 # Twice the size of the document is what the web page's own export rasterises
 # at, and it still prints a canton map readably.
 PNG_SCALE = 2
+# cairo refuses a surface longer than 32767 units and both backends run out of
+# memory long before that, while a logical tree of a large inventory is well
+# over 70000 units tall. Such a document is rasterised smaller instead of
+# failing, because the picture is still complete, only coarser.
+PNG_MAX_EDGE = 16384
 # A map of a whole canton is a large canvas; conversion may not hang a request.
 PNG_TIMEOUT = 60
 # Ceiling for ImageMagick, so a mistaken scale cannot ask for gigabytes.
@@ -24,6 +30,7 @@ IMAGEMAGICK_AREA = "100MP"
 # ImageMagick reads an SVG at this density unless told otherwise.
 IMAGEMAGICK_DPI = 72
 PNG_MAGIC = b"\x89PNG"
+SVG_SIZE = re.compile(r'<svg[^>]*\bwidth="([\d.]+)"[^>]*\bheight="([\d.]+)"')
 
 
 class PngRenderError(Exception):
@@ -53,8 +60,23 @@ def available():
     return backend() is not None
 
 
+def _fit(markup, scale):
+    """
+    Shrink the scale until the raster of this document has a side that a
+    rasteriser can hold; documents without a size of their own keep it.
+    """
+    match = SVG_SIZE.search(markup[:2048])
+    if not match:
+        return scale
+    longest = max(float(match.group(1)), float(match.group(2)))
+    if longest <= 0 or longest * scale <= PNG_MAX_EDGE:
+        return scale
+    return PNG_MAX_EDGE / longest
+
+
 def render_png(markup, scale=PNG_SCALE):
     """Return the PNG bytes of one standalone SVG document."""
+    scale = _fit(markup, scale)
     cairosvg = _cairosvg()
     if cairosvg is not None:
         try:
@@ -83,7 +105,7 @@ def _imagemagick(markup, scale):
         "-background",
         "white",
         "-density",
-        str(int(IMAGEMAGICK_DPI * scale)),
+        f"{IMAGEMAGICK_DPI * scale:.2f}",
         "svg:-",
         "png:-",
     ]
