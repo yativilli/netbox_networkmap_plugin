@@ -1085,6 +1085,10 @@
     let currentMap = null;
     let tileLayer = null;
 
+    // How far the exported picture stands off the border it cuts along; the
+    // served picture reads the same settings, so both agree.
+    window.__subnetMapExportRoom = mapData.export_room || null;
+
     const boundaryUrl = mapData.canton_boundary_url;
     if (boundaryUrl) {
         fetch(boundaryUrl)

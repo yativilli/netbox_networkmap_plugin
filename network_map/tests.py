@@ -1041,6 +1041,9 @@ class MapDataCantonBoundaryTests(TestCase):
             data = view.build_map_data([])
         self.assertEqual(data["canton_boundary_url"], boundary_url)
         self.assertEqual(data["canton_label"], "Kanton Bern")
+        # The exporter gets the same room the served picture leaves around the
+        # border, so the two do not disagree about what belongs in them.
+        self.assertEqual(set(data["export_room"]), {"border", "left", "bottom", "cut"})
 
     def test_build_map_data_omits_boundary_when_unset(self):
         view = SubnetLocationView()
@@ -1075,6 +1078,32 @@ MAP_BORDER = {
                         [6.2, 46.9],
                     ],
                     [[7.4, 47.0], [7.5, 47.0], [7.5, 46.9], [7.4, 47.0]],
+                ],
+            },
+        }
+    ],
+}
+
+# A canton drawn as a box around Bern alone, so that a site in Geneva lies far
+# enough outside to be clamped however much room the picture leaves around the
+# border it cuts along.
+MAP_TIGHT_BORDER = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"canton_no": 2},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [7.2, 46.85],
+                        [7.7, 46.85],
+                        [7.7, 47.05],
+                        [7.2, 47.05],
+                        [7.2, 46.85],
+                    ],
+                    [[7.4, 46.95], [7.45, 46.95], [7.45, 47.0], [7.4, 46.95]],
                 ],
             },
         }
@@ -1177,13 +1206,53 @@ class SubnetMapSvgTests(TestCase):
             attribution="© Someone",
         )
         self.assertIn('<image href="data:image/jpeg;base64,TESTTILE"', svg)
-        # The tiles are asked for the ground the picture shows, and no more, and
-        # asked at the size the picture is drawn: metres per pixel.
-        self.assertEqual(asked[0][0], svg_render.map_extent(MAP_BORDER))
+        # The tiles are asked for the ground the picture shows, and asked at the
+        # size the picture is drawn: metres per pixel. That ground is the
+        # border's box with room around it, so the line and its halo are not cut
+        # where the shape touches the box - the west and the south of most.
+        ground = asked[0][0]
+        border = svg_render.map_extent(MAP_BORDER)
+        self.assertLess(ground[0], border[0])
+        self.assertLess(ground[1], border[1])
+        self.assertGreater(ground[2], border[2])
+        self.assertGreater(ground[3], border[3])
         self.assertGreater(asked[0][1], 0)
-        self.assertLess(svg.index("<image"), svg.index('class="map-outside"'))
+        self.assertLess(svg.index("<image"), svg.index('class="map-border-halo"'))
         # Whoever the tiles come from is said under the picture.
         self.assertIn("© Someone", svg)
+        # The left and the bottom get room of their own, because that is where a
+        # shape touches its box - the west of Geneva and the south of Ticino are
+        # what used to be cut.
+        self.assertGreater(border[0] - ground[0], ground[2] - border[2])
+        self.assertGreater(border[1] - ground[1], ground[3] - border[3])
+
+    def render_ground(self, **config):
+        asked = []
+
+        def ground(extent, metres_per_pixel):
+            asked.append(extent)
+            return []
+
+        with override_settings(PLUGINS_CONFIG={"network_map": config}):
+            self.render(MAP_PINS, MAP_BORDER, "Kanton Bern", tiles_of=ground)
+        return asked[0]
+
+    def test_the_room_around_the_border_can_be_switched_off(self):
+        ground = self.render_ground(
+            map_border_room=0, map_room_left=0, map_room_bottom=0
+        )
+        self.assertEqual(ground, svg_render.map_extent(MAP_BORDER))
+
+    def test_a_bigger_room_moves_the_cut_out_farther(self):
+        spare = self.render_ground(
+            map_border_room=22, map_room_left=0, map_room_bottom=0
+        )
+        wide = self.render_ground(
+            map_border_room=122, map_room_left=0, map_room_bottom=0
+        )
+        border = svg_render.map_extent(MAP_BORDER)
+        self.assertGreater(border[0] - wide[0], border[0] - spare[0])
+        self.assertGreater(wide[2] - border[2], spare[2] - border[2])
 
     def test_a_picture_is_as_wide_as_it_can_be(self):
         # These sites reach from Geneva to Zurich, so the picture of them fills
@@ -1203,11 +1272,34 @@ class SubnetMapSvgTests(TestCase):
         self.assertIn("Kanton Bern", svg)
         # One border path, carrying the exterior ring and the hole.
         self.assertEqual(svg.count('class="map-border" d='), 1)
-        # Everything outside the border is painted over, so the picture ends
-        # with the canton and no frame line is left standing around it.
-        self.assertIn('class="map-outside"', svg)
+        # Nothing beyond the border is drawn, so the picture ends with the
+        # canton and no frame line is left standing around it.
+        self.assertIn('mask="url(#map-ground)"', svg)
+        self.assertNotIn('class="map-outside"', svg)
         self.assertNotIn('class="map-frame"', svg)
-        # Pins outside the configured border are clamped, never dropped.
+
+    def test_the_cut_stands_beyond_the_border(self):
+        # The ground is kept for the area and a band around it, so the picture
+        # is not cut on the line itself: a mask of a filled shape and the same
+        # shape stroked twice as wide is what leaves that band standing.
+        svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+        self.assertIn('stroke-width="20"', svg)
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 40}}):
+            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+        self.assertIn('stroke-width="80"', svg)
+
+    def test_the_cut_can_run_on_the_border_itself(self):
+        # Without a mask the picture is cut on the line, which is the old
+        # painting-over: a renderer that cannot do masks gets a picture.
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 0}}):
+            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+        self.assertNotIn("map-ground", svg)
+        self.assertIn('class="map-outside"', svg)
+
+    def test_a_site_outside_the_border_is_clamped_and_counted(self):
+        # Geneva lies far outside a canton drawn around Bern alone - far enough
+        # that the room around the border cannot bring it into the picture.
+        svg = self.render(MAP_PINS, MAP_TIGHT_BORDER, "Kanton Bern")
         self.assertIn('class="map-offframe"', svg)
         self.assertIn("outside the drawn area", svg)
 

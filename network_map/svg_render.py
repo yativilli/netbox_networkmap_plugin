@@ -10,6 +10,7 @@ from itertools import combinations
 
 from django.utils.html import escape
 from django.utils.translation import gettext as _
+from netbox.plugins import get_plugin_config
 
 from . import lv03
 from .colors import LOCATION_COLORS
@@ -634,6 +635,19 @@ MAP_MIN_H = 300
 # The long edge of the map picture, in pixels, which is what the browser export
 # draws too: the picture comes out this big unless the page is too narrow.
 MAP_EDGE = 1200
+# Room the picture leaves around the border it cuts along, in pixels of the
+# picture: the line and its white halo hang over the geometry, and a shape
+# touches its bounding box at a point - mostly in the west and the south, which
+# is where Geneva's edge and Ticino's tip get cut. `map_border_room` moves the
+# cut away from the border, `map_room_left` and `map_room_bottom` add room on
+# the two edges that need it most.
+BORDER_ROOM = 22
+ROOM_LEFT = 20
+ROOM_BOTTOM = 20
+# How far the cut itself stands beyond the border, so that the picture is not
+# cut directly on the line but leaves this much of the neighbouring ground
+# visible: `map_border_cut` changes it, `0` cuts on the line.
+BORDER_CUT = 3
 # A picture of a single address still shows some ground around it.
 # Switzerland's own bounding box in LV03 metres, the limits of the national
 # border as swisstopo publishes them rounded outward. A picture without a border
@@ -1035,6 +1049,38 @@ def _draw_footnotes(out, label, off_frame, start_y, attribution=None):
     return y + 26
 
 
+def border_cut():
+    """How far the cut stands beyond the border, in pixels of the picture."""
+    return max(0, int(get_plugin_config("network_map", "map_border_cut", BORDER_CUT)))
+
+
+def frame_room():
+    """
+    The room a picture leaves between its border and its edge, in pixels: what
+    every side gets, and what the left and the bottom add to it.
+    """
+    return (
+        max(0, int(get_plugin_config("network_map", "map_border_room", BORDER_ROOM))),
+        max(0, int(get_plugin_config("network_map", "map_room_left", ROOM_LEFT))),
+        max(0, int(get_plugin_config("network_map", "map_room_bottom", ROOM_BOTTOM))),
+    )
+
+
+def _fit_scale(span_east, span_north, avail_w):
+    """
+    Pixels per metre of ground for a picture of this much ground: the long edge
+    gets MAP_EDGE of them, the frame never grows over the page, and a tight
+    cluster still comes out of some height - it may then stand in a frame that
+    does not reach the page's edges.
+    """
+    span_east = max(span_east, 1e-6)
+    span_north = max(span_north, 1e-6)
+    scale = min(avail_w / span_east, MAP_EDGE / max(span_east, span_north))
+    if span_north * scale < MAP_MIN_H:
+        scale = min(MAP_MIN_H / span_north, avail_w / span_east)
+    return scale
+
+
 def render_subnet_map(
     map_data, boundary=None, label=None, tiles_of=None, attribution=None
 ):
@@ -1059,21 +1105,22 @@ def render_subnet_map(
     the same way.
     """
     pins = _placed(map_data)
-    extent = map_extent(boundary)
-
-    min_east, min_north, max_east, max_north = extent
-    span_east = max(max_east - min_east, 1e-6)
-    span_north = max(max_north - min_north, 1e-6)
-
+    rings = _polygon_rings(boundary)
+    min_east, min_north, max_east, max_north = map_extent(boundary)
     avail_w = MAP_WIDTH - 2 * MAP_MARGIN
-    # Pixels per metre of ground: the long edge of the picture gets MAP_EDGE of
-    # them, and the frame never grows over the page.
-    scale = min(avail_w / span_east, MAP_EDGE / max(span_east, span_north))
-    if span_north * scale < MAP_MIN_H:
-        # A tight cluster still wants a picture of some height, and it may then
-        # stand in a frame that does not reach the page's edges.
-        scale = min(MAP_MIN_H / span_north, avail_w / span_east)
-    map_w, map_h = span_east * scale, span_north * scale
+    scale = _fit_scale(max_east - min_east, max_north - min_north, avail_w)
+    if rings:
+        # Room around the ground, measured in metres at this scale; the frame
+        # would otherwise end where the border line and the shape's own western
+        # and southern extremes still are.
+        border, left, bottom = frame_room()
+        min_east -= (border + left) / scale
+        min_north -= (border + bottom) / scale
+        max_east += border / scale
+        max_north += border / scale
+        scale = _fit_scale(max_east - min_east, max_north - min_north, avail_w)
+    extent = (min_east, min_north, max_east, max_north)
+    map_w, map_h = (max_east - min_east) * scale, (max_north - min_north) * scale
 
     origin_x = MAP_MARGIN + (avail_w - map_w) / 2
     origin_y = MAP_MARGIN
@@ -1092,30 +1139,57 @@ def render_subnet_map(
         f'x="{origin_x:.1f}" y="{origin_y:.1f}" '
         f'width="{map_w:.1f}" height="{map_h:.1f}"'
     )
-    out.append(f'<defs><clipPath id="map-clip"><rect {frame}/></clipPath></defs>')
+    # The cut: the ground is asked for the whole box, but only what lies within
+    # the border belongs in the picture. The mask keeps the area and the band
+    # around it - the area filled, and the same shape stroked wide - so the cut
+    # runs `border_cut()` pixels beyond the line instead of on it. Masks are
+    # painted inline, since a renderer that does not read the document's styles
+    # would otherwise mask the ground away entirely, and a picture of a canton
+    # is worth more than a picture of its neighbours.
+    outline = "".join(_ring_path(ring, project) for ring in rings)
+    offset = border_cut() if rings else 0
+    defs = f'<clipPath id="map-clip"><rect {frame}/></clipPath>'
+    ground_mask = ""
+    if outline and offset:
+        defs += (
+            f'<mask id="map-ground" maskUnits="userSpaceOnUse" {frame}>'
+            f'<path d="{outline}" fill="#ffffff" fill-rule="evenodd"/>'
+            f'<path d="{outline}" fill="none" stroke="#ffffff" stroke-linejoin="round" '
+            f'stroke-width="{2 * offset}"/>'
+            f"</mask>"
+        )
+        ground_mask = ' mask="url(#map-ground)"'
+    out.append(f"<defs>{defs}</defs>")
 
     # Ground first, so the border and the pins lie on top of it: the tiles
     # asked for are the ones of this ground at this size. A background of its
     # own shows through wherever a tile could not be had.
-    out.append(f'<g clip-path="url(#map-clip)"><rect class="map-back" {frame}/>')
+    out.append(
+        f'<g clip-path="url(#map-clip)"{ground_mask}><rect class="map-back" {frame}/>'
+    )
     tiles = tiles_of(extent, 1.0 / scale) if tiles_of else []
     _draw_tiles(out, tiles, place)
     out.append("</g>")
 
-    rings = _polygon_rings(boundary)
     if rings:
-        path = "".join(_ring_path(ring, project) for ring in rings)
-        # A bounding box can only hug the canton where its shape happens to
-        # touch the box, so everything outside the border is painted over: the
-        # picture then ends with the canton on every side, and no frame line
-        # is left to draw around it.
-        cut = (
-            f"M{origin_x:.1f},{origin_y:.1f}H{origin_x + map_w:.1f}"
-            f"V{origin_y + map_h:.1f}H{origin_x:.1f}Z"
-        )
+        path = outline
+        # What the mask did not keep: without a mask to run the cut beyond the
+        # line, everything outside the border is painted over instead, which
+        # cuts the picture on the line itself.
+        outside = ""
+        if not ground_mask:
+            cut = (
+                f"M{origin_x:.1f},{origin_y:.1f}H{origin_x + map_w:.1f}"
+                f"V{origin_y + map_h:.1f}H{origin_x:.1f}Z"
+            )
+            outside = f'<path class="map-outside" d="{cut}{path}"/>'
+        # Painting the outside with a mask, rather than as one path with the
+        # border as its inner edge, lets the cut stand off that line: the black
+        # shape of the mask - the area, filled and stroked - keeps a band of
+        # ground on both sides of the border visible.
         out.append(
             '<g clip-path="url(#map-clip)">'
-            f'<path class="map-outside" d="{cut}{path}"/>'
+            f"{outside}"
             f'<path class="map-border-halo" d="{path}"/>'
             f'<path class="{"map-border-line" if tiles else "map-border"}" '
             f'd="{path}"/></g>'

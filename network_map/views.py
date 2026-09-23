@@ -16,6 +16,7 @@ from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
+from . import svg_render
 from .colors import (
     LOCATION_COLORS,
     color_for_location,
@@ -405,12 +406,24 @@ class SubnetLocationView(VlanElementListView):
             else None
         )
 
+        border_room, room_left, room_bottom = svg_render.frame_room()
+        cut = svg_render.border_cut()
         return {
             "pins": pins,
             "unplaced": unplaced,
             "locations": self.build_site_locations(sites),
             "canton_boundary_url": canton_url,
             "canton_label": get_canton_label(canton_code) if canton_url else None,
+            # How far the exported picture stands off the border it cuts along;
+            # the exporter could read the settings itself, but then the two
+            # pictures - the served one and the one the button makes - could
+            # disagree about what belongs in them.
+            "export_room": {
+                "border": border_room,
+                "left": room_left,
+                "bottom": room_bottom,
+                "cut": cut,
+            },
             "ui": {
                 "labels_show": _("Show labels"),
                 "labels_hide": _("Hide labels"),

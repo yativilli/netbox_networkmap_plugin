@@ -119,6 +119,29 @@ tile that cannot be had simply stays out of the picture.
 A different source has to answer in the LV03 grid, which leaves mirrors of the
 swisstopo tiles rather than OpenStreetMap.
 
+### Room around the border
+
+Two distances decide where a picture ends. The cut runs `map_border_cut` pixels
+beyond the border, so a band of the neighbouring ground stays in the picture
+instead of the picture ending on the line; `0` cuts on the line. And the border
+keeps `map_border_room` pixels between itself and the edge of the picture, because
+an area touches its own bounding box at a point - west of Geneva, south of Ticino
+- which is where a tight frame used to cut the line off. The left and the bottom
+edges add their own room to that.
+
+| Setting           | Default | Meaning                                       |
+| ----------------- | ------- | --------------------------------------------- |
+| `map_border_cut`  | `10`    | How far beyond the border the picture is cut. |
+| `map_border_room` | `22`    | Room between the border and the edge.         |
+| `map_room_left`   | `20`    | Room the left edge adds to that.              |
+| `map_room_bottom` | `20`    | Room the bottom edge adds to that.            |
+
+They are pixels of the picture and go in the same `PLUGINS_CONFIG` dictionary.
+Both pictures obey them, the served one and the one the page's export button
+makes, so the two never disagree about what belongs in them. A restart is needed,
+and a page already open has to be reloaded, because it carries the numbers it was
+served.
+
 ## Releases
 
 `__version__` in `network_map/__init__.py` is the only place the version is

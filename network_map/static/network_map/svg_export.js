@@ -538,6 +538,16 @@
         return { bar, label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m` };
     }
 
+    // The room the served picture leaves around its border, which the server
+    // hands over so that the two pictures agree. `cut` is how far the cut
+    // itself stands beyond the border line.
+    function exportRoom() {
+        return Object.assign(
+            {border: 22, left: 20, bottom: 20, cut: 10},
+            window.__subnetMapExportRoom || {}
+        );
+    }
+
     function mapCrop(map, size, boundary) {
         const full = {x: 0, y: 0, width: size.x, height: size.y};
         if (!boundary) return full;
@@ -550,14 +560,25 @@
         if (!bounds.isValid()) return full;
         const nw = map.latLngToContainerPoint(bounds.getNorthWest());
         const se = map.latLngToContainerPoint(bounds.getSouthEast());
-        // As snug as the drawing allows: only the border line and its white
-        // halo hang over the bounding box. The canton stays the frame even
-        // when the screen shows less of it, because the tiles of the picture
-        // are fetched for that frame rather than read off the screen.
-        const inset = 4;
+        const frame = {x: nw.x, y: nw.y, width: se.x - nw.x, height: se.y - nw.y};
+        // Room around that box, as the server configured it for its own
+        // pictures: the frame would end where the border line, its white halo
+        // and the shape's own extremes still are, and those extremes sit on the
+        // west and the south of most areas. The exported picture is MAP_EDGE
+        // pixels across on its long edge however the screen is zoomed, so the
+        // room becomes a fraction of this frame rather than a number of screen
+        // pixels. The area stays the frame even when the screen shows less of
+        // it, because the tiles are fetched for the frame rather than read off
+        // the screen.
+        const room = exportRoom();
+        const edge = Math.max(frame.width, frame.height) / MAP_EDGE;
+        const border = room.border * edge;
+        const left = border + room.left * edge;
+        const bottom = border + room.bottom * edge;
         return {
-            x: nw.x - inset, y: nw.y - inset,
-            width: se.x - nw.x + 2 * inset, height: se.y - nw.y + 2 * inset
+            x: frame.x - left, y: frame.y - border,
+            width: frame.width + left + border,
+            height: frame.height + bottom + border
         };
     }
 
@@ -930,13 +951,34 @@
         // Tiles come in whole squares and the canton border is whatever it is,
         // so both are cut at the edge of the map: nothing may run into the
         // space the list of sites uses underneath the picture.
+        // What the border looks like has to be known before the ground is laid,
+        // because the ground is cut with it: the mask keeps the area and a band
+        // around it, so the cut runs beyond the line instead of on it. Painted
+        // inline, since a renderer that skips the document's styles would
+        // otherwise mask the ground away altogether.
+        const areaRings = house ? [] : mapRings(boundary || {features: []});
+        const areaPath = areaRings.length ? mapBorderPath(areaRings, toExport) : '';
+        const beyond = areaPath ? exportRoom().cut : 0;
+        const cutMasked = areaPath !== '' && beyond > 0;
         out.push(
             '<defs><clipPath id="map-area">' +
             `<rect x="0" y="0" width="${width.toFixed(1)}" ` +
             `height="${height.toFixed(1)}"/>` +
-            '</clipPath></defs>'
+            '</clipPath>' +
+            (cutMasked
+                ? '<mask id="map-ground" maskUnits="userSpaceOnUse" x="0" y="0" ' +
+                  `width="${width.toFixed(1)}" height="${height.toFixed(1)}">` +
+                  `<path d="${areaPath}" fill="#ffffff" fill-rule="evenodd"/>` +
+                  `<path d="${areaPath}" fill="none" stroke="#ffffff" ` +
+                  `stroke-linejoin="round" stroke-width="${(2 * beyond).toFixed(1)}"/>` +
+                  '</mask>'
+                : '') +
+            '</defs>'
         );
-        out.push('<g clip-path="url(#map-area)">');
+        out.push(
+            '<g clip-path="url(#map-area)"' +
+            (cutMasked ? ' mask="url(#map-ground)"' : '') + '>'
+        );
         tiles.forEach((tile) => {
             out.push(
                 `<image href="${tile.href}" xlink:href="${tile.href}" ` +
@@ -948,29 +990,27 @@
         const planFrame = rawFrame ? planRect(house, toExport) : null;
         if (house) {
             out.push(planGraphics(container, house, planFrame));
-        } else {
-            const rings = mapRings(boundary || { features: [] });
-            if (rings.length) {
-                const path = mapBorderPath(rings, toExport);
+        } else if (areaPath) {
+            if (!cutMasked) {
                 // A bounding box can only hug the canton where its shape
                 // touches the box, which leaves the map of the neighbouring
                 // cantons standing around the empty corners - the south of
-                // Bern for one. Painting over everything outside the border
-                // cuts the picture with the border itself, on every side.
+                // Bern for one. Without the mask, which runs the cut beyond the
+                // line, everything outside the border is painted over instead.
                 out.push(
                     `<path class="map-outside" d="M0,0 H${width.toFixed(1)} ` +
-                    `V${height.toFixed(1)} H0 Z${path}"/>`
+                    `V${height.toFixed(1)} H0 Z${areaPath}"/>`
                 );
-                out.push('<g clip-path="url(#map-area)">');
-                // The canton tint the page shows over its area, holes and all;
-                // it goes under the line so the dashes stay crisp. Left out of
-                // the export, where the tiles are coloured enough already -
-                // uncomment to restore it.
-                // out.push(`<path class="map-border-fill" d="${path}"/>`);
-                out.push(`<path class="map-border-halo" d="${path}"/>`);
-                out.push(`<path class="map-border" d="${path}"/>`);
-                out.push('</g>');
             }
+            out.push('<g clip-path="url(#map-area)">');
+            // The canton tint the page shows over its area, holes and all; it
+            // goes under the line so the dashes stay crisp. Left out of the
+            // export, where the tiles are coloured enough already - uncomment
+            // to restore it.
+            // out.push(`<path class="map-border-fill" d="${areaPath}"/>`);
+            out.push(`<path class="map-border-halo" d="${areaPath}"/>`);
+            out.push(`<path class="map-border" d="${areaPath}"/>`);
+            out.push('</g>');
         }
 
         let outside = 0;
