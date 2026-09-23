@@ -147,8 +147,21 @@ subnet in common would otherwise share a colour. The swisstopo tiles are re-fetc
 data; if the tile server does not allow that, the export falls back to the
 vector-only version.
 
+Every one of those documents is also handed out as a PNG, the format the map
+page's own button produces: ask the same URL with `?format=png` (or
+`Accept: image/png`). Nothing inside NetBox draws SVG, so the raster is made by
+whichever rasteriser the server has - the `cairosvg` package
+(`/opt/netbox/venv/bin/python -m pip install cairosvg`, also declared as the
+`png` extra of this plugin), which follows CSS closely, or the ImageMagick
+command line, which is installed everywhere but quietly drops what it does not
+know, dashed strokes among them, so the canton border disappears. With neither
+installed, a PNG request answers 501 with what to install rather than a broken
+picture. The API picture is the vector map: unlike the browser's export it
+carries no swisstopo tiles, since those are fetched by the page that shows them.
+
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
-API root (`/api/plugins/networkmap/`) links to the four endpoints above. They
+API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
+them twice: as SVG and as `<kind>.png` with the format on the query string. They
 are also documented in the OpenAPI schema (`/api/schema/`) under the
 `network-map` tag.
 

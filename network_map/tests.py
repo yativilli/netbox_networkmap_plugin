@@ -1,4 +1,5 @@
 import json
+import unittest
 from types import SimpleNamespace
 from unittest import mock
 
@@ -252,10 +253,13 @@ class SvgApiTests(TestCase):
         permission.object_types.add(cls.map_content_type)
         cls.user.object_permissions.add(permission)
 
-    def get_svg(self, kind):
+    def get_svg(self, kind, fmt=None):
         # The mount prefix derives from the plugin's base_url/module name.
         for prefix in ("networkmap", "network_map"):
-            response = self.client.get(f"/api/plugins/{prefix}/svg/{kind}/")
+            url = f"/api/plugins/{prefix}/svg/{kind}/"
+            if fmt:
+                url = f"{url}?format={fmt}"
+            response = self.client.get(url)
             if response.status_code != 404:
                 return response
         return response
@@ -270,6 +274,28 @@ class SvgApiTests(TestCase):
             self.assertEqual(response.status_code, 200, kind)
             self.assertTrue(response["Content-Type"].startswith("image/svg+xml"), kind)
             self.assertIn(b"<svg", response.content)
+
+    @unittest.skipUnless(png_render.available(), "needs cairosvg or ImageMagick")
+    def test_png_endpoints_render(self):
+        self.client.force_login(self.user)
+        for kind in self.KINDS:
+            with mock.patch(
+                "network_map.api.views.get_canton_boundary", return_value=None
+            ):
+                response = self.get_svg(kind, fmt="png")
+            self.assertEqual(response.status_code, 200, kind)
+            self.assertTrue(response["Content-Type"].startswith("image/png"), kind)
+            self.assertTrue(response.content.startswith(png_render.PNG_MAGIC), kind)
+
+    def test_png_without_a_rasteriser_says_so(self):
+        self.client.force_login(self.user)
+        with mock.patch(
+            "network_map.api.views.png_render.available", return_value=False
+        ):
+            response = self.get_svg("topology", fmt="png")
+        self.assertEqual(response.status_code, 501)
+        self.assertIn(b"cairosvg", response.content)
+        self.assertIn(b"<svg", self.get_svg("topology").content)
 
     def test_subnet_map_svg_uses_the_configured_border(self):
         self.client.force_login(self.user)
@@ -301,6 +327,7 @@ class SvgApiTests(TestCase):
         for kind in self.KINDS:
             self.assertIn(kind, data)
             self.assertIn(f"/svg/{kind}/", data[kind])
+            self.assertEqual(data[f"{kind}.png"], f"{data[kind]}?format=png")
 
     def test_anonymous_is_rejected(self):
         response = self.get_svg("topology")

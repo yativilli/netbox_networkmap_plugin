@@ -9,6 +9,11 @@ description = "A network_map plugin for netbox"
 license = "GPL-3.0"
 readme = "README.md"
 
+[project.optional-dependencies]
+# Only needed to answer `?format=png`: NetBox itself never rasterises SVG.
+# ImageMagick on the server works as well and needs no package here.
+png = ["cairosvg>=2.7"]
+
 [project.urls]
 Homepage = "https://github.com/yativilli/netbox_networkmap_plugin"
 Repository = "https://github.com/yativilli/netbox_networkmap_plugin"
