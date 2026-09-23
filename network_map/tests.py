@@ -903,6 +903,83 @@ class SwisstopoResolverTests(TestCase):
         self.assertIsNone(swisstopo.get_canton_label(""))
 
 
+_COUNTRY_GEOMETRY = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"id": "CH", "bez": "Schweiz"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[6.0, 46.0], [10.0, 46.0], [10.0, 47.8], [6.0, 47.8], [6.0, 46.0]]
+                ],
+            },
+        }
+    ],
+}
+
+
+class CountryBorderTests(TestCase):
+    """
+    "CH" in canton_boundary_code asks for the whole country - the same handling
+    as a canton, with the national border in its place.
+    """
+
+    def setUp(self):
+        cache.clear()
+
+    def test_the_country_is_recognised(self):
+        self.assertTrue(swisstopo.is_country("CH"))
+        self.assertTrue(swisstopo.is_country(" sw "))
+        self.assertTrue(swisstopo.boundary_configured("CH"))
+        self.assertTrue(swisstopo.boundary_configured("BE"))
+        self.assertFalse(swisstopo.is_country("BE"))
+        self.assertFalse(swisstopo.boundary_configured(""))
+        self.assertFalse(swisstopo.boundary_configured(None))
+
+    def test_the_country_names_itself(self):
+        self.assertEqual(swisstopo.get_canton_label("CH"), "Schweiz")
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"canton_boundary_label": "Switzerland"}}
+        ):
+            self.assertEqual(swisstopo.get_canton_label("CH"), "Switzerland")
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_the_border_of_the_country_comes_from_its_own_layer(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(_COUNTRY_GEOMETRY)
+        result = swisstopo.get_canton_boundary("CH")
+        self.assertIn(
+            "swissboundaries3d-land-flaeche.fill/CH", urlopen.call_args.args[0].full_url
+        )
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(result["features"][0]["geometry"]["type"], "Polygon")
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_the_country_falls_back_to_a_hole_carrying_source(self, urlopen):
+        nominatim = _FakeHTTPResponse(
+            [{"geojson": {"type": "Polygon", "coordinates": []}}]
+        )
+        urlopen.side_effect = [OSError("no route to swisstopo"), nominatim]
+        result = swisstopo.get_canton_boundary("CH")
+        self.assertIsNotNone(result)
+        second = urlopen.call_args_list[1].args[0].full_url
+        self.assertIn("q=Switzerland", second)
+        self.assertIn("featuretype=country", second)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_the_country_is_fetched_once(self, urlopen):
+        urlopen.return_value = _FakeHTTPResponse(_COUNTRY_GEOMETRY)
+        swisstopo.get_canton_boundary("CH")
+        swisstopo.get_canton_boundary("sw")
+        self.assertEqual(urlopen.call_count, 1)
+
+    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
+    def test_no_source_means_no_border(self, urlopen):
+        urlopen.side_effect = OSError("offline")
+        self.assertIsNone(swisstopo.get_canton_boundary("CH"))
+
+
 class CantonBoundaryViewTests(TestCase):
     URL = "plugins:network_map:canton_boundary"
 
@@ -956,7 +1033,7 @@ class MapDataCantonBoundaryTests(TestCase):
                     "BE" if key == "canton_boundary_code" else default
                 ),
             ),
-            mock.patch("network_map.views.resolve_canton_id", return_value=2),
+            mock.patch("network_map.views.boundary_configured", return_value=True),
             mock.patch(
                 "network_map.views.get_canton_label", return_value="Kanton Bern"
             ),
@@ -972,7 +1049,7 @@ class MapDataCantonBoundaryTests(TestCase):
                 "network_map.views.get_plugin_config",
                 side_effect=lambda name, key, default=None: default,
             ),
-            mock.patch("network_map.views.resolve_canton_id", return_value=None),
+            mock.patch("network_map.views.boundary_configured", return_value=False),
         ):
             data = view.build_map_data([])
         self.assertIsNone(data["canton_boundary_url"])
@@ -1102,9 +1179,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertIn('<image href="data:image/jpeg;base64,TESTTILE"', svg)
         # The tiles are asked for the ground the picture shows, and no more, and
         # asked at the size the picture is drawn: metres per pixel.
-        self.assertEqual(
-            asked[0][0], svg_render.map_extent({"pins": MAP_PINS}, MAP_BORDER)
-        )
+        self.assertEqual(asked[0][0], svg_render.map_extent(MAP_BORDER))
         self.assertGreater(asked[0][1], 0)
         self.assertLess(svg.index("<image"), svg.index('class="map-outside"'))
         # Whoever the tiles come from is said under the picture.
@@ -1135,6 +1210,35 @@ class SubnetMapSvgTests(TestCase):
         # Pins outside the configured border are clamped, never dropped.
         self.assertIn('class="map-offframe"', svg)
         self.assertIn("outside the drawn area", svg)
+
+    def test_a_picture_without_a_border_shows_the_country(self):
+        asked = []
+
+        def ground(extent, metres_per_pixel):
+            asked.append(extent)
+            return []
+
+        svg = self.render(MAP_PINS, tiles_of=ground)
+        # Nothing to end the picture with, so it ends with the country: every
+        # site is on it, whichever canton it happens to stand in.
+        self.assertEqual(asked[0], svg_render.SWITZERLAND)
+        self.assertIn("RZ Bern", svg)
+        self.assertIn("Filiale Genf", svg)
+
+    def test_the_country_is_the_extent_without_a_border(self):
+        self.assertEqual(svg_render.map_extent(None), svg_render.SWITZERLAND)
+        self.assertEqual(svg_render.map_extent({}), svg_render.SWITZERLAND)
+
+    def test_a_border_thicker_than_a_pixel_keeps_its_shape(self):
+        # The national border arrives with some fifty thousand points, most of
+        # them closer together than a pixel of the picture; those are left out,
+        # the corners of the country are not.
+        ring = [[step / 1000.0, 47.0] for step in range(1000)]
+        path = svg_render._ring_path(ring, lambda lon, lat: (lon * 100.0, 0.0))
+        self.assertTrue(path.endswith("Z"))
+        self.assertGreater(path.count("L"), 100)
+        self.assertLess(path.count("L"), len(ring) // 2)
+        self.assertIn("99.", path)
 
     def test_pin_extent_used_without_border(self):
         svg = self.render(MAP_PINS)

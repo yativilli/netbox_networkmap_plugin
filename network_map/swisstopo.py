@@ -104,9 +104,51 @@ LAST_RESORT_URL_TEMPLATE = (
     "/ch.swisstopo.swissboundaries3d-kanton-flaeche.fill/{id}"
     "?geometry=true&returnGeometry=true&sr=4326&f=json"
 )
+
+# The whole country instead of a canton, which "CH" (or "SW") in
+# canton_boundary_code asks for. The national border lives in its own layer,
+# whose single feature is addressed by "CH".
+COUNTRY = "CH"
+COUNTRY_CODES = ("CH", "SW")
+COUNTRY_NAME = "Schweiz"
+
+COUNTRY_URL_TEMPLATE = (
+    "https://api3.geo.admin.ch/rest/services/api/MapServer"
+    "/ch.swisstopo.swissboundaries3d-land-flaeche.fill/{id}"
+    "?geometry=true&returnGeometry=true&sr=4326&f=json"
+)
+
+# Nominatim's country polygon carries interior rings, so enclaves such as
+# Büsingen stay outside the drawn country; the swisstopo feature endpoint above
+# is tried first because its geometry is the official one.
+COUNTRY_FALLBACK_URL_TEMPLATE = (
+    "https://nominatim.openstreetmap.org/search?q=Switzerland"
+    "&countrycodes=ch&featuretype=country"
+    "&polygon_geojson=1&format=json&limit=1"
+)
+
+COUNTRY_LAST_RESORT_URL_TEMPLATE = (
+    "https://wfs.geo.admin.ch/?service=WFS&version=2.0.0&request=GetFeature"
+    "&typeNames=ch.swisstopo.swissboundaries3d-land-flaeche.fill"
+    "&outputFormat=application%2Fjson&srsName=EPSG%3A4326"
+)
 REQUEST_TIMEOUT_SECONDS = 10
 CACHE_SECONDS = 60 * 60 * 24 * 30
 USER_AGENT = f"network_map_plugin/{__version__} (NetBox network topology plugin)"
+
+
+def is_country(code):
+    """
+    Whether the settings ask for the whole country rather than one canton.
+    """
+    return str(code or "").strip().upper() in COUNTRY_CODES
+
+
+def boundary_configured(code):
+    """
+    Whether a border is to be drawn at all: for a canton or for the country.
+    """
+    return is_country(code) or resolve_canton_id(code) is not None
 
 
 def resolve_canton_id(code):
@@ -294,65 +336,32 @@ def _try_collection(source, template, canton_id, canton_code):
     return feature_collection
 
 
-def get_canton_boundary(code):
+def _fetch_boundary(what, area_id, area_code, templates):
     """
-    Return the canton border as a GeoJSON FeatureCollection in WGS84
-    lon/lat, fetched from configured boundary sources and cached. The WFS
-    source is tried first (its geometry carries holes), then the Nominatim
-    fallback (also hole-carrying), then the hole-less map.geo.admin.ch feature
-    endpoint as a last resort. Returns None only when no code is configured,
-    the code is unknown, or all sources fail, so the caller can simply skip
-    drawing the border.
+    Fetch a border geometry from the first source that answers, and cache it.
+    `templates` is the (source label, URL template) list in the order to try;
+    `what` names the area in the cache key and the log.
     """
-    canton_id = resolve_canton_id(code)
-    if canton_id is None:
-        return None
-    canton_code = resolve_canton_code(code)
-
-    cache_key = f"network_map:canton_boundary:{canton_id}"
+    cache_key = f"network_map:canton_boundary:{what}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    primary = get_plugin_config(
-        "network_map", "canton_boundary_url_template", DEFAULT_URL_TEMPLATE
-    )
-    fallback = get_plugin_config(
-        "network_map",
-        "canton_boundary_fallback_url_template",
-        FALLBACK_URL_TEMPLATE,
-    )
-    last_resort = get_plugin_config(
-        "network_map",
-        "canton_boundary_last_resort_url_template",
-        LAST_RESORT_URL_TEMPLATE,
-    )
-
     feature_collection = None
     source = None
     seen_templates = set()
-    for source_label, template in (
-        ("primary", primary),
-        ("fallback", fallback),
-        ("last-resort", last_resort),
-    ):
+    for source_label, template in templates:
         if not template or template in seen_templates:
             continue
         seen_templates.add(template)
-        feature_collection = _try_collection(
-            source_label, template, canton_id, canton_code
-        )
+        feature_collection = _try_collection(source_label, template, area_id, area_code)
         if feature_collection is not None:
             source = source_label
             break
     if feature_collection is None:
         return None
 
-    logger.info(
-        "Canton border geometry for canton id %s fetched from the %s source",
-        canton_id,
-        source,
-    )
+    logger.info("Border geometry for %s fetched from the %s source", what, source)
     cache_seconds = get_plugin_config(
         "network_map", "canton_boundary_cache_seconds", CACHE_SECONDS
     )
@@ -360,14 +369,95 @@ def get_canton_boundary(code):
     return feature_collection
 
 
+def get_canton_boundary(code):
+    """
+    Return the configured border as a GeoJSON FeatureCollection in WGS84
+    lon/lat, fetched from the configured sources and cached. A canton is tried
+    first through the WFS source (its geometry carries holes), then the
+    Nominatim fallback (also hole-carrying), then the hole-less
+    map.geo.admin.ch feature endpoint; "CH" or "SW" asks for the national
+    border instead, from its own layer. Returns None only when no code is
+    configured, the code is unknown, or all sources fail, so the caller can
+    simply skip drawing the border.
+    """
+    if is_country(code):
+        return _fetch_boundary(
+            COUNTRY,
+            COUNTRY,
+            COUNTRY,
+            (
+                (
+                    "primary",
+                    get_plugin_config(
+                        "network_map",
+                        "country_boundary_url_template",
+                        COUNTRY_URL_TEMPLATE,
+                    ),
+                ),
+                (
+                    "fallback",
+                    get_plugin_config(
+                        "network_map",
+                        "country_boundary_fallback_url_template",
+                        COUNTRY_FALLBACK_URL_TEMPLATE,
+                    ),
+                ),
+                (
+                    "last-resort",
+                    get_plugin_config(
+                        "network_map",
+                        "country_boundary_last_resort_url_template",
+                        COUNTRY_LAST_RESORT_URL_TEMPLATE,
+                    ),
+                ),
+            ),
+        )
+
+    canton_id = resolve_canton_id(code)
+    if canton_id is None:
+        return None
+    return _fetch_boundary(
+        canton_id,
+        canton_id,
+        resolve_canton_code(code),
+        (
+            (
+                "primary",
+                get_plugin_config(
+                    "network_map", "canton_boundary_url_template", DEFAULT_URL_TEMPLATE
+                ),
+            ),
+            (
+                "fallback",
+                get_plugin_config(
+                    "network_map",
+                    "canton_boundary_fallback_url_template",
+                    FALLBACK_URL_TEMPLATE,
+                ),
+            ),
+            (
+                "last-resort",
+                get_plugin_config(
+                    "network_map",
+                    "canton_boundary_last_resort_url_template",
+                    LAST_RESORT_URL_TEMPLATE,
+                ),
+            ),
+        ),
+    )
+
+
 def get_canton_label(code):
     """
-    Return the legend label for a canton: the explicit
-    canton_boundary_label setting, else the canton's name, else None.
+    Return the legend label for a border: the explicit canton_boundary_label
+    setting, else the canton's name prefixed as on the page, else "Schweiz" for
+    the country, else None.
     """
     label = get_plugin_config("network_map", "canton_boundary_label", "")
     if label:
         return label
+    if is_country(code):
+        return COUNTRY_NAME
     canton_id = resolve_canton_id(code)
     if canton_id is None:
         return None

@@ -31,7 +31,7 @@ from .models import (
     PrefixElement,
     VlanInfo,
 )
-from .swisstopo import get_canton_boundary, get_canton_label, resolve_canton_id
+from .swisstopo import boundary_configured, get_canton_boundary, get_canton_label
 
 
 class NetworkMapPermissionRequiredMixin(
@@ -401,7 +401,7 @@ class SubnetLocationView(VlanElementListView):
         )
         canton_url = (
             reverse("plugins:network_map:canton_boundary")
-            if resolve_canton_id(canton_code) is not None
+            if boundary_configured(canton_code)
             else None
         )
 

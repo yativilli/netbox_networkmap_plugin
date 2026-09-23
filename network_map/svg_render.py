@@ -635,7 +635,11 @@ MAP_MIN_H = 300
 # draws too: the picture comes out this big unless the page is too narrow.
 MAP_EDGE = 1200
 # A picture of a single address still shows some ground around it.
-MAP_MIN_PAD = 1000  # metres of ground around a lone site
+# Switzerland's own bounding box in LV03 metres, the limits of the national
+# border as swisstopo publishes them rounded outward. A picture without a border
+# to stand on shows the country instead of a box around whatever happens to be
+# registered.
+SWITZERLAND = (485000.0, 75000.0, 834000.0, 296000.0)
 PIN_R = 6
 # A site is one pin with its number in it, like the machine dots of a plan.
 SITE_R = 9
@@ -713,32 +717,24 @@ def _placed(map_data):
     ]
 
 
-def _bounds(points, pad=0.0, floor=0.0):
-    """
-    The box around some points, widened by a fraction of its own size and by at
-    least the floor, so that a box of one point is still a piece of ground.
-    """
+def _bounds(points):
+    """The box around some points."""
     east = [point[0] for point in points]
     north = [point[1] for point in points]
-    wide = max((max(east) - min(east)) * pad, floor)
-    high = max((max(north) - min(north)) * pad, floor)
-    return (min(east) - wide, min(north) - high, max(east) + wide, max(north) + high)
+    return (min(east), min(north), max(east), max(north))
 
 
-def map_extent(map_data, boundary=None):
+def map_extent(boundary=None):
     """
-    The ground a picture of this map has to show, as an LV03 box
-    (west, south, east, north): the canton border's own bounding box when it is
-    known - so that pictures taken at different times stay comparable - and the
-    padded box of the pins otherwise. None when nothing stands anywhere.
+    The ground a picture has to show, as an LV03 box (west, south, east, north):
+    the configured border's own bounding box when it is known - so that pictures
+    taken at different times stay comparable - and the whole country otherwise,
+    whether the settings asked for no border or the geometry could not be had.
     """
     points = _lv03_points(boundary)
     if points:
         return _bounds(points)
-    points = [lv03.to_lv03(pin["lat"], pin["lon"]) for pin in _placed(map_data)]
-    if not points:
-        return None
-    return _bounds(points, pad=0.12, floor=MAP_MIN_PAD)
+    return SWITZERLAND
 
 
 def _polygon_rings(geojson):
@@ -757,9 +753,18 @@ def _polygon_rings(geojson):
 
 
 def _ring_path(ring, project):
+    """
+    A polygon ring as a closed path. Points closer together than half a pixel
+    are left out: the national border arrives with some fifty thousand of them,
+    most of which would be drawn on top of their neighbours.
+    """
     parts = []
+    last = None
     for lon, lat in ring:
         x, y = project(lon, lat)
+        if last is not None and max(abs(x - last[0]), abs(y - last[1])) < 0.5:
+            continue
+        last = (x, y)
         parts.append(f"M{x:.1f},{y:.1f}" if not parts else f"L{x:.1f},{y:.1f}")
     return "".join(parts) + "Z"
 
@@ -1054,9 +1059,7 @@ def render_subnet_map(
     the same way.
     """
     pins = _placed(map_data)
-    extent = map_extent({"pins": pins}, boundary)
-    if extent is None:
-        return build_svg(400, 80, "", MAP_STYLE)
+    extent = map_extent(boundary)
 
     min_east, min_north, max_east, max_north = extent
     span_east = max(max_east - min_east, 1e-6)
