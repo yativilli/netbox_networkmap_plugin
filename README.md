@@ -156,8 +156,11 @@ whichever rasteriser the server has - the `cairosvg` package
 command line, which is installed everywhere but quietly drops what it does not
 know, dashed strokes among them, so the canton border disappears. With neither
 installed, a PNG request answers 501 with what to install rather than a broken
-picture. The API picture is the vector map: unlike the browser's export it
-carries no swisstopo tiles, since those are fetched by the page that shows them.
+picture. A document whose long edge passes `PNG_MAX_EDGE` - the logical tree of a
+large inventory runs past 70000 units easily - comes out smaller instead of
+failing, since both rasterisers refuse surfaces that big. The API picture is the
+vector map: unlike the browser's export it carries no swisstopo tiles, since
+those are fetched by the page that shows them.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
