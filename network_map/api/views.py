@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 
-from .. import png_render, svg_render
+from .. import map_tiles, png_render, svg_render
 from ..defaults import DEFAULT_CANTON_BOUNDARY_CODE
 from ..swisstopo import get_canton_boundary, get_canton_label
 from ..views import (
@@ -99,6 +99,20 @@ class MapSvgView(APIView):
     permission_classes = (IsAuthenticated,)
     renderer_classes = (SvgRenderer, PngRenderer)
 
+    @staticmethod
+    def _wants_background(request):
+        """
+        Whether the ground is to be fetched for the picture. The tiles are what
+        makes a served map look like the one the page's own button makes, but
+        they are also what makes the document big, so a caller that only wants
+        the drawing asks for it plain.
+        """
+        return request.query_params.get("background", "1").lower() not in (
+            "0",
+            "false",
+            "off",
+        )
+
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         if not request.user.has_perm("network_map.view_vlanelement"):
@@ -135,6 +149,17 @@ class MapSvgView(APIView):
                 enum=["svg", "png"],
                 description="Picture format; SVG without it, PNG as ?format=png.",
             ),
+            OpenApiParameter(
+                name="background",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["1", "0"],
+                description=(
+                    "For the subnet map only: 1 (the default) draws the map "
+                    "tiles behind the picture, 0 leaves the ground out."
+                ),
+            ),
         ],
         responses={
             (200, "image/svg+xml"): OpenApiTypes.BINARY,
@@ -165,6 +190,10 @@ class MapSvgView(APIView):
                 map_data,
                 boundary,
                 get_canton_label(canton_code) if boundary else None,
+                tiles_of=map_tiles.background
+                if self._wants_background(request)
+                else None,
+                attribution=map_tiles.attribution(),
             )
         elif kind == "topology":
             topology_view = VlanTopologyView()

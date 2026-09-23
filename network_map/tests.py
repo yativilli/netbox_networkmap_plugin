@@ -1,4 +1,7 @@
 import json
+import math
+import os
+import re
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -12,7 +15,7 @@ from django.urls import reverse
 from ipam.models import VLAN, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
-from . import png_render, svg_render, swisstopo
+from . import lv03, map_tiles, png_render, svg_render, swisstopo
 from .colors import shade_of
 from .models import VlanInfo
 from .templatetags.network_map_static import static_url
@@ -252,6 +255,216 @@ class PngRenderTests(TestCase):
             png_render.render_png("<svg/>")
 
 
+class _FakeTileResponse:
+    """Minimal stand-in for the object urlopen() returns for a tile."""
+
+    def __init__(self, payload=b"\xff\xd8\xff\xe0jpeg"):
+        self._payload = payload
+
+    def read(self, max_bytes=-1):
+        if max_bytes is None or max_bytes < 0:
+            return self._payload
+        return self._payload[:max_bytes]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _lv03_extent(corners):
+    """The LV03 box around lon/lat corners, as map_tiles is handed one."""
+    points = [lv03.to_lv03(lat, lon) for lon, lat in corners]
+    return (
+        min(point[0] for point in points),
+        min(point[1] for point in points),
+        max(point[0] for point in points),
+        max(point[1] for point in points),
+    )
+
+
+def _static(name):
+    path = os.path.join(os.path.dirname(__file__), "static", "network_map", name)
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+# A corner of the Bernese Oberland, one address in Bern, and the whole country;
+# the first is a handful of tiles, the second only cheap at a coarse zoom.
+TILE_AREA = ((7.40, 46.90), (7.48, 46.96))
+ONE_ADDRESS = ((7.44, 46.94), (7.45, 46.946))
+SWITZERLAND = ((5.96, 45.82), (10.49, 47.81))
+
+
+class LV03Tests(TestCase):
+    """
+    The server draws on the grid of the page, whose own projection grid was
+    generated offline with PROJ - that grid is the yardstick here.
+    """
+
+    @staticmethod
+    def _grid():
+        return json.loads(
+            re.search(
+                r"var g = (\{.*?\});\n", _static("lv03_grid.js"), re.DOTALL
+            ).group(1)
+        )
+
+    @staticmethod
+    def _sample(values, grid, lat, lon):
+        """The browser's bilinear sampling, ported."""
+        i = min(max((lat - grid["lat0"]) / grid["latStep"], 0), grid["nLat"] - 1)
+        j = min(max((lon - grid["lon0"]) / grid["lonStep"], 0), grid["nLon"] - 1)
+        i0, j0 = int(i), int(j)
+        i1 = min(i0 + 1, grid["nLat"] - 1)
+        j1 = min(j0 + 1, grid["nLon"] - 1)
+        fi, fj = i - i0, j - j0
+        wide = grid["nLon"]
+        near = values[i0 * wide + j0] * (1 - fj) + values[i0 * wide + j1] * fj
+        far = values[i1 * wide + j0] * (1 - fj) + values[i1 * wide + j1] * fj
+        return near * (1 - fi) + far * fi
+
+    def test_a_known_place_lands_where_it_stands(self):
+        east, north = lv03.to_lv03(46.9514, 7.4396)  # the Bundeshaus
+        self.assertAlmostEqual(east, 600074, delta=10)
+        self.assertAlmostEqual(north, 200035, delta=10)
+
+    def test_the_server_puts_a_point_where_the_page_puts_it(self):
+        grid = self._grid()
+        rows = max(1, grid["nLat"] // 12)
+        cols = max(1, grid["nLon"] // 12)
+        for row in range(0, grid["nLat"], rows):
+            for col in range(0, grid["nLon"], cols):
+                lat = grid["lat0"] + row * grid["latStep"]
+                lon = grid["lon0"] + col * grid["lonStep"]
+                east, north = lv03.to_lv03(lat, lon)
+                drift = math.hypot(
+                    east - self._sample(grid["e"], grid, lat, lon),
+                    north - self._sample(grid["n"], grid, lat, lon),
+                )
+                self.assertLess(round(drift, 1), 50, f"{lat}, {lon}")
+
+    def test_the_ladder_is_the_one_the_page_tiles_with(self):
+        source = _static("subnet_map.js")
+        ladder = re.search(r"\[([\d.,\s]+)\]\.forEach\(\(res\)", source).group(1)
+        steps = json.loads(f"[{ladder}]")
+        self.assertEqual(
+            lv03.RESOLUTIONS[:14], tuple(4000.0 - 250.0 * step for step in range(14))
+        )
+        self.assertEqual(list(lv03.RESOLUTIONS[14:]), steps)
+
+    def test_a_tile_covers_the_ground_it_is_asked_for(self):
+        rect = lv03.tile_rect(7, 5, 17)
+        west, south, east, north = rect
+        side = lv03.TILE_SIZE * lv03.resolution(17)
+        self.assertAlmostEqual(east - west, side)
+        self.assertAlmostEqual(north - south, side)
+        self.assertEqual(
+            lv03.tile_of((west + east) / 2, (south + north) / 2, 17), (7, 5)
+        )
+
+    def test_the_grid_covers_the_ground_it_shows(self):
+        extent = _lv03_extent(SWITZERLAND)
+        zoom = lv03.zoom_for(200.0)
+        from_x, from_y, to_x, to_y = lv03.grid(extent, zoom)
+        west = min(lv03.tile_rect(x, from_y, zoom)[0] for x in (from_x, to_x))
+        east = max(lv03.tile_rect(x, from_y, zoom)[2] for x in (from_x, to_x))
+        south = min(lv03.tile_rect(from_x, y, zoom)[1] for y in (from_y, to_y))
+        north = max(lv03.tile_rect(from_x, y, zoom)[3] for y in (from_y, to_y))
+        self.assertLessEqual(west, extent[0])
+        self.assertLessEqual(south, extent[1])
+        self.assertGreaterEqual(east, extent[2])
+        self.assertGreaterEqual(north, extent[3])
+
+    def test_the_zoom_is_the_step_that_suits_the_picture(self):
+        self.assertEqual(lv03.zoom_for(100.0), 17)
+        self.assertGreater(lv03.zoom_for(20.0), lv03.zoom_for(800.0))
+        self.assertGreaterEqual(lv03.zoom_for(9000.0), lv03.MIN_ZOOM)
+        self.assertLessEqual(lv03.zoom_for(0.01), lv03.MAX_ZOOM)
+
+
+class MapTileTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_the_ground_of_a_picture_is_a_picture_too(self, urlopen):
+        urlopen.return_value = _FakeTileResponse()
+        tiles = map_tiles.background(_lv03_extent(TILE_AREA), 100.0)
+        self.assertTrue(tiles)
+        url = urlopen.call_args.args[0].full_url
+        self.assertTrue(url.startswith("https://wmts.geo.admin.ch/"))
+        # 100 metres per pixel is zoom step 17 of the ladder, and the grid is
+        # addressed by zoom, row and column.
+        self.assertIn("/17/", url)
+        for tile in tiles:
+            self.assertTrue(tile["href"].startswith("data:image/jpeg;base64,"))
+            west, south, east, north = tile["rect"]
+            self.assertLess(west, east)
+            self.assertLess(south, north)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_tile_that_was_fetched_once_is_not_asked_again(self, urlopen):
+        urlopen.return_value = _FakeTileResponse()
+        first = map_tiles.background(_lv03_extent(TILE_AREA), 100.0)
+        asked = urlopen.call_count
+        again = map_tiles.background(_lv03_extent(TILE_AREA), 100.0)
+        self.assertEqual(len(again), len(first))
+        self.assertEqual(urlopen.call_count, asked)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_tile_that_is_not_there_is_not_asked_again_right_away(self, urlopen):
+        urlopen.side_effect = OSError("no route to the tile server")
+        extent = _lv03_extent(TILE_AREA)
+        self.assertEqual(map_tiles.background(extent, 100.0), [])
+        asked = urlopen.call_count
+        self.assertEqual(map_tiles.background(extent, 100.0), [])
+        self.assertEqual(urlopen.call_count, asked)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_source_that_hands_out_nothing_hands_out_nothing(self, urlopen):
+        urlopen.return_value = _FakeTileResponse(b"<html>not a tile</html>")
+        self.assertEqual(map_tiles.background(_lv03_extent(TILE_AREA), 100.0), [])
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_picture_can_do_without_a_ground(self, urlopen):
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_background": False}}
+        ):
+            self.assertEqual(map_tiles.background(_lv03_extent(TILE_AREA), 100.0), [])
+        urlopen.assert_not_called()
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_the_zoom_the_settings_ask_for_is_the_zoom_used(self, urlopen):
+        urlopen.return_value = _FakeTileResponse()
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_tile_zoom": 17}}):
+            tiles = map_tiles.background(_lv03_extent(ONE_ADDRESS), 100.0)
+        self.assertEqual(len(tiles), 1)
+        self.assertIn("/17/", urlopen.call_args.args[0].full_url)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_zoom_that_cannot_be_paid_for_comes_down(self, urlopen):
+        urlopen.return_value = _FakeTileResponse()
+        wanted = lv03.zoom_for(5.0)
+        extent = _lv03_extent(SWITZERLAND)
+        self.assertGreater(lv03.tile_count(extent, wanted), map_tiles.MAX_TILES)
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_tile_max": 2}}):
+            tiles = map_tiles.background(extent, 5.0)
+        self.assertTrue(tiles)
+        self.assertLessEqual(len(tiles), 2)
+        for call in urlopen.call_args_list:
+            used = int(call.args[0].full_url.split("/")[-3])
+            self.assertLess(used, wanted)
+
+    def test_a_source_wants_naming_itself(self):
+        self.assertEqual(map_tiles.attribution(), "")
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_attribution": "© OpenStreetMap"}}
+        ):
+            self.assertEqual(map_tiles.attribution(), "© OpenStreetMap")
+
+
 class SvgApiTests(TestCase):
     KINDS = ("machine-list", "logical-map", "subnet-map", "topology")
 
@@ -270,12 +483,19 @@ class SvgApiTests(TestCase):
         permission.object_types.add(cls.map_content_type)
         cls.user.object_permissions.add(permission)
 
-    def get_svg(self, kind, fmt=None):
+    def setUp(self):
+        # The ground of a served map comes off the network, which no test has
+        # to wait for; the tests that care about it say what it looks like.
+        patcher = mock.patch.object(map_tiles, "background", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def get_svg(self, kind, query=None):
         # The mount prefix derives from the plugin's base_url/module name.
         for prefix in ("networkmap", "network_map"):
             url = f"/api/plugins/{prefix}/svg/{kind}/"
-            if fmt:
-                url = f"{url}?format={fmt}"
+            if query:
+                url = f"{url}?{query}"
             response = self.client.get(url)
             if response.status_code != 404:
                 return response
@@ -299,7 +519,7 @@ class SvgApiTests(TestCase):
             with mock.patch(
                 "network_map.api.views.get_canton_boundary", return_value=None
             ):
-                response = self.get_svg(kind, fmt="png")
+                response = self.get_svg(kind, "format=png")
             self.assertEqual(response.status_code, 200, kind)
             self.assertTrue(response["Content-Type"].startswith("image/png"), kind)
             self.assertTrue(response.content.startswith(png_render.PNG_MAGIC), kind)
@@ -309,7 +529,7 @@ class SvgApiTests(TestCase):
         with mock.patch(
             "network_map.api.views.png_render.available", return_value=False
         ):
-            response = self.get_svg("topology", fmt="png")
+            response = self.get_svg("topology", "format=png")
         self.assertEqual(response.status_code, 501)
         self.assertIn(b"cairosvg", response.content)
         self.assertIn(b"<svg", self.get_svg("topology").content)
@@ -329,6 +549,37 @@ class SvgApiTests(TestCase):
         self.assertIn(b"map-frame", response.content)
         self.assertIn(b'class="map-border"', response.content)
         self.assertIn(b"Kanton Bern", response.content)
+
+    def test_a_served_map_carries_the_ground_it_was_given(self):
+        self.client.force_login(self.user)
+        tile = {
+            "href": "data:image/jpeg;base64,TESTTILE",
+            "rect": (400000.0, 150000.0, 900000.0, 300000.0),
+        }
+        with (
+            mock.patch(
+                "network_map.api.views.get_canton_boundary", return_value=MAP_BORDER
+            ),
+            mock.patch.object(map_tiles, "background", return_value=[tile]) as ground,
+        ):
+            response = self.get_svg("subnet-map")
+        self.assertIn(
+            b'<image href="data:image/jpeg;base64,TESTTILE"', response.content
+        )
+        self.assertTrue(ground.called)
+
+    def test_a_plain_drawing_asks_for_no_ground(self):
+        self.client.force_login(self.user)
+        with (
+            mock.patch(
+                "network_map.api.views.get_canton_boundary", return_value=MAP_BORDER
+            ),
+            mock.patch.object(map_tiles, "background", return_value=[]) as ground,
+        ):
+            response = self.get_svg("subnet-map", "background=0")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"<image", response.content)
+        ground.assert_not_called()
 
     def test_unknown_kind_returns_404(self):
         self.client.force_login(self.user)
@@ -802,8 +1053,50 @@ MAP_NEIGHBOURS = [
 
 class SubnetMapSvgTests(TestCase):
     @staticmethod
-    def render(pins, boundary=None, label=None):
-        return svg_render.render_subnet_map({"pins": pins}, boundary, label)
+    def render(pins, boundary=None, label=None, **kwargs):
+        return svg_render.render_subnet_map({"pins": pins}, boundary, label, **kwargs)
+
+    def test_the_ground_lies_under_the_painted_border(self):
+        tile = {
+            "href": "data:image/jpeg;base64,TESTTILE",
+            "rect": (400000.0, 150000.0, 900000.0, 300000.0),
+        }
+        asked = []
+
+        def ground(extent, metres_per_pixel):
+            asked.append((extent, metres_per_pixel))
+            return [tile]
+
+        svg = self.render(
+            MAP_PINS,
+            MAP_BORDER,
+            "Kanton Bern",
+            tiles_of=ground,
+            attribution="© Someone",
+        )
+        self.assertIn('<image href="data:image/jpeg;base64,TESTTILE"', svg)
+        # The tiles are asked for the ground the picture shows, and no more, and
+        # asked at the size the picture is drawn: metres per pixel.
+        self.assertEqual(
+            asked[0][0], svg_render.map_extent({"pins": MAP_PINS}, MAP_BORDER)
+        )
+        self.assertGreater(asked[0][1], 0)
+        self.assertLess(svg.index("<image"), svg.index('class="map-outside"'))
+        # Whoever the tiles come from is said under the picture.
+        self.assertIn("© Someone", svg)
+
+    def test_a_picture_is_as_wide_as_it_can_be(self):
+        # These sites reach from Geneva to Zurich, so the picture of them fills
+        # the page instead of standing small in the middle of it.
+        svg = self.render(MAP_PINS)
+        width = re.search(r'<rect class="map-frame"[^>]*width="([\d.]+)"', svg)
+        self.assertIsNotNone(width)
+        self.assertGreater(float(width.group(1)), 1100)
+
+    def test_a_picture_without_a_ground_does_not_mention_one(self):
+        svg = self.render(MAP_PINS, tiles_of=lambda extent, metres_per_pixel: [])
+        self.assertNotIn("<image", svg)
+        self.assertIn('class="map-back"', svg)
 
     def test_border_extent_frames_the_export(self):
         svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")

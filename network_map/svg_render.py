@@ -11,6 +11,7 @@ from itertools import combinations
 from django.utils.html import escape
 from django.utils.translation import gettext as _
 
+from . import lv03
 from .colors import LOCATION_COLORS
 
 WIDTH = 1200
@@ -630,7 +631,11 @@ def render_topology(topology_data):
 MAP_WIDTH = WIDTH
 MAP_MARGIN = 24
 MAP_MIN_H = 300
-MAP_MAX_H = 760
+# The long edge of the map picture, in pixels, which is what the browser export
+# draws too: the picture comes out this big unless the page is too narrow.
+MAP_EDGE = 1200
+# A picture of a single address still shows some ground around it.
+MAP_MIN_PAD = 1000  # metres of ground around a lone site
 PIN_R = 6
 # A site is one pin with its number in it, like the machine dots of a plan.
 SITE_R = 9
@@ -644,15 +649,19 @@ LIST_ROW = 30
 LIST_SUB_ROW = 12
 SUBNET_GAP = " · "
 LEGEND_ROWS = 14
-KM_PER_DEG = 111.32  # kilometres per degree of latitude
-SCALE_STEPS_KM = (1, 2, 5, 10, 20, 50, 100, 200, 500)
+SCALE_STEPS_M = (100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000)
 
 MAP_STYLE = "\n".join(
     (
         f"text {{ font-family: {FONT}; }}",
-        ".map-frame { fill: #eef1f4; stroke: #c6cccb; stroke-width: 1; }",
+        ".map-back { fill: #eef1f4; }",
+        ".map-frame { fill: none; stroke: #c6cccb; stroke-width: 1; }",
         ".map-border { fill: #f8f7f2; fill-rule: evenodd; stroke: #c8102e;",
         "  stroke-width: 2; stroke-dasharray: 8 6; }",
+        # The same line without the beige ground of its own, for a picture
+        # whose ground is the map it was drawn on.
+        ".map-border-line { fill: none; stroke: #c8102e; stroke-width: 2;",
+        "  stroke-dasharray: 8 6; }",
         ".map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7;",
         "  stroke-opacity: 0.4; }",
         ".map-outside { fill: #ffffff; fill-rule: evenodd; }",
@@ -676,16 +685,15 @@ MAP_STYLE = "\n".join(
 )
 
 
-def _geojson_bounds(geojson):
-    """lon/lat extent of a GeoJSON collection, or None when it has none."""
-    lons, lats = [], []
+def _lv03_points(geojson):
+    """Every coordinate of a GeoJSON collection, in LV03 metres."""
+    points = []
 
     def walk(coords):
         if not coords:
             return
         if isinstance(coords[0], (int, float)):
-            lons.append(coords[0])
-            lats.append(coords[1])
+            points.append(lv03.to_lv03(coords[1], coords[0]))
             return
         for child in coords:
             walk(child)
@@ -693,25 +701,44 @@ def _geojson_bounds(geojson):
     for feature in (geojson or {}).get("features", []):
         geometry = feature.get("geometry") or {}
         walk(geometry.get("coordinates") or [])
-    if not lons:
-        return None
-    return min(lons), min(lats), max(lons), max(lats)
+    return points
 
 
-def _pins_bounds(pins, pad=0.12):
-    """lon/lat extent of the placed pins, generously padded."""
-    lats = [pin["lat"] for pin in pins]
-    lons = [pin["lon"] for pin in pins]
-    if not lats:
+def _placed(map_data):
+    """The pins that know where they stand."""
+    return [
+        pin
+        for pin in (map_data.get("pins") or [])
+        if pin.get("lat") is not None and pin.get("lon") is not None
+    ]
+
+
+def _bounds(points, pad=0.0, floor=0.0):
+    """
+    The box around some points, widened by a fraction of its own size and by at
+    least the floor, so that a box of one point is still a piece of ground.
+    """
+    east = [point[0] for point in points]
+    north = [point[1] for point in points]
+    wide = max((max(east) - min(east)) * pad, floor)
+    high = max((max(north) - min(north)) * pad, floor)
+    return (min(east) - wide, min(north) - high, max(east) + wide, max(north) + high)
+
+
+def map_extent(map_data, boundary=None):
+    """
+    The ground a picture of this map has to show, as an LV03 box
+    (west, south, east, north): the canton border's own bounding box when it is
+    known - so that pictures taken at different times stay comparable - and the
+    padded box of the pins otherwise. None when nothing stands anywhere.
+    """
+    points = _lv03_points(boundary)
+    if points:
+        return _bounds(points)
+    points = [lv03.to_lv03(pin["lat"], pin["lon"]) for pin in _placed(map_data)]
+    if not points:
         return None
-    dlat = (max(lats) - min(lats)) * pad or 0.01
-    dlon = (max(lons) - min(lons)) * pad or 0.01
-    return (
-        min(lons) - dlon,
-        min(lats) - dlat,
-        max(lons) + dlon,
-        max(lats) + dlat,
-    )
+    return _bounds(points, pad=0.12, floor=MAP_MIN_PAD)
 
 
 def _polygon_rings(geojson):
@@ -907,14 +934,33 @@ def _draw_site_list(out, sites, start_y):
     return start_y + max(bottoms) + 8
 
 
-def _draw_scale(out, scale, origin_x, origin_y, map_w, map_h):
-    """Round-kilometre scale bar in the frame's lower left corner."""
-    wanted = 120 / scale * KM_PER_DEG
-    km = next((step for step in SCALE_STEPS_KM if step >= wanted), SCALE_STEPS_KM[-1])
-    bar = km / KM_PER_DEG * scale
+def _draw_tiles(out, tiles, place):
+    """
+    The ground underneath everything else. The tiles come out of the same grid
+    the ground is drawn from, so each one is a rectangle here; it is grown a
+    hair so no light seam shows where two of them meet.
+    """
+    for tile in tiles:
+        west, south, east, north = tile["rect"]
+        left, top = place(west, north)
+        right, bottom = place(east, south)
+        href = tile["href"]
+        out.append(
+            f'<image href="{href}" x="{left:.1f}" y="{top:.1f}" '
+            f'width="{right - left + 0.5:.1f}" height="{bottom - top + 0.5:.1f}" '
+            'preserveAspectRatio="none"/>'
+        )
+
+
+def _draw_scale(out, metres_per_pixel, origin_x, origin_y, map_w, map_h):
+    """A bar of some round length in metres, in the frame's lower left corner."""
+    wanted = metres_per_pixel * 120
+    metres = next((step for step in SCALE_STEPS_M if step >= wanted), SCALE_STEPS_M[-1])
+    bar = metres / metres_per_pixel
     x, y = origin_x + 12, origin_y + map_h - 16
     out.append(f'<path class="map-scale" d="M{x:.1f},{y:.1f} v-6 H{x + bar:.1f} v-6"/>')
-    out.append(text(round(x + bar + 6), round(y), f"{km} km", "map-scale-label"))
+    label = f"{metres // 1000} km" if metres >= 1000 else f"{metres} m"
+    out.append(text(round(x + bar + 6), round(y), label, "map-scale-label"))
 
 
 def _draw_subnet_legend(out, pins, start_y):
@@ -954,7 +1000,7 @@ def _draw_subnet_legend(out, pins, start_y):
     return y
 
 
-def _draw_footnotes(out, label, off_frame, start_y):
+def _draw_footnotes(out, label, off_frame, start_y, attribution=None):
     """The canton line, the places outside the cutout and the source."""
     y = start_y
     if label:
@@ -974,57 +1020,69 @@ def _draw_footnotes(out, label, off_frame, start_y):
         )
         y += 16
     out.append(
-        text(MAP_MARGIN, round(y + 12), _("Map data: © swisstopo"), "map-attribution")
+        text(
+            MAP_MARGIN,
+            round(y + 12),
+            attribution or _("Map data: © swisstopo"),
+            "map-attribution",
+        )
     )
     return y + 26
 
 
-def render_subnet_map(map_data, boundary=None, label=None):
+def render_subnet_map(
+    map_data, boundary=None, label=None, tiles_of=None, attribution=None
+):
     """
     Geographic overview of the subnets, drawn like the browser's own export:
-    one numbered pin per site in that site's colour, a thick white border where
-    the place holds more than one machine, and the sites listed underneath in
-    the order they lie next to each other, each with its subnets beside it.
-    Everything outside the configured canton border is painted over, so the
-    picture ends with the canton. The extent is the border's bounding box when
-    it is available, so exports taken at different times stay comparable, and
-    the padded pin bounding box otherwise; sites outside it are clamped to the
-    edge and counted, never silently dropped.
+    the map tiles behind everything, one numbered pin per site in that site's
+    colour, a thick white border where the place holds more than one machine,
+    and the sites listed underneath in the order they lie next to each other,
+    each with its subnets beside it.  Everything outside the configured canton
+    border is painted over, so the picture ends with the canton; sites outside
+    the picture are clamped to its edge and counted, never silently dropped.
 
-    Coordinates go through a plain equirectangular projection with x scaled by
-    cos(latitude): the LV03 grid the browser uses only matters to align HTML
-    pins with the swisstopo tiles, which a standalone document carries none of.
+    tiles_of, when given, is asked for the tiles lying under the picture, with
+    the ground they cover and the metres one pixel of the picture stands for; a
+    picture without them says nothing about them, it simply has no ground.
+    attribution then names whoever the tiles come from, and the picture credits
+    swisstopo by itself.
+
+    Everything stands on the LV03 grid, as it does in the browser: the tiles are
+    published in it, and the distances of a canton keep their shape in it, so
+    the served picture and the one the page's button makes show the same ground
+    the same way.
     """
-    pins = [
-        pin
-        for pin in (map_data.get("pins") or [])
-        if pin.get("lat") is not None and pin.get("lon") is not None
-    ]
-    extent = _geojson_bounds(boundary) or _pins_bounds(pins)
+    pins = _placed(map_data)
+    extent = map_extent({"pins": pins}, boundary)
     if extent is None:
         return build_svg(400, 80, "", MAP_STYLE)
 
-    min_lon, min_lat, max_lon, max_lat = extent
-    kx = max(math.cos(math.radians((min_lat + max_lat) / 2)), 0.1)
-    span_x = max((max_lon - min_lon) * kx, 1e-6)
-    span_y = max(max_lat - min_lat, 1e-6)
+    min_east, min_north, max_east, max_north = extent
+    span_east = max(max_east - min_east, 1e-6)
+    span_north = max(max_north - min_north, 1e-6)
 
     avail_w = MAP_WIDTH - 2 * MAP_MARGIN
-    scale = avail_w / span_x
-    map_h = span_y * scale
-    if map_h < MAP_MIN_H or map_h > MAP_MAX_H:
-        map_h = min(max(map_h, MAP_MIN_H), MAP_MAX_H)
-        scale = map_h / span_y
-    map_w = min(span_x * scale, avail_w)
+    # Pixels per metre of ground: the long edge of the picture gets MAP_EDGE of
+    # them, and the frame never grows over the page.
+    scale = min(avail_w / span_east, MAP_EDGE / max(span_east, span_north))
+    if span_north * scale < MAP_MIN_H:
+        # A tight cluster still wants a picture of some height, and it may then
+        # stand in a frame that does not reach the page's edges.
+        scale = min(MAP_MIN_H / span_north, avail_w / span_east)
+    map_w, map_h = span_east * scale, span_north * scale
 
     origin_x = MAP_MARGIN + (avail_w - map_w) / 2
     origin_y = MAP_MARGIN
 
-    def project(lon, lat):
+    def place(east, north):
         return (
-            origin_x + (lon - min_lon) * kx * scale,
-            origin_y + (max_lat - lat) * scale,
+            origin_x + (east - min_east) * scale,
+            origin_y + (max_north - north) * scale,
         )
+
+    def project(lon, lat):
+        return place(*lv03.to_lv03(lat, lon))
 
     out = []
     frame = (
@@ -1032,6 +1090,14 @@ def render_subnet_map(map_data, boundary=None, label=None):
         f'width="{map_w:.1f}" height="{map_h:.1f}"'
     )
     out.append(f'<defs><clipPath id="map-clip"><rect {frame}/></clipPath></defs>')
+
+    # Ground first, so the border and the pins lie on top of it: the tiles
+    # asked for are the ones of this ground at this size. A background of its
+    # own shows through wherever a tile could not be had.
+    out.append(f'<g clip-path="url(#map-clip)"><rect class="map-back" {frame}/>')
+    tiles = tiles_of(extent, 1.0 / scale) if tiles_of else []
+    _draw_tiles(out, tiles, place)
+    out.append("</g>")
 
     rings = _polygon_rings(boundary)
     if rings:
@@ -1048,7 +1114,8 @@ def render_subnet_map(map_data, boundary=None, label=None):
             '<g clip-path="url(#map-clip)">'
             f'<path class="map-outside" d="{cut}{path}"/>'
             f'<path class="map-border-halo" d="{path}"/>'
-            f'<path class="map-border" d="{path}"/></g>'
+            f'<path class="{"map-border-line" if tiles else "map-border"}" '
+            f'd="{path}"/></g>'
         )
     else:
         out.append(f'<rect class="map-frame" {frame}/>')
@@ -1092,12 +1159,12 @@ def render_subnet_map(map_data, boundary=None, label=None):
             )
         _draw_site_pin(out, site, number)
 
-    _draw_scale(out, scale, origin_x, origin_y, map_w, map_h)
+    _draw_scale(out, 1.0 / scale, origin_x, origin_y, map_w, map_h)
     # The gap keeps the first line of the list clear of the scale bar.
     height = origin_y + map_h + 42
     if named:
         height = _draw_site_list(out, named, height)
     elif nameless:
         height = _draw_subnet_legend(out, pins, height)
-    height = _draw_footnotes(out, label, off_frame, height)
+    height = _draw_footnotes(out, label, off_frame, height, attribution)
     return build_svg(MAP_WIDTH, height + BOTTOM_PAD, "".join(out), MAP_STYLE)

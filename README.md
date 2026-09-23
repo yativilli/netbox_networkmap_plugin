@@ -91,8 +91,13 @@ the sites are listed underneath in the order they lie next to each other on the
 ground, each with its subnets beside it rather than cut off behind an ellipsis;
 and everything outside the canton border is painted over, so the picture ends
 with the canton instead of with its bounding box. It carries no title of its own,
-and no swisstopo tiles - those are fetched by the page that shows the map.
-The extent is the bounding box of the configured `canton_boundary_code` border so
+and it is drawn over the map itself: the tiles behind the picture are fetched by
+the server, so a served map looks like the one the page's own button makes, on
+the same Swiss grid and at the same size — pins, border and ground are all placed
+in LV03 metres, and the picture is as wide as the page allows. See
+[Map background](#map-background) for where those tiles come from and how to
+switch them off. The extent is the bounding box of the configured
+`canton_boundary_code` border so
 exports stay comparable; sites outside it are clamped to the edge and counted
 rather than dropped, and without a configured (or reachable) border the padded
 pin bounding box and a light frame stand in. Like the web map, building the data
@@ -165,9 +170,10 @@ know, dashed strokes among them, so the canton border disappears. With neither
 installed, a PNG request answers 501 with what to install rather than a broken
 picture. A document whose long edge passes `PNG_MAX_EDGE` - the logical tree of a
 large inventory runs past 70000 units easily - comes out smaller instead of
-failing, since both rasterisers refuse surfaces that big. The API picture is the
-vector map: unlike the browser's export it carries no swisstopo tiles, since
-those are fetched by the page that shows them.
+failing, since both rasterisers refuse surfaces that big. The subnet map is
+rasterised with its map tiles in it, embedded in the SVG as data URLs, which
+makes that document about 1 MB against 500 kB without them; `?background=0` asks
+for the drawing alone.
 
 The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
 API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
@@ -281,6 +287,42 @@ the NetBox UI afterwards.
   defaults to 30 days.
 
 </details>
+
+### Map background
+
+The served subnet map is drawn over real map tiles, the way the page's export
+button does it, and it asks the same server for the same tiles: the swisstopo
+grid in LV03 (`{z}/{y}/{x}` — zoom, row, column), which is what the page's Leaflet
+map uses. `network_map/map_tiles.py` embeds every tile it gets as a data URL
+lying on the ground it covers, and `network_map/lv03.py` holds the grid: the
+origin and side of a tile, the ladder of resolutions, and the WGS84-to-LV03
+transformation of the coordinates the pins and the border arrive in. That
+transformation is swisstopo's own approximate formula, good to a couple of
+metres, and a test measures it against `lv03_grid.js` — the grid the browser
+projects through, generated offline with PROJ — so the two cannot drift apart.
+
+The zoom is the ladder step that suits the size the picture is drawn at; the
+ladder does not halve its resolution per step, so the step is looked up rather
+than calculated, and `map_tile_zoom` names an index into it. A tile that cannot
+be had simply stays away rather than costing the map.
+
+| Setting                   | Default                                         | Meaning                                               |
+| ------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `map_background`          | `True`                                          | Draw the tiles behind the served subnet map.          |
+| `map_tile_url_template`   | swisstopo `pixelkarte-farbe` in the `21781` grid | `{z}/{y}/{x}` tile address.                           |
+| `map_tile_zoom`           | chosen from the picture                          | Index into the ladder of resolutions to force.        |
+| `map_tile_max`            | `64`                                            | Tiles per picture; the zoom comes down to pay for it.  |
+| `map_tile_cache_seconds`  | 30 days                                         | How long a tile is kept.                              |
+| `map_tile_budget_seconds` | `20`                                            | What one picture waits for its tiles, all together.   |
+| `map_attribution`         | empty                                           | Credit printed under the picture, if the source wants naming. |
+
+`?background=0` on the subnet-map URL leaves the ground out, which is what a
+caller after the bare drawing wants. Tiles are fetched side by side and cached
+in the Django cache, so the first caller pays for a canton and everyone after
+them reads it from there; a server with no route to the tile host gets a plain
+background and the same map. Another source has to answer in the same grid —
+the LV03 one the picture is drawn in — which leaves mirrors of the swisstopo
+tiles rather than OpenStreetMap.
 
 ## Translations
 
