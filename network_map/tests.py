@@ -762,36 +762,101 @@ MAP_PINS = [
 ]
 
 
+# Two sites in one town, which share their coordinates, and one far away.
+MAP_NEIGHBOURS = [
+    {
+        "subnet": "A",
+        "prefix": "10.1.0.0/24",
+        "url": "",
+        "color": "#0072b2",
+        "site_color": "#0072b2",
+        "site": "RZ Bern",
+        "lat": 46.948,
+        "lon": 7.447,
+        "machines": [],
+    },
+    {
+        "subnet": "B",
+        "prefix": "10.2.0.0/24",
+        "url": "",
+        "color": "#d55e00",
+        "site_color": "#d55e00",
+        "site": "RZ Bern Zweigstelle",
+        "lat": 46.948,
+        "lon": 7.448,
+        "machines": [],
+    },
+    {
+        "subnet": "C",
+        "prefix": "10.3.0.0/24",
+        "url": "",
+        "color": "#009e73",
+        "site_color": "#009e73",
+        "site": "Depot Zürich",
+        "lat": 47.376,
+        "lon": 8.541,
+        "machines": [],
+    },
+]
+
+
 class SubnetMapSvgTests(TestCase):
+    @staticmethod
+    def render(pins, boundary=None, label=None):
+        return svg_render.render_subnet_map({"pins": pins}, boundary, label)
+
     def test_border_extent_frames_the_export(self):
-        svg = svg_render.render_subnet_map(
-            {"pins": MAP_PINS}, MAP_BORDER, "Kanton Bern"
-        )
-        self.assertIn('class="map-border" d=', svg)
+        svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
         self.assertIn("Kanton Bern", svg)
-        # One border path, drawn twice (halo and fill), carrying the
-        # exterior ring and the hole as two subpaths.
+        # One border path, carrying the exterior ring and the hole.
         self.assertEqual(svg.count('class="map-border" d='), 1)
-        self.assertEqual(svg.count("ZM"), 2)
+        # Everything outside the border is painted over, so the picture ends
+        # with the canton and no frame line is left standing around it.
+        self.assertIn('class="map-outside"', svg)
+        self.assertNotIn('class="map-frame"', svg)
         # Pins outside the configured border are clamped, never dropped.
         self.assertIn('class="map-offframe"', svg)
         self.assertIn("outside the drawn area", svg)
 
     def test_pin_extent_used_without_border(self):
-        svg = svg_render.render_subnet_map({"pins": MAP_PINS})
+        svg = self.render(MAP_PINS)
         self.assertNotIn('class="map-border"', svg)
+        self.assertIn('class="map-frame"', svg)
         self.assertNotIn('class="map-offframe"', svg)
         self.assertIn("Filiale Genf", svg)
         self.assertIn("10.10.10.0/24", svg)
         self.assertIn("swisstopo", svg)
 
-    def test_subnets_at_one_site_share_a_cluster_label(self):
-        svg = svg_render.render_subnet_map({"pins": MAP_PINS})
-        self.assertEqual(svg.count(">RZ Bern<"), 1)
-        self.assertEqual(svg.count(">Filiale Genf<"), 1)
+    def test_a_site_is_pinned_once_and_numbered(self):
+        svg = self.render(MAP_PINS)
+        self.assertEqual(svg.count("RZ Bern"), 1)
+        self.assertEqual(svg.count("Filiale Genf"), 1)
+        self.assertEqual(svg.count('class="map-num"'), 2)
+        # Every pin sits on a dark disc, which is what stands it off from the
+        # background the picture may have.
+        self.assertEqual(svg.count('class="map-pin-back"'), 2)
+
+    def test_a_site_of_several_machines_wants_a_thick_border(self):
+        busy = dict(MAP_PINS[0], machines=[{"ip": "10.10.10.1"}, {"ip": "10.10.10.2"}])
+        self.assertIn('class="map-pin is-many"', self.render([busy]))
+        self.assertNotIn('class="map-pin is-many"', self.render([MAP_PINS[0]]))
+
+    def test_sites_that_neighbour_each_other_are_listed_beside_each_other(self):
+        svg = self.render(MAP_NEIGHBOURS)
+        names = ["RZ Bern<", "RZ Bern Zweigstelle<", "Depot Zürich<"]
+        order = [name for _, name in sorted((svg.index(name), name) for name in names)]
+        self.assertEqual(
+            order.index("RZ Bern<") + 1, order.index("RZ Bern Zweigstelle<")
+        )
+
+    def test_several_subnets_of_one_site_are_listed_side_by_side(self):
+        svg = self.render(MAP_PINS)
+        self.assertIn(
+            "Prod-Web \u2014 10.10.10.0/24 \u00b7 Prod-DB \u2014 10.10.20.0/24", svg
+        )
 
     def test_map_without_pins_renders_a_stub(self):
-        svg = svg_render.render_subnet_map({"pins": []})
+        svg = self.render([])
         self.assertIn("<svg", svg)
         self.assertNotIn('class="map-pin"', svg)
 

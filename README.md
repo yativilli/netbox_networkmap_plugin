@@ -84,14 +84,21 @@ The renderers live in `network_map/svg_render.py` and mirror the browser
 exports; text wrapping uses a character-width estimate, so line breaks can
 differ slightly from the on-page export buttons.
 
-The subnet map is drawn geographically: pins are grouped per site, and the
-extent is the bounding box of the configured `canton_boundary_code` border so
-exports stay comparable. Sites outside that border are clamped to the frame
-edge and counted rather than dropped; without a configured (or reachable)
-border the padded pin bounding box is used instead. Like the web map, building
-the data geocodes any site that has no coordinates yet, so the endpoint may
-write to those Site records. Both subnet-map exports carry the swisstopo
-attribution the tiles and boundary geometry require.
+The subnet map is drawn geographically and looks like the picture the page's
+own button makes: one numbered pin per site in that site's colour, standing on a
+dark disc, with a thick white border where the site holds more than one machine;
+the sites are listed underneath in the order they lie next to each other on the
+ground, each with its subnets beside it rather than cut off behind an ellipsis;
+and everything outside the canton border is painted over, so the picture ends
+with the canton instead of with its bounding box. It carries no title of its own,
+and no swisstopo tiles - those are fetched by the page that shows the map.
+The extent is the bounding box of the configured `canton_boundary_code` border so
+exports stay comparable; sites outside it are clamped to the edge and counted
+rather than dropped, and without a configured (or reachable) border the padded
+pin bounding box and a light frame stand in. Like the web map, building the data
+geocodes any site that has no coordinates yet, so the endpoint may write to those
+Site records. Both subnet-map exports carry the swisstopo attribution the tiles
+and boundary geometry require.
 
 The Subnet-Map page has an export button whose format follows the view.
 Zoomed out it reads "Export as .PNG" and shows the canton, whatever the screen

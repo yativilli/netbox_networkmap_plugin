@@ -6,6 +6,7 @@ metrics, so break points can deviate slightly from the browser version.
 """
 
 import math
+from itertools import combinations
 
 from django.utils.html import escape
 from django.utils.translation import gettext as _
@@ -628,12 +629,20 @@ def render_topology(topology_data):
 
 MAP_WIDTH = WIDTH
 MAP_MARGIN = 24
-MAP_HEADER = 34
 MAP_MIN_H = 300
 MAP_MAX_H = 760
 PIN_R = 6
-PIN_STEP = 15
-PIN_COLS = 6
+# A site is one pin with its number in it, like the machine dots of a plan.
+SITE_R = 9
+SITE_SPACE = 26
+# Below the map the sites are listed in columns of a few entries each, with
+# their subnets flowing side by side underneath the name.
+LIST_ROWS = 6
+LIST_COLUMNS = 3
+LIST_COL_WIDTH = 320
+LIST_ROW = 30
+LIST_SUB_ROW = 12
+SUBNET_GAP = " · "
 LEGEND_ROWS = 14
 KM_PER_DEG = 111.32  # kilometres per degree of latitude
 SCALE_STEPS_KM = (1, 2, 5, 10, 20, 50, 100, 200, 500)
@@ -641,15 +650,21 @@ SCALE_STEPS_KM = (1, 2, 5, 10, 20, 50, 100, 200, 500)
 MAP_STYLE = "\n".join(
     (
         f"text {{ font-family: {FONT}; }}",
-        ".map-title { font-size: 16px; font-weight: 700; fill: #1f2937; }",
         ".map-frame { fill: #eef1f4; stroke: #c6cccb; stroke-width: 1; }",
         ".map-border { fill: #f8f7f2; fill-rule: evenodd; stroke: #c8102e;",
         "  stroke-width: 2; stroke-dasharray: 8 6; }",
         ".map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7;",
         "  stroke-opacity: 0.4; }",
-        ".map-pin { stroke: #ffffff; stroke-width: 2; }",
+        ".map-outside { fill: #ffffff; fill-rule: evenodd; }",
+        ".map-pin { stroke: #ffffff; stroke-width: 1.2; }",
+        ".map-pin.is-many { stroke-width: 4; }",
+        ".map-pin-back { fill: #212529; }",
+        ".map-num { font-size: 9.5px; font-weight: 700; fill: #ffffff;",
+        "  text-anchor: middle; paint-order: stroke;",
+        "  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }",
         ".map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }",
-        ".map-site { font-size: 11.5px; font-weight: 700; fill: #1f2937; }",
+        ".map-list-name { font-size: 10.5px; font-weight: 700; }",
+        ".map-list-sub { font-size: 10px; fill: #6c757d; }",
         ".map-legend { font-size: 11.5px; fill: #212529; }",
         ".map-legend-border { fill: none; stroke: #c8102e; stroke-width: 2;",
         "  stroke-dasharray: 8 6; }",
@@ -722,40 +737,174 @@ def _ring_path(ring, project):
     return "".join(parts) + "Z"
 
 
-def _map_clusters(pins):
-    """Pins grouped by coordinate, so a site is drawn as one cluster."""
-    clusters = {}
+def _site_groups(pins):
+    """
+    One entry per site: the picture marks a location once, no matter how many
+    of its subnets are pinned there, and lists those subnets underneath.
+    """
+    groups, order = {}, []
     for pin in pins:
-        key = (round(pin["lat"], 5), round(pin["lon"], 5))
-        clusters.setdefault(key, {"site": pin.get("site") or "", "pins": []})
-        clusters[key]["pins"].append(pin)
-    return clusters.values()
+        name = str(pin.get("site") or "")
+        if name not in groups:
+            groups[name] = {
+                "name": name,
+                "lats": [],
+                "lons": [],
+                "color": pin.get("site_color") or pin.get("color") or DEFAULT_ACCENT,
+                "machines": 0,
+                "subnets": [],
+            }
+            order.append(name)
+        group = groups[name]
+        group["lats"].append(pin["lat"])
+        group["lons"].append(pin["lon"])
+        group["machines"] += len(pin.get("machines") or [])
+        subnet = str(pin.get("subnet") or "")
+        prefix = str(pin.get("prefix") or "")
+        label = f"{subnet} \u2014 {prefix}" if prefix else subnet
+        if label and label not in group["subnets"]:
+            group["subnets"].append(label)
+    return [groups[name] for name in order]
 
 
-def _draw_cluster(out, cluster, x, y):
-    count = len(cluster["pins"])
-    cols = min(PIN_COLS, count)
-    rows = math.ceil(count / cols)
-    for index, pin in enumerate(cluster["pins"]):
-        dx = (index % cols - (cols - 1) / 2) * PIN_STEP
-        dy = (index // cols - (rows - 1) / 2) * PIN_STEP
-        out.append(
-            f'<circle class="map-pin" cx="{x + dx:.1f}" cy="{y + dy:.1f}" '
-            f'r="{PIN_R}" fill="{pin.get("color") or DEFAULT_ACCENT}"/>'
+def _proximity_order(sites):
+    """
+    Sites that lie next to each other belong next to each other in the list
+    too: start in the north-west and always take the closest site still
+    missing, so the buildings of one town - which share their coordinates -
+    end up side by side.
+    """
+    pool = sorted(sites, key=lambda site: site["x"] + site["y"])
+    if not pool:
+        return []
+    ordered = [pool.pop(0)]
+    while pool:
+        last = ordered[-1]
+        nearest = min(
+            range(len(pool)),
+            key=lambda index: (
+                (pool[index]["x"] - last["x"]) ** 2
+                + (pool[index]["y"] - last["y"]) ** 2
+            ),
         )
-    if not cluster["site"]:
-        return
-    line_width = chars(150, 11.5)
-    for line_index, line in enumerate(wrap_lines(cluster["site"], line_width, 2)):
-        offset = len(line) * 11.5 * CHAR_FACTOR / 2
+        ordered.append(pool.pop(nearest))
+    return ordered
+
+
+def _spread(sites, distance, bounds):
+    """Numbered pins may not sit on top of each other; one that has to move
+    stays near the place it stands for."""
+    left, top, right, bottom = bounds
+    for _pass in range(12):
+        moved = False
+        for first, second in combinations(sites, 2):
+            dx = second["x"] - first["x"]
+            dy = second["y"] - first["y"]
+            gap = math.hypot(dx, dy)
+            if gap >= distance:
+                continue
+            push = ((distance - gap) / 2) or 0.5
+            ux, uy = (dx / gap, dy / gap) if gap else (1.0, 0.0)
+            first["x"] -= ux * push
+            first["y"] -= uy * push
+            second["x"] += ux * push
+            second["y"] += uy * push
+            moved = True
+        if not moved:
+            break
+    for site in sites:
+        site["x"] = min(max(site["x"], left), right)
+        site["y"] = min(max(site["y"], top), bottom)
+
+
+def _cut(value, max_chars):
+    value = str(value)
+    if len(value) <= max_chars:
+        return value
+    return f"{value[: max_chars - 1].rstrip('.,;:)+/-')}\u2026"
+
+
+def _draw_site_pin(out, site, number):
+    """
+    One pin per site on a dark disc, which stands out from any background; the
+    border tells how many machines the place holds, as in the floor plan.
+    """
+    many = site["machines"] > 1
+    border = 4 if many else 1.2
+    out.append(
+        f'<circle class="map-pin-back" cx="{site["x"]:.1f}" cy="{site["y"]:.1f}" '
+        f'r="{SITE_R + border / 2 + 2:.1f}"/>'
+    )
+    out.append(
+        f'<circle class="map-pin{" is-many" if many else ""}" '
+        f'cx="{site["x"]:.1f}" cy="{site["y"]:.1f}" r="{SITE_R}" '
+        f'fill="{site["color"]}"/>'
+    )
+    out.append(text(round(site["x"]), round(site["y"] + 3), number, "map-num"))
+
+
+def _subnet_lines(subnets, max_chars):
+    """
+    Several subnets flow side by side and wrap into the column, instead of one
+    line that has to be cut off.
+    """
+    lines, line = [], ""
+    for subnet in subnets:
+        value = _cut(subnet, max_chars)
+        piece = f"{SUBNET_GAP}{value}" if line else value
+        if line and len(line) + len(piece) > max_chars:
+            lines.append(line)
+            line = value
+        else:
+            line += piece
+    lines.append(line)
+    return lines
+
+
+def _draw_site_list(out, sites, start_y):
+    """
+    The sites underneath the map, numbered as their pins and in the order they
+    lie next to each other on the ground.
+    """
+    columns = max(1, min(LIST_COLUMNS, math.ceil(len(sites) / LIST_ROWS)))
+    per_column = math.ceil(len(sites) / columns)
+    budget = chars(LIST_COL_WIDTH - 34, 10)
+    bottoms = [0] * columns
+    for index, site in enumerate(sites):
+        column = index // per_column
+        x = MAP_MARGIN + column * LIST_COL_WIDTH
+        y = start_y + bottoms[column]
+        out.append(
+            f'<circle class="map-pin" cx="{x + 6:.1f}" cy="{y - 4:.1f}" r="{PIN_R - 1}" '
+            f'fill="{site["color"]}"/>'
+        )
         out.append(
             text(
-                round(x - offset),
-                round(y + (rows - 1) * PIN_STEP / 2 + 18 + line_index * 13),
-                line,
-                "map-site",
+                x + 20,
+                round(y),
+                _cut(f"{index + 1}  {site['name']}", chars(LIST_COL_WIDTH - 34, 10.5)),
+                "map-list-name",
+                f' style="fill:{site["color"]}"',
             )
         )
+        lines = (
+            _subnet_lines(site["subnets"], budget)
+            if len(site["subnets"]) > 1
+            else [_cut(site["subnets"][0], budget)]
+            if site["subnets"]
+            else []
+        )
+        for offset, line in enumerate(lines):
+            out.append(
+                text(
+                    x + 20,
+                    round(y + LIST_SUB_ROW * (offset + 1)),
+                    line,
+                    "map-list-sub",
+                )
+            )
+        bottoms[column] += max(LIST_ROW, LIST_SUB_ROW * len(lines) + 18)
+    return start_y + max(bottoms) + 8
 
 
 def _draw_scale(out, scale, origin_x, origin_y, map_w, map_h):
@@ -768,7 +917,11 @@ def _draw_scale(out, scale, origin_x, origin_y, map_w, map_h):
     out.append(text(round(x + bar + 6), round(y), f"{km} km", "map-scale-label"))
 
 
-def _draw_legend(out, pins, label, off_frame, start_y):
+def _draw_subnet_legend(out, pins, start_y):
+    """
+    Legend of subnets, for a map of places that carry no site name - the
+    numbered site list underneath the map would have nothing to show then.
+    """
     entries, seen = [], set()
     for pin in pins:
         key = (pin.get("color"), pin.get("subnet"), pin.get("prefix"))
@@ -798,6 +951,12 @@ def _draw_legend(out, pins, label, off_frame, start_y):
             )
         )
         y += 16
+    return y
+
+
+def _draw_footnotes(out, label, off_frame, start_y):
+    """The canton line, the places outside the cutout and the source."""
+    y = start_y
     if label:
         out.append(
             f'<path class="map-legend-border" d="M{MAP_MARGIN},{y - 4:.1f} h14"/>'
@@ -822,11 +981,15 @@ def _draw_legend(out, pins, label, off_frame, start_y):
 
 def render_subnet_map(map_data, boundary=None, label=None):
     """
-    Geographic overview of the subnet pins, optionally framed by the
-    configured canton border. The extent is the border's bounding box when it
-    is available, so exports taken at different times stay comparable, and the
-    padded pin bounding box otherwise. Pins outside a configured border are
-    clamped to the frame edge and counted, never silently dropped.
+    Geographic overview of the subnets, drawn like the browser's own export:
+    one numbered pin per site in that site's colour, a thick white border where
+    the place holds more than one machine, and the sites listed underneath in
+    the order they lie next to each other, each with its subnets beside it.
+    Everything outside the configured canton border is painted over, so the
+    picture ends with the canton. The extent is the border's bounding box when
+    it is available, so exports taken at different times stay comparable, and
+    the padded pin bounding box otherwise; sites outside it are clamped to the
+    edge and counted, never silently dropped.
 
     Coordinates go through a plain equirectangular projection with x scaled by
     cos(latitude): the LV03 grid the browser uses only matters to align HTML
@@ -855,7 +1018,7 @@ def render_subnet_map(map_data, boundary=None, label=None):
     map_w = min(span_x * scale, avail_w)
 
     origin_x = MAP_MARGIN + (avail_w - map_w) / 2
-    origin_y = MAP_HEADER + MAP_MARGIN
+    origin_y = MAP_MARGIN
 
     def project(lon, lat):
         return (
@@ -863,40 +1026,78 @@ def render_subnet_map(map_data, boundary=None, label=None):
             origin_y + (max_lat - lat) * scale,
         )
 
-    out = [text(MAP_MARGIN, 22, _("Subnet Locations"), "map-title")]
+    out = []
     frame = (
         f'x="{origin_x:.1f}" y="{origin_y:.1f}" '
         f'width="{map_w:.1f}" height="{map_h:.1f}"'
     )
-    out.append(f'<rect class="map-frame" {frame}/>')
     out.append(f'<defs><clipPath id="map-clip"><rect {frame}/></clipPath></defs>')
 
     rings = _polygon_rings(boundary)
     if rings:
         path = "".join(_ring_path(ring, project) for ring in rings)
+        # A bounding box can only hug the canton where its shape happens to
+        # touch the box, so everything outside the border is painted over: the
+        # picture then ends with the canton on every side, and no frame line
+        # is left to draw around it.
+        cut = (
+            f"M{origin_x:.1f},{origin_y:.1f}H{origin_x + map_w:.1f}"
+            f"V{origin_y + map_h:.1f}H{origin_x:.1f}Z"
+        )
         out.append(
             '<g clip-path="url(#map-clip)">'
+            f'<path class="map-outside" d="{cut}{path}"/>'
             f'<path class="map-border-halo" d="{path}"/>'
             f'<path class="map-border" d="{path}"/></g>'
         )
+    else:
+        out.append(f'<rect class="map-frame" {frame}/>')
 
-    inset = PIN_R + 4
+    inset = SITE_R + 4
+    inside = (
+        origin_x + inset,
+        origin_y + inset,
+        origin_x + map_w - inset,
+        origin_y + map_h - inset,
+    )
     off_frame = 0
-    for cluster in _map_clusters(pins):
-        x, y = project(cluster["pins"][0]["lon"], cluster["pins"][0]["lat"])
-        if not (
+    named, nameless = [], []
+    for site in _site_groups(pins):
+        x, y = project(
+            sum(site["lons"]) / len(site["lons"]),
+            sum(site["lats"]) / len(site["lats"]),
+        )
+        site["offframe"] = not (
             origin_x <= x <= origin_x + map_w and origin_y <= y <= origin_y + map_h
-        ):
-            off_frame += 1
+        )
+        off_frame += 1 if site["offframe"] else 0
+        site["x"] = min(max(x, inside[0]), inside[2])
+        site["y"] = min(max(y, inside[1]), inside[3])
+        (named if site["name"] else nameless).append(site)
+
+    # One numbered pin per site, in the order the places lie next to each
+    # other, which is also the order of the list underneath the map.
+    named = _proximity_order(named)
+    _spread(named, SITE_SPACE, inside)
+    for site in nameless:
+        out.append(
+            f'<circle class="map-pin" cx="{site["x"]:.1f}" cy="{site["y"]:.1f}" '
+            f'r="{PIN_R}" fill="{site["color"]}"/>'
+        )
+    for number, site in enumerate(named, start=1):
+        if site["offframe"]:
             out.append(
                 '<circle class="map-offframe" '
-                f'cx="{min(max(x, origin_x + inset), origin_x + map_w - inset):.1f}" '
-                f'cy="{min(max(y, origin_y + inset), origin_y + map_h - inset):.1f}" '
-                'r="4"/>'
+                f'cx="{site["x"] - 13:.1f}" cy="{site["y"] - 13:.1f}" r="4"/>'
             )
-            continue
-        _draw_cluster(out, cluster, round(x, 1), round(y, 1))
+        _draw_site_pin(out, site, number)
 
     _draw_scale(out, scale, origin_x, origin_y, map_w, map_h)
-    height = _draw_legend(out, pins, label, off_frame, origin_y + map_h + 26)
+    # The gap keeps the first line of the list clear of the scale bar.
+    height = origin_y + map_h + 42
+    if named:
+        height = _draw_site_list(out, named, height)
+    elif nameless:
+        height = _draw_subnet_legend(out, pins, height)
+    height = _draw_footnotes(out, label, off_frame, height)
     return build_svg(MAP_WIDTH, height + BOTTOM_PAD, "".join(out), MAP_STYLE)
