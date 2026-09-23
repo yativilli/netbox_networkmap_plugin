@@ -1,241 +1,67 @@
 # NetBox Network Map Plugin
 
-A plugin for NetBox to display machines on a network map.
-It was developed as a short-term project to improve a companies overview of their installed machines.
-The company is from switzerland, therefore some of the views (esp. Map-View) are swiss-centric.
+Machines on a network map inside NetBox: a machine list, a VLAN connection tree,
+a topology map and a geographic subnet map, each also handed out as a picture.
+Some views are Swiss-centric - the map shows a canton and draws on swisstopo
+tiles.
 
-## Development
-
-The plugin is installed from this directory in editable mode. This means that
-Python code and templates are read from the working tree, but package metadata
-changes still require reinstalling the plugin.
-
-From the plugin directory, run:
+## Install
 
 ```bash
 cd /opt/netbox/network_map_plugin/network_map
 /opt/netbox/venv/bin/python -m pip install --editable . --no-deps
 ```
 
-Restart the NetBox service after changing Python code, templates, static files,
-or plugin configuration. For local development, run:
-
-```bash
-cd /opt/netbox/netbox
-/opt/netbox/venv/bin/python manage.py runserver
-```
-
-The plugin is available at `/networkmap/`.
-
-Before restarting NetBox, check that the plugin loads correctly:
-
-```bash
-cd /opt/netbox/netbox
-/opt/netbox/venv/bin/python manage.py check
-```
+The pages live under `/plugins/networkmap/` (`vlan-list/`, `vlan-topology/`,
+`vlan-connections/`, `subnet-map/`) and are linked from the NetBox menu. In
+production, collect static files before restarting.
 
 ## Testing
-
-The test suite runs inside a NetBox installation and needs a PostgreSQL user
-with the `CREATEDB` privilege, so it can build a disposable `test_netbox`
-database:
 
 ```bash
 cd /opt/netbox/netbox
 /opt/netbox/venv/bin/python manage.py test network_map
 ```
 
-This is exactly what CI does (see `.github/workflows/ci.yml`, which runs the
-tests against every supported NetBox version plus the newest release).
+Where the database role may not create databases, copy
+`netbox/configuration.py` to `netbox/configuration_testing.py`, set
+`DEBUG = False`, add `'TEST': {'NAME': 'netbox'}` to the default database entry,
+and run the same command with `NETBOX_CONFIGURATION=netbox.configuration_testing`
+and `--keepdb`.
 
-On machines whose database role lacks `CREATEDB` (e.g. this development box),
-the suite can instead reuse the existing database: copy
-`netbox/netbox/configuration.py` to `configuration_testing.py` in the same
-directory, set `DEBUG = False`, and add `'TEST': {'NAME': 'netbox'}` to the
-default database entry. The tests wrap everything in transactions and roll
-back, so no data is changed:
+## Picture API
 
-```bash
-cd /opt/netbox/netbox
-NETBOX_CONFIGURATION=netbox.configuration_testing \
-  /opt/netbox/venv/bin/python manage.py test network_map --keepdb
-```
+The kind of picture stands in the path, its format on the query string -
+`?format=svg` (the default) or `?format=png`.
 
-## SVG API Endpoints
-
-The four map views are also served as server-side rendered SVG (no
-`foreignObject`/HTML, so they open in any picture viewer). NetBox API token
-authentication applies, and the caller needs the `network_map.view_vlanelement`
-permission like for the web views:
-
-| Kind            | URL                                                   |
-| --------------- | ----------------------------------------------------- |
-| Machine list    | `/api/plugins/networkmap/machine-list?format=svg`     |
-| Logical map     | `/api/plugins/networkmap/logical-map?format=svg`      |
-| Subnet map      | `/api/plugins/networkmap/subnet-map?format=svg`       |
-| Topology map    | `/api/plugins/networkmap/topology?format=svg`         |
-
-The kind of picture stands in the path and its format on the query string:
-`?format=svg` or `?format=png`, SVG when nothing is asked for. The trailing
-slash is optional, so the address of a raster of the subnet map is
-
-```
-http://localhost:8000/api/plugins/networkmap/subnet-map?format=png
-```
+| Kind         | URL                                    |
+| ------------ | -------------------------------------- |
+| Machine list | `/api/plugins/networkmap/machine-list` |
+| Logical map  | `/api/plugins/networkmap/logical-map`  |
+| Subnet map   | `/api/plugins/networkmap/subnet-map`   |
+| Topology map | `/api/plugins/networkmap/topology`     |
 
 ```bash
 curl -H "Authorization: Token <token>" \
-  "https://netbox.example.com/api/plugins/networkmap/topology?format=svg" \
-  -o topology.svg
+  "https://netbox.example.com/api/plugins/networkmap/topology?format=png" \
+  -o topology.png
 ```
 
-The renderers live in `network_map/svg_render.py` and mirror the browser
-exports; text wrapping uses a character-width estimate, so line breaks can
-differ slightly from the on-page export buttons.
-
-The subnet map is drawn geographically and looks like the picture the page's
-own button makes: one numbered pin per site in that site's colour, standing on a
-dark disc, with a thick white border where the site holds more than one machine;
-the sites are listed underneath in the order they lie next to each other on the
-ground, each with its subnets beside it rather than cut off behind an ellipsis;
-and everything outside the canton border is painted over, so the picture ends
-with the canton instead of with its bounding box. It carries no title of its own,
-and it is drawn over the map itself: the tiles behind the picture are fetched by
-the server, so a served map looks like the one the page's own button makes, on
-the same Swiss grid and at the same size — pins, border and ground are all placed
-in LV03 metres, and the picture is as wide as the page allows. See
-[Map background](#map-background) for where those tiles come from and how to
-switch them off. The extent is the bounding box of the configured
-`canton_boundary_code` border so
-exports stay comparable; sites outside it are clamped to the edge and counted
-rather than dropped, and without a configured (or reachable) border the padded
-pin bounding box and a light frame stand in. Like the web map, building the data
-geocodes any site that has no coordinates yet, so the endpoint may write to those
-Site records. Both subnet-map exports carry the swisstopo attribution the tiles
-and boundary geometry require.
-
-The Subnet-Map page has an export button whose format follows the view.
-Zoomed out it reads "Export as .PNG" and shows the canton, whatever the screen
-was zoomed to when the button was pressed. The tiles are requested for the
-picture rather than copied off the map: the zoom is picked so the canton is
-about 1200 px across (`MAP_EDGE` in `svg_export.js`, at most `MAP_MAX_TILES`
-tiles), which keeps the background sharp whether the view sat on the whole
-canton or on one street, and no area is left without tiles because none were
-loaded. The cutout follows the canton border as snugly as the drawing allows: the
-frame is the border's bounding box with only the border line and its white halo
-sticking out, and everything outside the border is painted over, so the picture
-ends with the canton on every side instead of only where its shape happens to
-touch the bounding box (Bern's south-east corner is the canton's south, while
-the Valais lies south of the rest of it). Sites outside the cutout are clamped
-to its edge and counted. Tiles and border are cut at the map's own edge, and the
-list of sites starts below the picture. That list is ordered by proximity - a
-nearest-neighbour walk over the pins from the north-west - so the places that
-lie together are listed together rather than in the order their subnets happen
-to arrive. A site is drawn as one pin rather
-than one per subnet: it carries its number, is coloured like the location it
-stands for and listed below the picture with the subnets that belong to it,
-which stays readable in a dense canton where name boxes would overlap. A
-location holding more than one machine gets a thick white border, one holding
-a single machine a thin one, as in the floor plan; several subnets of one
-location are listed side by side and wrapped into the column instead of being
-squeezed onto a single line. Every pin sits on a dark disc, because the tiles
-are coloured and light in places. The canton border is drawn as on the page, but
-the export leaves the canton untinted; the fill is only commented out
-(`map-border-fill` in `svg_export.js`) should the tint be wanted again.
-
-Zoomed into a building the button reads "Export as .SVG" and draws the floor
-plan (a real plan or the generated logical floor map) at its geographic frame,
-grown to at least 1100 px across and further as far as the machines need, so
-the picture is readable when printed. Dots carry name and IP label wherever
-those fit without touching; where they cannot, the dots are numbered, dots
-that would collide are nudged apart, and the machines are listed in columns
-below the map. That list repeats the colour coding of the dots and gives each
-machine's name, description and IP address, and the legend lists only the
-subnets visible on the plan, not every subnet of the inventory.
-
-The export's own lettering grows with the plan it annotates (`MAX_TEXT_SCALE`
-in `svg_export.js`), so plan room labels and legend text stay comparable
-instead of a magnified plan above footnote-sized print. If the browser refuses
-to rasterise the map view, the PNG button falls back to the equivalent SVG and
-says so in the console.
-
-Subnet colours form a family: each subnet gets one colour from the location
-palette and its prefixes are drawn in alternating lighter and darker shades of
-it (`network_map/colors.py:shade_of`), on the map, in the floor plan and in
-both exports. The regional picture colours by location instead - every site
-carries its own `site_color` from the same palette - because sites that hold no
-subnet in common would otherwise share a colour. The swisstopo tiles are re-fetched over CORS and embedded as JPEG
-data; if the tile server does not allow that, the export falls back to the
-vector-only version.
-
-Every one of those documents is also handed out as a PNG, the format the map
-page's own button produces: ask the same URL with `?format=png` (or
-`Accept: image/png`). Nothing inside NetBox draws SVG, so the raster is made by
-whichever rasteriser the server has - the `cairosvg` package
-(`/opt/netbox/venv/bin/python -m pip install cairosvg`, also declared as the
-`png` extra of this plugin), which follows CSS closely, or the ImageMagick
-command line, which is installed everywhere but quietly drops what it does not
-know, dashed strokes among them, so the canton border disappears. With neither
-installed, a PNG request answers 501 with what to install rather than a broken
-picture. A document whose long edge passes `PNG_MAX_EDGE` - the logical tree of a
-large inventory runs past 70000 units easily - comes out smaller instead of
-failing, since both rasterisers refuse surfaces that big. The subnet map is
-rasterised with its map tiles in it, embedded in the SVG as data URLs, which
-makes that document about 1 MB against 500 kB without them; `?background=0` asks
-for the drawing alone.
-
-The plugin is listed on the NetBox plugin API index (`/api/plugins/`) and its
-API root (`/api/plugins/networkmap/`) links to the four endpoints above, each of
-them twice and without a trailing slash: as SVG, and as the same address with
-`?format=png` on it. They
-are also documented in the OpenAPI schema (`/api/schema/`) under the
-`network-map` tag.
-
-## Publishing a New Version
-
-The version is defined once, as `__version__` in `network_map/__init__.py`.
-Both `pip` (via the setuptools dynamic `attr` in `pyproject.toml`) and the
-NetBox plugin UI read it from there. To release, change `0.1.0` to `0.2.0`
-in that file, then reinstall it:
-
-```bash
-cd /opt/netbox/network_map_plugin/network_map
-/opt/netbox/venv/bin/python -m pip install --editable . --no-deps
-```
-
-Run the checks after installation:
-
-```bash
-cd /opt/netbox/netbox
-/opt/netbox/venv/bin/python manage.py check
-```
-
-For a production deployment, install the updated plugin from the same source
-directory, collect its static files and restart NetBox using the service
-manager used by the deployment, for example:
-
-```bash
-/opt/netbox/venv/bin/python manage.py collectstatic --noinput
-sudo systemctl restart netbox
-```
-
-Collecting matters: a production NetBox serves `/static/` from the collected
-copy, so a web server pointing at it otherwise keeps handing out the previous
-scripts. The plugin's own scripts are linked with a modification-time query
-string, so a browser reloads them instead of replaying the copy it cached
-during its last visit.
-
-Do not commit generated `*.egg-info/` directories. They are recreated by
-`pip install` and should be ignored by Git.
-
-When adopting a new NetBox release, verify the plugin works with it and adjust
-`min_version`/`max_version` in `network_map/__init__.py` if needed; NetBox
-disables the plugin outside that range.
+- Needs the `network_map.view_vlanelement` permission.
+- A PNG needs a rasteriser on the server: `cairosvg` (the plugin's `png` extra)
+  or ImageMagick. Without either the request answers 501; a picture too big for
+  the rasteriser comes out smaller instead of failing.
+- The subnet map puts every map tile it fetches into the document as a data URL,
+  which is what makes it big: the canton of Bern as it stands in this NetBox
+  measures about 1.8 MB as SVG and 3.8 MB as PNG, against 0.5 MB and 0.4 MB with
+  `?background=0`, which leaves the ground out.
+- Building the subnet map geocodes every Site that has no coordinates yet - one
+  Nominatim lookup each, whose result is saved back on the Site - so this GET
+  writes to the database.
+- `/api/plugins/networkmap/` links these addresses, and the schema lists them
+  under the `network-map` tag.
 
 ## Configuration
-
-The two settings normally needed are `gateway_search_tag` and
-`canton_boundary_code`:
 
 ```python
 PLUGINS_CONFIG = {
@@ -246,125 +72,74 @@ PLUGINS_CONFIG = {
 }
 ```
 
-- `gateway_search_tag`: the device tag (or other exact-match search term)
-  the Vlan-Connections view uses to locate the central gateway object.
-- `canton_boundary_code`: the canton border drawn on the Subnet-Map, as a
-  two-letter code (e.g. `"BE"`, `"AG"`) or numeric BFS canton id. Defaults to
-  `"BE"`; set it to `""` to disable the border.
-
-All other settings have sensible code defaults and can remain unset.
-
-The canton geometry is fetched live and cached; it is not shipped with the
-plugin. The border is served through `/plugins/networkmap/subnet-map/canton-boundary/`
-under the same `network_map.view_vlanelement` permission as the map itself. If
-the geometry cannot be fetched, the map renders without a border.
+- `gateway_search_tag`: the device tag the Vlan-Connections view uses to find the
+  central gateway object.
+- `canton_boundary_code`: the canton whose border the Subnet-Map draws, as a
+  two-letter code (`"BE"`) or a BFS id; `""` draws none.
 
 <details>
 <summary>Advanced settings</summary>
 
-Advanced overrides can be added to the same `PLUGINS_CONFIG` dictionary.
+All of these go in the same `PLUGINS_CONFIG` dictionary.
 
-### Site geocoding
+Geocoding, for a site that has no coordinates yet: `nominatim_url` (defaults to
+OpenStreetMap's service), `country_codes` (`"ch"`), `request_interval_seconds`
+(`1.0`), `request_timeout_seconds` (`10`).
 
-Sites shown on the Subnet-Map need coordinates. If a site has no latitude and
-longitude stored in NetBox, the plugin looks them up from the site's physical
-address (or name) via a geocoding service and writes the result back to the
-Site, so every site is geocoded only once and the values can be corrected in
-the NetBox UI afterwards.
-
-- `nominatim_url`: geocoding endpoint; defaults to OpenStreetMap's public
-  Nominatim service.
-- `country_codes`: comma-separated country filter for the address search;
-  defaults to `"ch"`.
-- `request_interval_seconds`: minimum delay between geocoding requests;
-  defaults to `1.0`.
-- `request_timeout_seconds`: timeout for a single lookup; defaults to `10`.
-
-### Canton border sources
-
-- `canton_boundary_label`: legend text for the border; defaults to the canton
-  name when left empty.
-- `canton_boundary_url_template`: primary swisstopo WFS URL, with `{id}`
-  replaced by the BFS canton id. WFS is preferred because it carries interior
-  rings, preserving canton pockets such as Steinhof SO. Keep
-  `srsName=EPSG%3A4326` for WGS84 coordinates.
-- `canton_boundary_fallback_url_template`: hole-carrying Nominatim fallback
-  URL, with `{code}` replaced by the canton's ISO/CH code, e.g. `CH-BE`. Used
-  automatically when WFS is unavailable.
-- `canton_boundary_last_resort_url_template`: hole-less `map.geo.admin.ch`
-  feature endpoint, used when both hole-carrying sources fail.
-- `canton_boundary_cache_seconds`: cache lifetime for fetched geometry;
-  defaults to 30 days.
+Canton border, tried in that order until one answers - the geometry is fetched
+live and cached, and the map renders without a border when none can be had:
+`canton_boundary_url_template` (swisstopo WFS, `{id}` the BFS id; preferred
+because it carries interior rings, which keeps canton pockets such as Steinhof
+SO, so leave `srsName=EPSG%3A4326` in it),
+`canton_boundary_fallback_url_template` (Nominatim, `{code}` as `CH-BE`, also
+carrying holes), `canton_boundary_last_resort_url_template` (`map.geo.admin.ch`,
+without holes), `canton_boundary_cache_seconds` (30 days) and
+`canton_boundary_label` (legend text, the canton name by default). The geometry
+is also served on its own at `/plugins/networkmap/subnet-map/canton-boundary/`.
 
 </details>
 
 ### Map background
 
-The served subnet map is drawn over real map tiles, the way the page's export
-button does it, and it asks the same server for the same tiles: the swisstopo
-grid in LV03 (`{z}/{y}/{x}` — zoom, row, column), which is what the page's Leaflet
-map uses. `network_map/map_tiles.py` embeds every tile it gets as a data URL
-lying on the ground it covers, and `network_map/lv03.py` holds the grid: the
-origin and side of a tile, the ladder of resolutions, and the WGS84-to-LV03
-transformation of the coordinates the pins and the border arrive in. That
-transformation is swisstopo's own approximate formula, good to a couple of
-metres, and a test measures it against `lv03_grid.js` — the grid the browser
-projects through, generated offline with PROJ — so the two cannot drift apart.
+The served subnet map stands on the same swisstopo tiles, in the same LV03 grid,
+as the page's own map, which is why the two show the same ground. Tiles are
+fetched side by side and cached, so the first caller pays for a canton, and a
+tile that cannot be had simply stays out of the picture.
 
-The zoom is the ladder step that suits the size the picture is drawn at; the
-ladder does not halve its resolution per step, so the step is looked up rather
-than calculated, and `map_tile_zoom` names an index into it. A tile that cannot
-be had simply stays away rather than costing the map.
+| Setting                   | Default                                    | Meaning                                               |
+| ------------------------- | ------------------------------------------ | ----------------------------------------------------- |
+| `map_background`          | `True`                                     | Draw tiles behind the served subnet map.              |
+| `map_tile_url_template`   | swisstopo `pixelkarte-farbe`, `21781` grid | Tile address; `{z}/{y}/{x}` are zoom, row and column. |
+| `map_tile_zoom`           | chosen from the picture                    | Force one zoom instead of the fitting one.            |
+| `map_tile_max`            | `64`                                       | Tiles per picture; the zoom comes down to pay for it. |
+| `map_tile_cache_seconds`  | 30 days                                    | How long a tile is kept.                              |
+| `map_tile_budget_seconds` | `20`                                       | What one picture waits for its tiles, all together.   |
+| `map_attribution`         | empty                                      | Credit under the picture, if the source wants naming. |
 
-| Setting                   | Default                                         | Meaning                                               |
-| ------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
-| `map_background`          | `True`                                          | Draw the tiles behind the served subnet map.          |
-| `map_tile_url_template`   | swisstopo `pixelkarte-farbe` in the `21781` grid | `{z}/{y}/{x}` tile address.                           |
-| `map_tile_zoom`           | chosen from the picture                          | Index into the ladder of resolutions to force.        |
-| `map_tile_max`            | `64`                                            | Tiles per picture; the zoom comes down to pay for it.  |
-| `map_tile_cache_seconds`  | 30 days                                         | How long a tile is kept.                              |
-| `map_tile_budget_seconds` | `20`                                            | What one picture waits for its tiles, all together.   |
-| `map_attribution`         | empty                                           | Credit printed under the picture, if the source wants naming. |
+A different source has to answer in the LV03 grid, which leaves mirrors of the
+swisstopo tiles rather than OpenStreetMap.
 
-`?background=0` on the subnet-map URL leaves the ground out, which is what a
-caller after the bare drawing wants. Tiles are fetched side by side and cached
-in the Django cache, so the first caller pays for a canton and everyone after
-them reads it from there; a server with no route to the tile host gets a plain
-background and the same map. Another source has to answer in the same grid —
-the LV03 one the picture is drawn in — which leaves mirrors of the swisstopo
-tiles rather than OpenStreetMap.
+## Releases
+
+`__version__` in `network_map/__init__.py` is the only place the version is
+written; a new NetBox release needs `min_version`/`max_version` widened there, or
+NetBox disables the plugin.
 
 ## Translations
 
-User-facing strings are marked with `{% trans %}` tags in the templates and
-`gettext_lazy` (`_()`) in Python code. Translations live in
-`network_map/locale/<lang>/LC_MESSAGES/django.po` (currently `de` and `fr`);
-`network_map/locale/django.pot` is the generated master list of all
-translatable strings.
-
-After adding or changing translatable strings, update every catalog:
+Catalogs are `network_map/locale/<lang>/LC_MESSAGES/django.po` (`de`, `fr`); the
+compiled `.mo` is committed because this tree does not compile it. After changing
+strings, fill in the new `msgstr` values and rebuild:
 
 ```bash
 cd /opt/netbox/network_map_plugin
 DJANGO_SETTINGS_MODULE=netbox.settings PYTHONPATH=/opt/netbox/netbox \
   /opt/netbox/venv/bin/django-admin makemessages -l de -l fr --keep-pot
-```
-
-`--keep-pot` retains the master catalog; without it `makemessages` deletes it
-after merging, and `--all` is not usable here because it pulls in NetBox's own
-language list. This marks new and changed entries in each `.po` file; fill in the `msgstr`
-values (by hand or with a tool like Poedit), then rebuild the binary `.mo`
-catalogs that NetBox actually loads:
-
-```bash
-cd /opt/netbox/network_map_plugin
 for lang in de fr; do
-  msgfmt --check \
-    -o network_map/locale/$lang/LC_MESSAGES/django.mo \
-       network_map/locale/$lang/LC_MESSAGES/django.po
+  msgfmt --check -o network_map/locale/$lang/LC_MESSAGES/django.mo \
+    network_map/locale/$lang/LC_MESSAGES/django.po
 done
 ```
 
-Restart NetBox afterwards; catalogs are read once at startup. The `.mo` files
-are committed because the package is built from this tree and does not
-compile them itself.
+`--keep-pot` keeps the master catalog `makemessages` would delete after merging;
+`--all` is unusable here because it pulls in NetBox's own language list.
