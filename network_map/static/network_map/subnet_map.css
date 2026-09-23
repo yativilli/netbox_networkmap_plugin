@@ -384,3 +384,16 @@
     display: block;
     color: #495057;
 }
+
+.subnet-machine-tooltip .machine-desc {
+    display: block;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* A description is free text from NetBox; it wraps rather than stretching
+   the tooltip across the plan. */
+.subnet-machine-tooltip {
+    max-width: 260px;
+    white-space: normal;
+}

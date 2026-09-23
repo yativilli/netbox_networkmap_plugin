@@ -17,6 +17,7 @@ from users.models import ObjectPermission, User
 
 from . import lv03, map_tiles, png_render, svg_render, swisstopo
 from .colors import shade_of
+from .defaults import DEFAULT_CANTON_BOUNDARY_CODE
 from .models import VlanInfo
 from .templatetags.network_map_static import static_url
 from .views import SubnetLocationView, VlanTopologyView
@@ -938,6 +939,14 @@ class CountryBorderTests(TestCase):
         self.assertFalse(swisstopo.boundary_configured(""))
         self.assertFalse(swisstopo.boundary_configured(None))
 
+    def test_the_default_border_stays_a_canton(self):
+        # Selecting the country was added without moving the shipped default:
+        # an install that never mentions canton_boundary_code drew a canton
+        # border before, and it has to keep drawing one.
+        self.assertEqual(DEFAULT_CANTON_BOUNDARY_CODE, "BE")
+        self.assertFalse(swisstopo.is_country(DEFAULT_CANTON_BOUNDARY_CODE))
+        self.assertTrue(swisstopo.boundary_configured(DEFAULT_CANTON_BOUNDARY_CODE))
+
     def test_the_country_names_itself(self):
         self.assertEqual(swisstopo.get_canton_label("CH"), "Schweiz")
         with override_settings(
@@ -1450,6 +1459,51 @@ class SubnetMapExportButtonTests(TestCase):
 
     def test_no_export_button_without_pins(self):
         self.assertNotContains(self.get_page(EMPTY_MAP_DATA), "data-export-svg")
+
+
+class HousePlanHoverTests(TestCase):
+    """What a machine dot on the house plan says when it is hovered."""
+
+    def test_the_hover_says_what_the_machine_is(self):
+        script = _static("subnet_map.js")
+        start = script.index("const named = machine.name")
+        block = script[start : script.index("subnet-machine-tooltip", start)]
+        # The name, the address and - when NetBox has more to say than the name
+        # repeats - the description of the machine, all of them escaped.
+        for part in ("machine-name", "machine-ip", "machine-desc"):
+            self.assertIn(part, block)
+        for value in ("escapeHtml(named)", "escapeHtml(machine.ip)"):
+            self.assertIn(value, block)
+        self.assertIn("escapeHtml(machine.description)", block)
+
+    def test_the_stylesheet_knows_the_description_line(self):
+        sheet = _static("subnet_map.css")
+        self.assertIn(".subnet-machine-tooltip .machine-desc", sheet)
+
+
+class FloorPlanBandTitleTests(TestCase):
+    """The floor name at the left of each band of the generated floor plan."""
+
+    def setUp(self):
+        self.script = _static("subnet_map.js")
+        self.layout = self.script[self.script.index("function buildLogicalLayout") :]
+
+    def test_the_band_title_is_never_cut_off(self):
+        # "Other rooms" came out as "Other roo...", because the name was cut to
+        # what a column of a fixed width could hold; it is now wrapped whole.
+        self.assertNotIn("fmax", self.layout)
+        self.assertNotIn("flabel", self.layout)
+        self.assertIn("wrapWords(floor.label, BAND_W - 16", self.layout)
+        self.assertNotIn("\u2026", self.layout[: self.layout.index("countChipText")])
+
+    def test_the_column_grows_for_a_longer_name(self):
+        # A name that fits on one line gets a wider column rather than a wrap;
+        # only past the widest column does it go over lines.
+        self.assertIn(
+            "Math.max(BAND_MIN, Math.ceil(widestFloor * FLOOR_LABEL_CHAR_W) + 24)",
+            self.layout,
+        )
+        self.assertIn("BAND_MAX, Math.max(BAND_MIN", self.layout)
 
 
 class ShadeOfTests(TestCase):

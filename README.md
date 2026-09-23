@@ -75,7 +75,8 @@ PLUGINS_CONFIG = {
 - `gateway_search_tag`: the device tag the Vlan-Connections view uses to find the
   central gateway object.
 - `canton_boundary_code`: the canton whose border the Subnet-Map draws, as a
-  two-letter code (`"BE"`) or a BFS id; `""` draws none.
+  two-letter code (`"BE"`, which is also the default) or a BFS id; `"CH"` or
+  `"SW"` draws the national border in its place, and `""` draws none.
 
 <details>
 <summary>Advanced settings</summary>

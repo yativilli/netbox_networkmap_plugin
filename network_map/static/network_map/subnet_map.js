@@ -503,6 +503,32 @@
     const GRID_ROW_H = 30;           // machine-dot row pitch
     const ROOM_MIN_H = 150;          // minimum room box height
 
+    const FLOOR_LINE_H = 24;          // pitch of a wrapped floor name's lines
+
+    // Words of a label placed on as many lines as the given width takes. Only
+    // a word wider than the line itself is broken, so nothing of a name is
+    // lost the way a cut-off one is.
+    function wrapWords(value, widthPx, charW) {
+        const take = Math.max(1, Math.floor(widthPx / charW));
+        const words = [];
+        String(value).split(/\s+/).filter(Boolean).forEach((word) => {
+            for (let i = 0; i < word.length; i += take) words.push(word.slice(i, i + take));
+        });
+        const lines = [];
+        let line = '';
+        words.forEach((word) => {
+            const joined = line ? `${line} ${word}` : word;
+            if (line && joined.length * charW > widthPx) {
+                lines.push(line);
+                line = word;
+            } else {
+                line = joined;
+            }
+        });
+        if (line) lines.push(line);
+        return lines.length ? lines : [String(value)];
+    }
+
     function clipRoomLabel(name, widthPx) {
         const max = Math.max(6, Math.floor((widthPx - 10) / ROOM_LABEL_CHAR_W));
         return name.length > max
@@ -574,7 +600,15 @@
                 rooms: ['__virtual__']});
         }
 
-        const W = 1400, PAD = 34, BAND_W = 150, GAP = 14;
+        const W = 1400, PAD = 34, GAP = 14;
+        const BAND_MIN = 150;   // the floor name's column is never narrower
+        const BAND_MAX = 300;   // nor wider; a longer name goes over lines
+        // The column keeps room for the longest floor name on one line, so a
+        // name such as "Other rooms" is not cut to what the column was.
+        const widestFloor = floors.reduce(
+            (wide, floor) => Math.max(wide, String(floor.label).length), 0);
+        const BAND_W = Math.min(
+            BAND_MAX, Math.max(BAND_MIN, Math.ceil(widestFloor * FLOOR_LABEL_CHAR_W) + 24));
 
         // Pre-plan each floor band: room widths go by machine
         // count and the band grows tall enough that the machine
@@ -626,13 +660,15 @@
             svg.push(`<rect x="${PAD}" y="${y0}" width="${W - 2 * PAD}" ` +
                 `height="${boxH + 74 + shift}" rx="8" fill="#ece7da" ` +
                 'stroke="#d8d2c2" stroke-width="1.5"/>');
-            const fmax = Math.floor((BAND_W - 20) / FLOOR_LABEL_CHAR_W);
-            const flabel = floor.label.length > fmax
-                ? floor.label.slice(0, fmax - 1) + '\u2026'
-                : floor.label;
-            svg.push(`<text x="${PAD + BAND_W / 2}" y="${y0 + 40}" ` +
-                'text-anchor="middle" font-size="22" font-weight="bold" ' +
-                `fill="#6b5d4a">${escapeHtml(flabel)}</text>`);
+            // The name is written whole, in the column it was given and in as
+            // many lines as that column takes.
+            wrapWords(floor.label, BAND_W - 16, FLOOR_LABEL_CHAR_W).forEach(
+                (line, k) => {
+                    svg.push(`<text x="${PAD + BAND_W / 2}" ` +
+                        `y="${y0 + 40 + k * FLOOR_LINE_H}" text-anchor="middle" ` +
+                        'font-size="22" font-weight="bold" fill="#6b5d4a">' +
+                        `${escapeHtml(line)}</text>`);
+                });
             const boxTop = y0 + 62 + shift;
             let x = PAD + BAND_W + 6;
             floor.rooms.forEach((name, i) => {
@@ -785,8 +821,9 @@
                 ? `background:${machine.color}`
                 : `background:#fff;border-color:${machine.color}`;
             const at = slotToLatLng(bounds, fx, fy);
-            // The SVG export draws permanent name/IP labels for these
-            // dots; on screen the same data is only a hover tooltip.
+            // The SVG export draws permanent name/IP labels for these dots;
+            // on screen the same data is only a hover tooltip, which has room
+            // for one more line: what the machine is for.
             machine.lat = at.lat;
             machine.lng = at.lng;
             const marker = L.marker(at, {
@@ -799,9 +836,17 @@
                 }),
                 zIndexOffset: 6000 + index
             });
+            // A device without a DNS name is named by its address, and the
+            // description - what it is or does - is said underneath unless it
+            // would only repeat that name.
+            const named = machine.name || machine.ip;
+            const purpose = machine.description && machine.description !== named
+                ? `<span class="machine-desc">${escapeHtml(machine.description)}</span>`
+                : '';
             marker.bindTooltip(
-                `<span class="machine-name">${machine.name}</span>` +
-                `<span class="machine-ip">${machine.ip}</span>`,
+                `<span class="machine-name">${escapeHtml(named)}</span>` +
+                `<span class="machine-ip">${escapeHtml(machine.ip)}</span>` +
+                purpose,
                 {direction: 'top', offset: [0, -8], className: 'subnet-machine-tooltip'});
             if (machine.url) {
                 marker.on('click', () => window.open(machine.url, '_blank', 'noopener'));
