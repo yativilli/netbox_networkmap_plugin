@@ -143,6 +143,8 @@ makes, so the two never disagree about what belongs in them. A restart is needed
 and a page already open has to be reloaded, because it carries the numbers it was
 served.
 
+Should the cantonal boundary become a rectangle with a rectangular cutout that is roughly centered on Basel, this is a problem with Netbox - you will need to restart netbox.
+
 ## Releases
 
 `__version__` in `network_map/__init__.py` is the only place the version is
