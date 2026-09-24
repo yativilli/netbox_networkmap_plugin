@@ -183,6 +183,7 @@
                 description: machine.description || '',
                 url: machine.url, color: pin.color,
                 room: machine.room || '',
+                subnet: pin.subnet || '', prefix: pin.prefix || '',
                 physical: machine.physical !== false
             }));
         });
@@ -963,6 +964,23 @@
         }
         const roomSeen = {};
 
+        // Hovering a machine picks its subnet out of the plan: the dot under
+        // the cursor gains a ring, and the entry of the key that names its
+        // subnet is marked with it - the colour says which subnet it is, now
+        // the word does too. Only that one dot is ringed: a whole subnet
+        // alight hides the machine the cursor is on.
+        function lightSubnet(marker, subnet, on) {
+            const element = marker.getElement && marker.getElement();
+            const dot = element && element.querySelector('.subnet-machine-pin');
+            if (dot) {
+                dot.classList.toggle('hovered', on);
+            }
+            const value = String(subnet).replace(/["\\]/g, '\\$&');
+            document.querySelectorAll(
+                `.house-plan-overlay .legend-entry[data-subnet="${value}"]`
+            ).forEach((entry) => entry.classList.toggle('key-lit', on));
+        }
+
         machines.forEach((machine, index) => {
             let fx;
             let fy;
@@ -1020,6 +1038,8 @@
             if (machine.url) {
                 marker.on('click', () => window.open(machine.url, '_blank', 'noopener'));
             }
+            marker.on('mouseover', () => lightSubnet(marker, machine.subnet, true));
+            marker.on('mouseout', () => lightSubnet(marker, machine.subnet, false));
             marker.addTo(layer);
         });
         layer.addTo(currentMap);

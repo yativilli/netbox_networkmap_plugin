@@ -397,3 +397,21 @@
     max-width: 260px;
     white-space: normal;
 }
+
+/* Hovering a machine picks its subnet out of the floor plan: the dot under the
+   cursor gains a ring, and the key marks the entry that names the subnet. */
+.subnet-machine-pin.hovered {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 3px #343a40;
+    transform: scale(1.3);
+}
+
+.plan-legend .legend-entry.key-lit text {
+    fill: #16324a;
+    font-weight: bold;
+}
+
+.plan-legend .legend-entry.key-lit rect,
+.plan-legend .legend-entry.key-lit circle {
+    stroke: #343a40;
+    stroke-width: 3.5;
+}
