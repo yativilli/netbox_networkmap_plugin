@@ -505,6 +505,17 @@
 
     const FLOOR_LINE_H = 24;          // pitch of a wrapped floor name's lines
 
+    // The colour and shape key standing in its own rectangle to the right of
+    // the generated plan.
+    const LEGEND_SWATCH = 20;      // side of a prefix's colour chip
+    const LEGEND_TEXT_DX = 30;     // from an entry's chip to its text
+    const LEGEND_ROW_H = 30;       // height of an entry's own line
+    const LEGEND_NOTE_H = 18;      // pitch of a subnet name's wrapped lines
+    const LEGEND_PAD = 16;         // space inside the key's rectangle
+    const LEGEND_TITLE_H = 74;     // room above the entries for the title
+    const LEGEND_MIN = 240;        // the key is never narrower ...
+    const LEGEND_MAX = 460;        // ... nor wider, so the plan stays a plan
+
     // Words of a label placed on as many lines as the given width takes. Only
     // a word wider than the line itself is broken, so nothing of a name is
     // lost the way a cut-off one is.
@@ -600,7 +611,7 @@
                 rooms: ['__virtual__']});
         }
 
-        const W = 1400, PAD = 34, GAP = 14;
+        const PLAN_W = 1400, PAD = 34, GAP = 14;
         const BAND_MIN = 150;   // the floor name's column is never narrower
         const BAND_MAX = 300;   // nor wider; a longer name goes over lines
         // The column keeps room for the longest floor name on one line, so a
@@ -615,7 +626,8 @@
         // grids never collapse onto each other.
         const bands = floors.map((floor) => {
             const gap = floor.rooms.length > 1 ? 10 : 0;
-            const availW = W - 2 * PAD - BAND_W - 12 - gap * (floor.rooms.length - 1);
+            const availW =
+                PLAN_W - 2 * PAD - BAND_W - 12 - gap * (floor.rooms.length - 1);
             const weights = floor.rooms.map(
                 (name) => Math.pow(counts[name] || 0, 0.65) + 1.6);
             const totalW = weights.reduce((a, b) => a + b, 0);
@@ -636,9 +648,78 @@
             const boxH = Math.max(ROOM_MIN_H, maxRows * GRID_ROW_H + 24);
             return {floor, gap, widths, boxH, stacked, shift: stacked ? 24 : 0};
         });
-        const H = 110 +
-            bands.reduce((a, band) => a + band.boxH + 90 + GAP + band.shift, 0) +
-            PAD;
+        // The colour and shape key of the plan: one entry per prefix the site
+        // holds a machine in, in the very colour its dots carry, and the two
+        // dot shapes next to them. It stands in a rectangle of its own to the
+        // right of the rooms, which therefore keep the width they had, and the
+        // exported picture copies it along with them.
+        const shades = [];
+        group.pins.forEach((pin) => {
+            if (!pin.machines.length) {
+                return;
+            }
+            const key = `${pin.subnet}|${pin.prefix}`;
+            if (!shades.some((entry) => entry.key === key)) {
+                shades.push({
+                    key, subnet: pin.subnet || '', prefix: pin.prefix || '',
+                    color: pin.color
+                });
+            }
+        });
+        shades.sort((a, b) => a.subnet.localeCompare(b.subnet) ||
+            a.prefix.localeCompare(b.prefix, undefined, {numeric: true}));
+        const physicalTotal = Object.keys(counts)
+            .filter((name) => name !== '__virtual__')
+            .reduce((total, name) => total + counts[name], 0);
+
+        const textWidth = (value, charW) => Math.ceil(String(value).length * charW);
+        const entries = shades.map((shade) => ({
+            color: shade.color, text: shade.prefix,
+            note: shade.subnet, subnet: shade.subnet
+        }));
+        if (physicalTotal > 0) {
+            entries.push({shape: 'full', text: t('physical_machine', 'Physical machine')});
+        }
+        if (vmTotal > 0) {
+            entries.push({shape: 'hollow', text: t('virtual_machine', 'Virtual machine')});
+        }
+
+        // Wide enough for the widest entry on one line, and never wider than
+        // LEGEND_MAX: what does not fit goes under the prefix instead of being
+        // cut, so a long subnet name is never lost to the rectangle's edge.
+        const LEGEND_W = entries.length
+            ? Math.min(LEGEND_MAX, Math.max(
+                LEGEND_MIN,
+                entries.reduce((wide, entry) => Math.max(
+                    wide,
+                    LEGEND_TEXT_DX + textWidth(entry.text, ROOM_LABEL_CHAR_W) +
+                    (entry.note
+                        ? 12 + textWidth(entry.note, CHIP_CHAR_W)
+                        : 0)), 0) + 2 * LEGEND_PAD))
+            : 0;
+        const legendInner = LEGEND_W - 2 * LEGEND_PAD - LEGEND_TEXT_DX;
+        entries.forEach((entry) => {
+            const beside = entry.note && textWidth(entry.text, ROOM_LABEL_CHAR_W) +
+                12 + textWidth(entry.note, CHIP_CHAR_W) <= legendInner;
+            entry.noteBeside = beside;
+            entry.noteLines = !entry.note || beside
+                ? []
+                : wrapWords(entry.note, legendInner, CHIP_CHAR_W);
+            entry.height = LEGEND_ROW_H + entry.noteLines.length * LEGEND_NOTE_H;
+        });
+        const legendTitle = wrapWords(
+            t('legend', 'Legend'), LEGEND_W - 2 * LEGEND_PAD, FLOOR_LABEL_CHAR_W);
+        const legendH = entries.length
+            ? LEGEND_TITLE_H + (legendTitle.length - 1) * FLOOR_LINE_H +
+              LEGEND_PAD + entries.reduce((tall, entry) => tall + entry.height, 0) +
+              LEGEND_PAD
+            : 0;
+        const legendX = PLAN_W + GAP;
+
+        const W = entries.length ? legendX + LEGEND_W + PAD : PLAN_W;
+        const roomsH = 110 +
+            bands.reduce((a, band) => a + band.boxH + 90 + GAP + band.shift, 0) + PAD;
+        const H = Math.max(roomsH, 110 + legendH + PAD);
 
         const boxes = {};
         const svg = [
@@ -648,7 +729,7 @@
             `<text x="${PAD}" y="64" font-size="26" fill="#3d3d38"` +
             ` font-style="italic">${escapeHtml(group.site)} \u2014 ` +
             `${escapeHtml(t('logical_title', 'logical floor map'))}</text>`,
-            `<text x="${W - PAD}" y="64" text-anchor="end"` +
+            `<text x="${PLAN_W - PAD}" y="64" text-anchor="end"` +
             ` font-size="16" fill="#8a8378">` +
             `${escapeHtml(t('generated_from', 'generated from NetBox locations'))}` +
             '</text>'
@@ -657,7 +738,7 @@
         let y0 = 110;
         for (const band of bands) {
             const {floor, gap, widths, boxH, stacked, shift} = band;
-            svg.push(`<rect x="${PAD}" y="${y0}" width="${W - 2 * PAD}" ` +
+            svg.push(`<rect x="${PAD}" y="${y0}" width="${PLAN_W - 2 * PAD}" ` +
                 `height="${boxH + 74 + shift}" rx="8" fill="#ece7da" ` +
                 'stroke="#d8d2c2" stroke-width="1.5"/>');
             // The name is written whole, in the column it was given and in as
@@ -699,7 +780,72 @@
             });
             y0 += boxH + 90 + GAP + shift;
         }
-        return {w: W, h: H, boxes, markup: svg.join('')};
+
+        if (entries.length) {
+            // One group, so the whole key can be moved as one - the plan is
+            // often taller than the window, and a key that stays at the top of
+            // a tall plan is gone as soon as one has scrolled down.
+            const key = [
+                `<rect x="${legendX}" y="110" width="${LEGEND_W}" ` +
+                `height="${legendH}" rx="8" fill="#ece7da" ` +
+                'stroke="#d8d2c2" stroke-width="1.5"/>',
+                ...legendTitle.map((line, k) =>
+                    `<text x="${legendX + LEGEND_PAD}" ` +
+                    `y="${110 + 44 + k * FLOOR_LINE_H}" ` +
+                    'font-size="22" font-weight="bold" fill="#6b5d4a">' +
+                    `${escapeHtml(line)}</text>`)
+            ];
+            let ly = 110 + LEGEND_TITLE_H +
+                (legendTitle.length - 1) * FLOOR_LINE_H + LEGEND_PAD;
+            entries.forEach((entry) => {
+                const x = legendX + LEGEND_PAD;
+                const base = ly + 20;
+                const lines = [];
+                if (entry.shape) {
+                    // The plan draws a machine as a dot of its prefix's
+                    // colour; a virtual one is the same dot with its middle
+                    // left out, which is what these two chips stand for.
+                    lines.push(`<circle cx="${x + LEGEND_SWATCH / 2}" ` +
+                        `cy="${base - LEGEND_SWATCH / 2 + 5}" r="9" ` +
+                        (entry.shape === 'full'
+                            ? 'fill="#6b6b63"/>'
+                            : 'fill="#f7f4ea" stroke="#6b6b63" stroke-width="3"/>'));
+                } else {
+                    lines.push(`<rect x="${x}" y="${base - LEGEND_SWATCH + 5}" ` +
+                        `width="${LEGEND_SWATCH}" height="${LEGEND_SWATCH}" rx="4" ` +
+                        `fill="${escapeHtml(entry.color)}" stroke="#6b6b63" ` +
+                        'stroke-width="1.5"/>');
+                }
+                lines.push(`<text x="${x + LEGEND_TEXT_DX}" y="${base}" ` +
+                    'font-size="17" fill="#3d3d38">' +
+                    `${escapeHtml(entry.text)}</text>`);
+                if (entry.noteBeside) {
+                    lines.push('<text ' +
+                        `x="${x + LEGEND_TEXT_DX + textWidth(entry.text, ROOM_LABEL_CHAR_W) + 12}" ` +
+                        `y="${base}" font-size="14" fill="#8a8378">` +
+                        `${escapeHtml(entry.note)}</text>`);
+                }
+                entry.noteLines.forEach((line, k) => {
+                    lines.push(`<text x="${x + LEGEND_TEXT_DX}" ` +
+                        `y="${base + (k + 1) * LEGEND_NOTE_H}" font-size="14" ` +
+                        `fill="#8a8378">${escapeHtml(line)}</text>`);
+                });
+                // Named by its subnet, so hovering a machine can pick its
+                // entry out.
+                key.push(`<g class="legend-entry"` +
+                    (entry.shape ? '' : ` data-subnet="${escapeHtml(entry.subnet)}"`) +
+                    `>${lines.join('')}</g>`);
+                ly += entry.height;
+            });
+            svg.push(`<g class="plan-legend">${key.join('')}</g>`);
+        }
+        return {
+            w: W, h: H, boxes, markup: svg.join(''),
+            // Where the key stands, so the page can keep it in view.
+            legend: entries.length
+                ? {x: legendX, y: 110, w: LEGEND_W, h: legendH}
+                : null
+        };
     }
 
     function countChipText(name, count) {
