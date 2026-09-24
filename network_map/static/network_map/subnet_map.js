@@ -922,6 +922,18 @@
                         if (!root) {
                             return;
                         }
+                        // An uploaded SVG is a document of someone else's
+                        // making: once inline in the page its scripts would
+                        // run, so they and their inline event handlers are
+                        // stripped before the import.
+                        root.querySelectorAll('script').forEach((script) => script.remove());
+                        root.querySelectorAll('*').forEach((element) => {
+                            for (const attribute of Array.from(element.attributes)) {
+                                if (/^on/i.test(attribute.name)) {
+                                    element.removeAttribute(attribute.name);
+                                }
+                            }
+                        });
                         root.setAttribute('width', '100%');
                         root.setAttribute('height', '100%');
                         node.appendChild(document.importNode(root, true));

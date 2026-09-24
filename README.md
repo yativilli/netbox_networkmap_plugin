@@ -168,7 +168,7 @@ edges add their own room to that.
 
 | Setting           | Default | Meaning                                       |
 | ----------------- | ------- | --------------------------------------------- |
-| `map_border_cut`  | `10`    | How far beyond the border the picture is cut. |
+| `map_border_cut`  | `3`     | How far beyond the border the picture is cut. |
 | `map_border_room` | `22`    | Room between the border and the edge.         |
 | `map_room_left`   | `20`    | Room the left edge adds to that.              |
 | `map_room_bottom` | `20`    | Room the bottom edge adds to that.            |
@@ -180,6 +180,34 @@ and a page already open has to be reloaded, because it carries the numbers it wa
 served.
 
 Should the cantonal boundary become a rectangle with a rectangular cutout that is roughly centered on Basel, this is a problem with Netbox - you will need to restart netbox.
+
+## Code structure
+
+| File                                   | Purpose                                                            |
+| -------------------------------------- | ------------------------------------------------------------------ |
+| `models.py`                            | The `VlanElement` anchor model and the dataclasses the views fill. |
+| `views.py`                             | The four pages: collecting what to show and handing it to the browser. |
+| `urls.py`, `navigation.py`             | The page routes and the NetBox menu entries.                       |
+| `__init__.py`, `defaults.py`           | Plugin registration, version, and the settings with their defaults. |
+| `colors.py`                            | The location colour palette and the shades drawn from it.          |
+| `lv03.py`                              | WGS84 to LV03 conversion and the swisstopo tile-grid maths.         |
+| `geocoding.py`                         | Nominatim lookup for Sites that have no coordinates yet.           |
+| `swisstopo.py`                         | Fetching the canton border, with fallbacks, from public services.  |
+| `map_tiles.py`                         | Fetching and caching the swisstopo tiles a served map stands on.   |
+| `svg_render.py`                        | Drawing all four pictures on the server as SVG.                    |
+| `floor_plan.py`                        | Drawing a site's floor plan, uploaded or logical.                  |
+| `png_render.py`                        | Rasterising a served SVG to PNG with cairosvg or ImageMagick.      |
+| `api/views.py`                         | The picture and floor-plan endpoints and their permission gate.    |
+| `api/urls.py`                          | The API routes, with the path parts constrained by regex.          |
+| `templatetags/network_map_static.py`   | The `static_url` tag keeping cached scripts honest.                |
+| `templates/network_map/*.html`         | The four pages' markup, data included as JSON.                     |
+| `templates/network_map/includes/`      | `_info_item.html`, a detail-panel row of the connection page.      |
+| `static/network_map/*.js`              | `subnet_map.js` the interactive map, `vlan_topology.js` the graph, `svg_export.js` the browser's own picture export, `lv03_grid.js` the generated projection grid. |
+| `static/network_map/*.css`             | The pages' styling, including the colour key's variables.          |
+| `static/network_map/leaflet/`          | The vendored Leaflet library the subnet map runs on.               |
+| `migrations/`                          | Django's record of the model's state.                              |
+| `locale/<lang>/LC_MESSAGES/`           | The German and French catalogs, compiled `.mo` included.           |
+| `tests.py`                             | The whole test suite, run as described under Testing.              |
 
 ## Releases
 

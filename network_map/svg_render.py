@@ -10,10 +10,10 @@ from itertools import combinations
 
 from django.utils.html import escape
 from django.utils.translation import gettext as _
-from netbox.plugins import get_plugin_config
 
 from . import lv03
 from .colors import LOCATION_COLORS
+from .defaults import int_setting
 
 WIDTH = 1200
 RIGHT_PAD = 16
@@ -1054,7 +1054,7 @@ def _draw_footnotes(out, label, off_frame, start_y, attribution=None):
 
 def border_cut():
     """How far the cut stands beyond the border, in pixels of the picture."""
-    return max(0, int(get_plugin_config("network_map", "map_border_cut", BORDER_CUT)))
+    return int_setting("map_border_cut", BORDER_CUT, minimum=0)
 
 
 def frame_room():
@@ -1063,9 +1063,9 @@ def frame_room():
     every side gets, and what the left and the bottom add to it.
     """
     return (
-        max(0, int(get_plugin_config("network_map", "map_border_room", BORDER_ROOM))),
-        max(0, int(get_plugin_config("network_map", "map_room_left", ROOM_LEFT))),
-        max(0, int(get_plugin_config("network_map", "map_room_bottom", ROOM_BOTTOM))),
+        int_setting("map_border_room", BORDER_ROOM, minimum=0),
+        int_setting("map_room_left", ROOM_LEFT, minimum=0),
+        int_setting("map_room_bottom", ROOM_BOTTOM, minimum=0),
     )
 
 

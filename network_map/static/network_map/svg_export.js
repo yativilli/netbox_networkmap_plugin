@@ -25,8 +25,6 @@
         '.i-value { font-size: 11.5px; }',
         '.map-border { fill: none; stroke: #c8102e; stroke-width: 2;',
         '  stroke-dasharray: 8 6; }',
-        '.map-border-fill { fill: #c8102e; fill-opacity: 0.1;',
-        '  fill-rule: evenodd; }',
         '.map-outside { fill: #ffffff; fill-rule: evenodd; }',
         '.map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7; stroke-opacity: 0.4; }',
         '.map-pin { stroke: #ffffff; stroke-width: 1.2; }',
@@ -540,10 +538,11 @@
 
     // The room the served picture leaves around its border, which the server
     // hands over so that the two pictures agree. `cut` is how far the cut
-    // itself stands beyond the border line.
+    // itself stands beyond the border line; the fallbacks are the server's
+    // own defaults, used only when the page hands over nothing.
     function exportRoom() {
         return Object.assign(
-            {border: 22, left: 20, bottom: 20, cut: 10},
+            {border: 22, left: 20, bottom: 20, cut: 3},
             window.__subnetMapExportRoom || {}
         );
     }
@@ -1010,11 +1009,6 @@
                 );
             }
             out.push('<g clip-path="url(#map-area)">');
-            // The canton tint the page shows over its area, holes and all; it
-            // goes under the line so the dashes stay crisp. Left out of the
-            // export, where the tiles are coloured enough already - uncomment
-            // to restore it.
-            // out.push(`<path class="map-border-fill" d="${areaPath}"/>`);
             out.push(`<path class="map-border-halo" d="${areaPath}"/>`);
             out.push(`<path class="map-border" d="${areaPath}"/>`);
             out.push('</g>');

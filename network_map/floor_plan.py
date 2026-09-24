@@ -90,9 +90,6 @@ GROUND = re.compile(r"^EG\b", re.IGNORECASE)
 ATTIC = re.compile(r"^(OG|AD)\b|^O[\d\s]", re.IGNORECASE)
 ROOM_NUMBER = re.compile(r"\b(\d{2,3})\b")
 
-UPLOADED = "uploaded"
-LOGICAL = "logical"
-
 
 def logical_floor(name):
     """

@@ -19,6 +19,7 @@ from django.core.cache import cache
 from netbox.plugins import get_plugin_config
 
 from . import __version__, lv03
+from .defaults import int_setting
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +132,10 @@ def background(extent, metres_per_pixel):
     if not url_template:
         return []
 
-    asked = get_plugin_config("network_map", "map_tile_zoom", None)
-    limit = max(1, int(get_plugin_config("network_map", "map_tile_max", MAX_TILES)))
+    asked = int_setting("map_tile_zoom", None)
+    limit = int_setting("map_tile_max", MAX_TILES, minimum=1)
     if asked:
-        zoom = min(max(int(asked), 0), lv03.MAX_ZOOM)
+        zoom = min(max(asked, 0), lv03.MAX_ZOOM)
     else:
         zoom = lv03.zoom_for(metres_per_pixel)
     zoom, tiles = _wanted(extent, zoom, limit)
