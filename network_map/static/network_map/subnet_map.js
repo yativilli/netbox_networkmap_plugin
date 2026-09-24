@@ -872,6 +872,26 @@
         node.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         node.style.position = 'absolute';
 
+        // The key of the plan is worth reading while one works down a tall
+        // plan, so it travels with the view instead of staying at the top of
+        // the drawing, where it is out of sight after two floors.
+        function stickLegend() {
+            const box = plan.legend;
+            const group = box && node.querySelector('.plan-legend');
+            const taken = parseFloat(node.style.height);
+            if (!group || !currentMap || !(taken > 0)) {
+                return;
+            }
+            const nw = currentMap.latLngToLayerPoint(bounds.getNorthWest());
+            const top = currentMap.containerPointToLayerPoint([0, 0]).y;
+            // Where the window's top edge falls inside the plan, in the plan's
+            // own units, and how far down the key may go without leaving it.
+            const seen = (top - nw.y) * plan.h / taken;
+            const slack = plan.h - (box.y + box.h) - 20;
+            const dy = Math.max(0, Math.min(slack, seen - box.y));
+            group.setAttribute('transform', `translate(0 ${dy.toFixed(1)})`);
+        }
+
         function reset() {
             if (!currentMap) {
                 return;
@@ -881,11 +901,13 @@
             node.style.width = Math.max(1, Math.round(se.x - nw.x)) + 'px';
             node.style.height = Math.max(1, Math.round(se.y - nw.y)) + 'px';
             L.DomUtil.setPosition(node, nw);
+            stickLegend();
         }
 
         function attach(map) {
             map.getPanes().overlayPane.appendChild(node);
             map.on('zoomend moveend viewreset', reset);
+            map.on('move', stickLegend);
             reset();
             if (plan.markup) {
                 node.innerHTML = plan.markup;
@@ -915,6 +937,7 @@
 
         function detach(map) {
             map.off('zoomend moveend viewreset', reset);
+            map.off('move', stickLegend);
             if (node.parentNode) {
                 node.parentNode.removeChild(node);
             }
@@ -1027,6 +1050,7 @@
             plan.layout = layoutCache[group.site] ||
                 (layoutCache[group.site] = buildLogicalLayout(group));
             plan.markup = plan.layout.markup;
+            plan.legend = plan.layout.legend;
             plan.w = plan.layout.w;
             plan.h = plan.layout.h;
         }

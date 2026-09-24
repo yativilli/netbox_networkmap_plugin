@@ -600,6 +600,10 @@
         if (!node || !rect) return '';
         const origin = window.location.origin;
         const inner = node.innerHTML
+            // A key stuck to the window on screen goes back to where the plan
+            // puts it, and nothing is left lit from a hover.
+            .replace(/<g class="plan-legend"[^>]*>/g, '<g class="plan-legend">')
+            .replace(/ key-lit(?=["\s])/g, '')
             .replace(/href="(\/[^"]*)"/g, `href="${origin}$1"`)
             .replace(/xlink:href="(\/[^"]*)"/g, `xlink:href="${origin}$1"`);
         const viewBox = node.getAttribute('viewBox') ||
