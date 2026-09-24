@@ -1,6 +1,6 @@
 """
-The floor plan of one site as a picture of its own: the uploaded house plan,
-or the logical map built from NetBox locations.
+The floor plan of one site as a picture of its own: the logical map built from
+NetBox locations.
 
 The logical layout is a port of `buildLogicalLayout()` in
 `network_map/static/network_map/subnet_map.js`, so the served plan and the one
@@ -9,7 +9,6 @@ page keeps its own copy, the shared metrics are pinned in both files by
 `FloorPlanParityTests`, which fails when one of them moves on its own.
 """
 
-import base64
 import math
 import re
 
@@ -18,9 +17,7 @@ from django.utils.translation import gettext as _
 
 from . import svg_render
 
-# The metrics below are the page's, character for character: the lettering was
-# calibrated against real floor-plan renderings there, and the served picture
-# is meant to come out the same size.
+# The page's metrics, character for character, so both pictures come out the same size.
 PLAN_W = 1400
 PAD = 34
 GAP = 14
@@ -43,11 +40,8 @@ LEGEND_PAD = 16  # space inside the key's rectangle
 LEGEND_TITLE_H = 74  # room above the entries for the title
 LEGEND_MIN = 240  # the key is never narrower ...
 LEGEND_MAX = 460  # ... nor wider, so the plan stays a plan
-TITLE_CHAR_W = 14  # glyph width of the 26px title over an uploaded plan
 
-# The machine dots carry their number and are listed under the plan, exactly
-# as the browser export does it when a plan is too dense for a name next to
-# every dot - which a room grid of dots always is.
+# Numbered dots and a machine list under the plan, as the browser export does for dense plans.
 BADGE_R = 9  # a numbered machine dot
 LIST_EDGE = 24  # where the first list column starts
 LIST_COL_W = 384  # width of one machine column of the list
@@ -57,16 +51,6 @@ LIST_SUB_DY = 16  # from an entry's name to its description and address
 LIST_NAME_CHAR_W = 9.0  # glyph width of the 15px machine name
 LIST_SUB_CHAR_W = 8.1  # glyph width of the 13.5px line under it
 
-# The slots an uploaded plan's dots go into, as fractions of its picture: the
-# upload has no rooms to place machines in, so the page spreads them over this
-# grid and jitters every machine past the first round of it.
-CUSTOM_SLOTS = [(fx, fy) for fy in (0.3, 0.5, 0.7) for fx in (0.2, 0.4, 0.6, 0.8)]
-
-# An uploaded plan is handed out with its picture inside the document, so the
-# file stands on its own; a bigger upload keeps the address of its file
-# instead, which costs a second request but not a document of dozens of MB.
-MAX_EMBED_BYTES = 8_000_000
-
 PLAN_STYLE = "\n".join(
     (
         f"text {{ font-family: {svg_render.FONT}; pointer-events: none; }}",
@@ -75,9 +59,7 @@ PLAN_STYLE = "\n".join(
         ".map-machine-num { font-size: 9.5px; font-weight: 700; fill: #ffffff;",
         "  text-anchor: middle; paint-order: stroke;",
         "  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }",
-        # The export halos a virtual machine's number white; on a plan of
-        # our own ground the number needs none, and a rasteriser without
-        # paint-order would paint it right over the digit.
+        # The export halos virtual numbers white; on our own ground that halo would paint over the digit.
         ".map-machine-num.is-vm { fill: #1f2937; stroke: none; }",
         ".map-list-name { font-size: 15px; font-weight: 700; }",
         ".map-list-sub { font-size: 13.5px; fill: #6c757d; }",
@@ -188,8 +170,7 @@ def collect_machines(pins):
     """
     machines = [
         {
-            # Name, description and address are what the plan lists under its
-            # picture, the way the map export lists the machines of a site.
+            # Name, description and address: the list under the picture, as the map export keeps it.
             "name": machine.get("name") or machine["ip"],
             "description": machine.get("description") or "",
             "ip": machine["ip"],
@@ -450,8 +431,7 @@ def build_layout(site_name, pins, room_names):
             x += room_w + band["gap"]
         y0 += box_h + 90 + GAP + shift
 
-    # The room grid keeps badges a dot width apart by construction, so the
-    # dots of a generated plan never need nudging.
+    # The room grid keeps badges apart by construction, so the dots never need nudging.
     out.extend(machine_badges(machines, grid_points(machines, boxes)))
     if key:
         out.append(_draw_key(key, entries, legend_x))
@@ -495,72 +475,6 @@ def grid_points(machines, boxes):
         points[index] = (
             box["x"] + 8 + ((count % cols) + 0.5) * cell_w,
             box["y"] + 8 + math.floor(count / cols) * cell_h + cell_h / 2,
-        )
-    return points
-
-
-def ip_hash(text):
-    """The page's own hash of an address, which is what its jitter turns on."""
-    value = 0
-    for char in str(text):
-        value = (value * 31 + ord(char)) & 0xFFFFFFFF
-    return abs(value - 0x1_0000_0000 if value >= 0x8000_0000 else value)
-
-
-def scatter_points(machines, x, y, width, height):
-    """Where the dots of an uploaded plan go, as the page scatters them."""
-    points = {}
-    for index, machine in enumerate(machines):
-        slot = CUSTOM_SLOTS[index % len(CUSTOM_SLOTS)]
-        repeat = index // len(CUSTOM_SLOTS)
-        jitter = ip_hash(machine["ip"]) + repeat * 17
-        fx = slot[0] + (0 if not repeat else ((jitter % 7) - 3) * 0.012)
-        fy = slot[1] + (0 if not repeat else (((jitter >> 3) % 7) - 3) * 0.02)
-        points[index] = (x + fx * width, y + fy * height)
-    return spread_out(points, 2 * BADGE_R, (x, y, x + width, y + height))
-
-
-def spread_out(points, min_distance, bounds):
-    """
-    Dots that would cover a neighbour are nudged apart rather than crowding the
-    whole plan, but pulled back to their slot on every pass so they cannot
-    wander off the room they belong to.
-    """
-    if min_distance <= 0 or len(points) < 2:
-        return points
-    anchors = dict(points)
-    keys = sorted(points)
-    left, top, right, bottom = bounds
-    for _round in range(12):
-        moved = False
-        for a, b in (
-            (keys[i], keys[j])
-            for i in range(len(keys))
-            for j in range(i + 1, len(keys))
-        ):
-            dx = points[b][0] - points[a][0]
-            dy = points[b][1] - points[a][1]
-            distance = math.hypot(dx, dy)
-            if distance >= min_distance:
-                continue
-            push = ((min_distance - distance) / 2) or 0.5
-            ux = dx / distance if distance else (1 if a % 2 else -1)
-            uy = dy / distance if distance else 0
-            points[a] = (points[a][0] - ux * push, points[a][1] - uy * push)
-            points[b] = (points[b][0] + ux * push, points[b][1] + uy * push)
-            moved = True
-        for key in keys:
-            points[key] = (
-                points[key][0] + (anchors[key][0] - points[key][0]) * 0.1,
-                points[key][1] + (anchors[key][1] - points[key][1]) * 0.1,
-            )
-        if not moved:
-            break
-    for key in keys:
-        x, y = points[key]
-        points[key] = (
-            min(max(x, left), right),
-            min(max(y, top), bottom),
         )
     return points
 
@@ -715,69 +629,3 @@ def render_logical(site_name, pins, room_names):
         f"{layout['body']}"
     )
     return svg_render.build_svg(layout["w"], layout["h"], body, style=PLAN_STYLE)
-
-
-def render_uploaded(site_name, href, width, height, pins=(), embedded=True):
-    """
-    An uploaded house plan: its own picture inside a frame with the site's name
-    over it, the bytes inlined so the document stands on its own, and its
-    machines dotted over the picture and listed under it.
-    """
-    caption = 90
-    title = f"{site_name} \u2014 {_('House plan')}"
-    # A plan narrower than its own title would otherwise clip the site's name,
-    # which is the one thing the document has to say.
-    doc_w = max(int(width) + 2 * PAD, math.ceil(len(title) * TITLE_CHAR_W) + 2 * PAD)
-    image_bottom = caption + int(height)
-    body = [
-        (
-            f'<rect x="{PAD}" y="{caption}" width="{int(width)}" height="{int(height)}" '
-            'fill="none" stroke="#8a8378" stroke-width="2"/>'
-        ),
-        (
-            f'<image href="{escape(href)}" x="{PAD}" y="{caption}" width="{int(width)}" '
-            f'height="{int(height)}" preserveAspectRatio="none"/>'
-        ),
-        (
-            f'<text x="{PAD}" y="64" font-size="26" fill="#3d3d38" font-style="italic">'
-            f"{escape(title)}</text>"
-        ),
-    ]
-    list_top = image_bottom + LIST_ROW_H
-    if not embedded:
-        body.append(
-            f'<text x="{PAD}" y="{image_bottom + 24}" font-size="14" '
-            f'fill="#8a8378">'
-            f"{escape(_('plan image is linked, not embedded'))}</text>"
-        )
-    machines = collect_machines(pins)
-    points = scatter_points(machines, PAD, caption, int(width), int(height))
-    body.extend(machine_badges(machines, points))
-    bottom, listing = machine_list(machines, doc_w, list_top)
-    body.extend(listing)
-    doc_h = max(image_bottom + PAD, bottom + PAD)
-    return svg_render.build_svg(doc_w, doc_h, "".join(body), style=PLAN_STYLE)
-
-
-def image_mime(payload):
-    """
-    What kind of picture an upload holds, by its first bytes - the same sniff
-    the map tiles use, plus SVG, which a house plan is often saved as.
-    """
-    head = payload.lstrip()
-    if payload.startswith(b"\x89PNG"):
-        return "image/png"
-    if payload.startswith(b"\xff\xd8"):
-        return "image/jpeg"
-    if payload.startswith(b"GIF8"):
-        return "image/gif"
-    if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
-        return "image/webp"
-    if head[:4] in (b"<svg", b"<?xm"):
-        return "image/svg+xml"
-    return None
-
-
-def data_url(payload, mime):
-    """The uploaded bytes as a data URL, as the map tiles are handed out."""
-    return f"data:{mime};base64,{base64.b64encode(payload).decode('ascii')}"

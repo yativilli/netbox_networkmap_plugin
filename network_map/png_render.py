@@ -15,13 +15,8 @@ import shutil
 import subprocess  # nosec B404 - only a fixed rasteriser command is run
 
 # SVG user units are pixels at 96 dpi, and cairosvg's scale multiplies that.
-# Twice the size of the document is what the web page's own export rasterises
-# at, and it still prints a canton map readably.
 PNG_SCALE = 2
-# cairo refuses a surface longer than 32767 units and both backends run out of
-# memory long before that, while a logical tree of a large inventory is well
-# over 70000 units tall. Such a document is rasterised smaller instead of
-# failing, because the picture is still complete, only coarser.
+# cairo refuses a surface longer than 32767 units and both backends run out of memory long before that, while a logical tree of a large.
 PNG_MAX_EDGE = 16384
 # A map of a whole canton is a large canvas; conversion may not hang a request.
 PNG_TIMEOUT = 60
@@ -82,8 +77,7 @@ def render_png(markup, scale=PNG_SCALE):
         try:
             return cairosvg.svg2png(bytestring=markup.encode("utf-8"), scale=scale)
         except Exception as error:
-            # cairosvg raises whatever its parsers raise, none of it worth
-            # showing the requester beyond "could not do it".
+            # cairosvg raises whatever its parsers raise, none of it worth showing the requester beyond "could not do it".
             raise PngRenderError(
                 f"cairosvg could not rasterise the map: {error}"
             ) from error

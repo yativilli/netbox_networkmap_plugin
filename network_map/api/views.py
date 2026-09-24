@@ -4,7 +4,6 @@ from dcim.models import Site
 from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from netbox.plugins import get_plugin_config
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import BaseRenderer
@@ -13,7 +12,7 @@ from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 
 from .. import floor_plan, map_tiles, png_render, svg_render
-from ..defaults import DEFAULT_CANTON_BOUNDARY_CODE
+from ..defaults import canton_code
 from ..swisstopo import get_canton_boundary, get_canton_label
 from ..views import (
     SubnetLocationView,
@@ -87,11 +86,9 @@ class PluginApiRootView(APIView):
                 format=format,
             )
             entries[kind] = url
-            # The same picture as a raster, which is what the map page's own
-            # export button hands out; the format stands on the query string.
+            # The same picture as a raster, which the page's export button also hands out.
             entries[f"{kind}.png"] = f"{url}?format=png"
-        # Which floor plans exist, and where each one is drawn, is worth
-        # knowing before asking for one: a city holds several buildings.
+        # Which plans exist is worth knowing first: a city holds several buildings.
         entries["floor-plans"] = reverse(
             "plugins-api:network_map-api:floor-plan-list",
             request=request,
@@ -112,8 +109,7 @@ class PictureAccessMixin:
         super().initial(request, *args, **kwargs)
         if not request.user.has_perm("network_map.view_vlanelement"):
             raise PermissionDenied("Missing permission: network_map.view_vlanelement")
-        # Better an answer than a picture that cannot be made: nothing here
-        # draws SVG, so a PNG needs a rasteriser installed besides the plugin.
+        # A PNG needs a rasteriser installed besides the plugin; nothing here draws SVG itself.
         renderer, _media_type = self.perform_content_negotiation(request)
         if getattr(renderer, "format", None) == "png" and not png_render.available():
             raise PngRenderFailed(
@@ -200,14 +196,12 @@ class MapSvgView(PictureAccessMixin, APIView):
             map_data = subnet_view.build_map_data(
                 subnet_view.build_elements(subnet_view.get_queryset())
             )
-            canton_code = get_plugin_config(
-                "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
-            )
-            boundary = get_canton_boundary(canton_code)
+            code = canton_code()
+            boundary = get_canton_boundary(code)
             svg = svg_render.render_subnet_map(
                 map_data,
                 boundary,
-                get_canton_label(canton_code) if boundary else None,
+                get_canton_label(code) if boundary else None,
                 tiles_of=(
                     map_tiles.background if self._wants_background(request) else None
                 ),
@@ -257,24 +251,17 @@ def _floor_plan_entry(request, plan):
     site = plan["site"]
     svg = reverse(
         "plugins-api:network_map-api:floor-plan",
-        kwargs={"slug": site.slug, "plan": plan["plan"]},
+        kwargs={"slug": site.slug},
         request=request,
     )
-    entry = {
-        # A plan is named by its site, because several sites - and so several
-        # plans - share a city, and only the site is named uniquely.
-        "id": f"{site.slug}:{plan['plan']}",
-        "kind": plan["kind"],
-        # The plan the map shows when one zooms into the building, which is
-        # what "first" asks for.
-        "main": plan["main"],
-        "label": plan["label"],
+    return {
+        # Several buildings share a city, so only the site names a plan apart.
+        "id": site.slug,
         "site": {
             "id": site.pk,
             "name": str(site.name),
             "slug": site.slug,
-            # NetBox has no field for a city, so the place a site stands in is
-            # the text its address or description carries.
+            # NetBox has no city field; the place is the text in the address or description.
             "address": str(site.physical_address or ""),
             "description": str(site.description or ""),
         },
@@ -283,11 +270,6 @@ def _floor_plan_entry(request, plan):
         "floors": _floor_labels(plan),
         "picture": {"svg": svg, "png": f"{svg}?format=png"},
     }
-    if plan["kind"] == "uploaded":
-        entry["width"] = plan["width"]
-        entry["height"] = plan["height"]
-        entry["image"] = plan["url"]
-    return entry
 
 
 def _names_the_place(site, place):
@@ -301,8 +283,8 @@ def _names_the_place(site, place):
 
 class FloorPlanIndexView(PictureAccessMixin, APIView):
     """
-    Which floor plans exist: every uploaded house plan and, for every site the
-    map places, the logical floor map built from its locations.
+    Which floor plans exist: for every site the map places, the logical floor
+    map built from its locations.
     """
 
     @extend_schema(
@@ -327,29 +309,17 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
                 required=False,
                 description="Only the plans of the site with this slug.",
             ),
-            OpenApiParameter(
-                name="kind",
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                enum=["uploaded", "logical"],
-                description="Only uploaded house plans, or only logical maps.",
-            ),
         ],
     )
     def get(self, request):
         plans = _map_floor_plans()
         city = request.query_params.get("city")
         if city:
-            # A city is not a field of its own on a site, so the place is read
-            # out of the text that names where the site stands.
+            # The place is read out of the text that names where the site stands.
             plans = [p for p in plans if _names_the_place(p["site"], city)]
         site = request.query_params.get("site")
         if site:
             plans = [p for p in plans if p["site"].slug == site]
-        kind = request.query_params.get("kind")
-        if kind:
-            plans = [p for p in plans if p["kind"] == kind]
         return Response(
             {
                 "count": len(plans),
@@ -360,111 +330,16 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
 
 class FloorPlanPictureView(PictureAccessMixin, APIView):
     """
-    One site's floor plan as a picture: the uploaded house plan, with its bytes
-    inside the document, or the logical map built from the site's locations.
+    One site's floor plan as a picture: the logical map built from the site's
+    locations, with its machines dotted through the rooms and listed under it.
     """
 
     renderer_classes = (SvgRenderer, PngRenderer)
 
     @extend_schema(
         tags=["network-map"],
+        operation_id="floor_plan_retrieve",
         summary="Render one site's floor plan as SVG or PNG",
-        parameters=[
-            OpenApiParameter(
-                name="slug",
-                type=OpenApiTypes.STR,
-                location="path",
-                required=True,
-                description="Which site: its unique slug.",
-            ),
-            OpenApiParameter(
-                name="plan",
-                type=OpenApiTypes.STR,
-                location="path",
-                required=False,
-                description=(
-                    "Which plan of that site: 'first' (the default, the one the "
-                    "map shows), 'logical', or the number of an uploaded plan."
-                ),
-            ),
-            OpenApiParameter(
-                name="format",
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                enum=["svg", "png"],
-                description="Picture format; SVG without it, PNG as ?format=png.",
-            ),
-        ],
-        responses={
-            (200, "image/svg+xml"): OpenApiTypes.BINARY,
-            (200, "image/png"): OpenApiTypes.BINARY,
-        },
-    )
-    def get(self, request, slug, plan="first"):
-        site = Site.objects.filter(slug=slug).first()
-        if site is None:
-            return Response(f"No site with the slug {slug}", status=404)
-        plans = [entry for entry in _map_floor_plans() if entry["site"].pk == site.pk]
-        if not plans:
-            return Response(f"Site {site.name} has no floor plan", status=404)
-        if plan == "first":
-            chosen = plans[0]
-        else:
-            chosen = next((entry for entry in plans if entry["plan"] == plan), None)
-        if chosen is None:
-            names = [entry["plan"] for entry in plans]
-            if any(entry["kind"] == "uploaded" for entry in plans):
-                names.insert(0, "first")
-            return Response(
-                f"Site {site.name} has no plan {plan}; it has {', '.join(names)}",
-                status=404,
-            )
-        if chosen["kind"] == "logical":
-            svg = floor_plan.render_logical(site.name, chosen["pins"], chosen["rooms"])
-        else:
-            svg = self._uploaded(site, chosen)
-        if svg is None:
-            return Response(f"The plan of {site.name} cannot be read", status=404)
-        return Response(svg)
-
-    @staticmethod
-    def _uploaded(site, plan):
-        """The uploaded picture, inlined when it is small enough to be."""
-        try:
-            with plan["attachment"].image.open("rb") as handle:
-                payload = handle.read(floor_plan.MAX_EMBED_BYTES + 1)
-        except (OSError, ValueError):
-            return None
-        mime = floor_plan.image_mime(payload)
-        if len(payload) > floor_plan.MAX_EMBED_BYTES or mime is None:
-            return floor_plan.render_uploaded(
-                site.name,
-                plan["url"],
-                plan["width"],
-                plan["height"],
-                pins=plan["pins"],
-                embedded=False,
-            )
-        return floor_plan.render_uploaded(
-            site.name,
-            floor_plan.data_url(payload, mime),
-            plan["width"],
-            plan["height"],
-            pins=plan["pins"],
-        )
-
-
-class FloorPlanMainView(FloorPlanPictureView):
-    """
-    The plan the map itself shows for a site - its first upload, or its logical
-    map when nothing was uploaded - without having to name the plan.
-    """
-
-    @extend_schema(
-        tags=["network-map"],
-        operation_id="floor_plan_main_retrieve",
-        summary="Render the floor plan the map shows for a site",
         parameters=[
             OpenApiParameter(
                 name="slug",
@@ -488,4 +363,16 @@ class FloorPlanMainView(FloorPlanPictureView):
         },
     )
     def get(self, request, slug):
-        return super().get(request, slug, "first")
+        site = Site.objects.filter(slug=slug).first()
+        if site is None:
+            return Response(f"No site with the slug {slug}", status=404)
+        plan = next(
+            (entry for entry in _map_floor_plans() if entry["site"].pk == site.pk),
+            None,
+        )
+        if plan is None:
+            return Response(f"Site {site.name} has no floor plan", status=404)
+        svg = floor_plan.render_logical(site.name, plan["pins"], plan["rooms"])
+        if svg is None:
+            return Response(f"The plan of {site.name} cannot be read", status=404)
+        return Response(svg)

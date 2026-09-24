@@ -67,35 +67,31 @@ A floor plan is asked for by its site, because several buildings stand in one
 city and only the site is named uniquely. `/floor-plans/` lists what exists,
 and each plan is then drawn by its own address:
 
-| URL                                                | Answers                                                     |
-| -------------------------------------------------- | ----------------------------------------------------------- |
-| `/api/plugins/networkmap/floor-plans/`             | JSON list of every plan, filterable by `?city=`, `?site=` and `?kind=` |
-| `/api/plugins/networkmap/floor-plan/<site-slug>/`  | the plan the map shows: the first upload, else the logical map |
-| `/api/plugins/networkmap/floor-plan/<site-slug>/<plan>/` | `<plan>` is `logical` or the number of an uploaded plan |
+| URL                                                | Answers                                       |
+| -------------------------------------------------- | --------------------------------------------- |
+| `/api/plugins/networkmap/floor-plans/`             | JSON list of every plan, filterable by `?city=` and `?site=` |
+| `/api/plugins/networkmap/floor-plan/<site-slug>/`  | the site's logical floor map, as SVG or PNG   |
 
 ```bash
 curl -H "Authorization: Token <token>" \
   "https://netbox.example.com/api/plugins/networkmap/floor-plans/?city=Bern"
 curl -H "Authorization: Token <token>" \
-  "https://netbox.example.com/api/plugins/networkmap/floor-plan/musterweg-30/214/" \
+  "https://netbox.example.com/api/plugins/networkmap/floor-plan/musterweg-30/" \
   -o erdgeschoss.svg
 ```
 
-- Every uploaded house plan is a plan of its own, in the order they were
-  uploaded; `first` means the one the map shows and is what the address without
-  a plan draws. The list calls a plan `<site-slug>:<plan>`, so two buildings in
-  Bern never share an address, and marks with `main` which one the map shows.
+- The plan of a site is its logical floor map, built from the site's locations
+  and named by the site's slug alone; a site whose machines the map places has
+  a plan, every other address is answered 404.
 - `?city=` reads the place out of the site's address or description, which is
   where NetBox keeps it; `?site=` takes the site's slug.
-- An uploaded plan is drawn with its picture inside the document, so the file
-  stands on its own; above 8 MB the picture stays a link and says so.
-- Both kinds carry their machines the way the browser export of the map does:
+- The plan carries its machines the way the browser export of the map does:
   every dot is numbered in the machine's colour, virtual ones hollow, and under
   the picture the machines are listed with their name, description and address.
-- The logical map is built from the site's locations, floor by floor, and
-  carries the same colour key as the map page; the `network_map.floor_plan`
-  module and `subnet_map.js` hold the same measurements, which
-  `FloorPlanParityTests` checks.
+- The map is built from the site's locations, floor by floor, and carries the
+  same colour key as the map page; the `network_map.floor_plan` module and
+  `subnet_map.js` hold the same measurements, which `FloorPlanParityTests`
+  checks.
 
 ## Configuration
 
@@ -195,7 +191,7 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 | `swisstopo.py`                         | Fetching the canton border, with fallbacks, from public services.  |
 | `map_tiles.py`                         | Fetching and caching the swisstopo tiles a served map stands on.   |
 | `svg_render.py`                        | Drawing all four pictures on the server as SVG.                    |
-| `floor_plan.py`                        | Drawing a site's floor plan, uploaded or logical.                  |
+| `floor_plan.py`                        | Drawing a site's logical floor plan.                       |
 | `png_render.py`                        | Rasterising a served SVG to PNG with cairosvg or ImageMagick.      |
 | `api/views.py`                         | The picture and floor-plan endpoints and their permission gate.    |
 | `api/urls.py`                          | The API routes, with the path parts constrained by regex.          |

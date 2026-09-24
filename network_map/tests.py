@@ -1,4 +1,3 @@
-import io
 import json
 import math
 import os
@@ -6,6 +5,7 @@ import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest import mock
 
 from dcim.models import (
@@ -19,18 +19,20 @@ from dcim.models import (
 )
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
-from django.core.files.base import ContentFile
 from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from extras.models import ImageAttachment
 from ipam.models import VLAN, IPAddress, Prefix, Role, VLANGroup
-from PIL import Image
 from users.models import ObjectPermission, User
 
 from . import floor_plan, lv03, map_tiles, png_render, svg_render, swisstopo
 from .colors import shade_of
-from .defaults import DEFAULT_CANTON_BOUNDARY_CODE
+from .defaults import (
+    DEFAULT_CANTON_BOUNDARY_CODE,
+    canton_code,
+    float_setting,
+    int_setting,
+)
 from .models import VlanInfo
 from .templatetags.network_map_static import static_url
 from .views import SubnetLocationView, VlanElementListView, VlanTopologyView
@@ -304,8 +306,7 @@ def _static(name):
         return handle.read()
 
 
-# A corner of the Bernese Oberland, one address in Bern, and the whole country;
-# the first is a handful of tiles, the second only cheap at a coarse zoom.
+# Bernese Oberland corner, one Bern address, whole country: few tiles, cheap zoom, many tiles.
 TILE_AREA = ((7.40, 46.90), (7.48, 46.96))
 ONE_ADDRESS = ((7.44, 46.94), (7.45, 46.946))
 SWITZERLAND = ((5.96, 45.82), (10.49, 47.81))
@@ -409,8 +410,7 @@ class MapTileTests(TestCase):
         self.assertTrue(tiles)
         url = urlopen.call_args.args[0].full_url
         self.assertTrue(url.startswith("https://wmts.geo.admin.ch/"))
-        # 100 metres per pixel is zoom step 17 of the ladder, and the grid is
-        # addressed by zoom, row and column.
+        # 100 metres per pixel is zoom step 17 of the ladder, and the grid is addressed by zoom, row and column.
         self.assertIn("/17/", url)
         for tile in tiles:
             self.assertTrue(tile["href"].startswith("data:image/jpeg;base64,"))
@@ -498,8 +498,7 @@ class SvgApiTests(TestCase):
         cls.user.object_permissions.add(permission)
 
     def setUp(self):
-        # The ground of a served map comes off the network, which no test has
-        # to wait for; the tests that care about it say what it looks like.
+        # The ground of a served map comes off the network, which no test has to wait for; the tests that care about it say what it looks like.
         patcher = mock.patch.object(map_tiles, "background", return_value=[])
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -608,15 +607,12 @@ class SvgApiTests(TestCase):
         self.assertIn("installed-plugins", data)
         for kind in self.KINDS:
             self.assertIn(kind, data)
-            # The API root links the address as it is meant to be used: the
-            # kind alone, the format belonging on the query string.
+            # The API root links the address as it is meant to be used: the kind alone, the format belonging on the query string.
             self.assertTrue(data[kind].endswith(f"/{kind}"), data[kind])
             self.assertEqual(data[f"{kind}.png"], f"{data[kind]}?format=png")
 
     def test_a_picture_answers_with_and_without_a_trailing_slash(self):
-        # The address of a picture is its kind with the format on the query
-        # string, and a script that leaves the slash out gets the same document
-        # instead of a redirect it has to follow.
+        # The address of a picture is its kind with the format on the query string, and a script that leaves the slash out gets the same.
         self.client.force_login(self.user)
         url = reverse(
             "plugins-api:network_map-api:svg-export", kwargs={"kind": "topology"}
@@ -674,6 +670,41 @@ class _FakeHTTPResponse:
 
 
 class SwisstopoResolverTests(TestCase):
+    # Mocked source answers: one without geometry passes on, and none left means no border.
+    _EMPTY: ClassVar[dict] = {"type": "FeatureCollection", "features": []}
+    _NO_GEOMETRY: ClassVar[dict] = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "properties": {}, "geometry": None}],
+    }
+    _ESRI_BE: ClassVar[dict] = {
+        "feature": {
+            "attributes": {"ak": "BE"},
+            "geometry": {
+                "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
+            },
+        }
+    }
+    _CASES = (
+        # name, code, answers of the sources in order, expected requests, attribute of the winning canton or None, (call, URL text) checks
+        ("primary empty", "BE", (_EMPTY, _ESRI_BE), 2, "BE", ()),
+        ("primary offline", "BE", (OSError("offline"), _ESRI_BE), 2, "BE", ()),
+        ("primary without geometry", "BE", (_NO_GEOMETRY, _ESRI_BE), 2, "BE", ()),
+        ("both fallbacks empty", "BE", (_EMPTY, [], _ESRI_BE), 3, "BE", ()),
+        ("every source empty", "BE", (_EMPTY,) * 3, 3, None, ()),
+        ("every source offline", "BE", (OSError(),) * 3, 3, None, ()),
+        (
+            "country primary offline",
+            "CH",
+            (
+                OSError("no route"),
+                [{"geojson": {"type": "Polygon", "coordinates": []}}],
+            ),
+            2,
+            None,
+            ((1, "q=Switzerland"), (1, "featuretype=country")),
+        ),
+    )
+
     def setUp(self):
         cache.clear()
 
@@ -733,8 +764,7 @@ class SwisstopoResolverTests(TestCase):
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_wfs_holes_are_preserved(self, urlopen):
-        # WFS returns plain GeoJSON; interior rings (holes) must survive and
-        # come from the primary source without hitting the fallback.
+        # WFS returns plain GeoJSON; interior rings (holes) must survive and come from the primary source without hitting the fallback.
         exterior = [[7.0, 47.0], [8.0, 47.0], [8.0, 48.0], [7.0, 48.0], [7.0, 47.0]]
         hole = [[7.4, 47.4], [7.6, 47.4], [7.6, 47.6], [7.4, 47.6], [7.4, 47.4]]
         urlopen.return_value = _FakeHTTPResponse(
@@ -759,39 +789,25 @@ class SwisstopoResolverTests(TestCase):
         self.assertEqual(len(geometry["coordinates"]), 2)  # exterior + 1 hole
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_fallback_used_when_primary_empty(self, urlopen):
-        empty = _FakeHTTPResponse({"type": "FeatureCollection", "features": []})
-        api3 = _FakeHTTPResponse(
-            {
-                "feature": {
-                    "attributes": {"ak": "BE"},
-                    "geometry": {
-                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
-                    },
-                }
-            }
-        )
-        urlopen.side_effect = [empty, api3]
-        result = swisstopo.get_canton_boundary("BE")
-        self.assertEqual(urlopen.call_count, 2)
-        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
-
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_fallback_used_when_primary_fails(self, urlopen):
-        api3 = _FakeHTTPResponse(
-            {
-                "feature": {
-                    "attributes": {"ak": "BE"},
-                    "geometry": {
-                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
-                    },
-                }
-            }
-        )
-        urlopen.side_effect = [OSError("offline"), api3]
-        result = swisstopo.get_canton_boundary("BE")
-        self.assertEqual(urlopen.call_count, 2)
-        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
+    def test_a_source_without_geometry_passes_on(self, urlopen):
+        for name, code, answers, calls, won, urls in self._CASES:
+            with self.subTest(case=name):
+                cache.clear()
+                urlopen.reset_mock()
+                urlopen.side_effect = [
+                    answer if isinstance(answer, OSError) else _FakeHTTPResponse(answer)
+                    for answer in answers
+                ]
+                result = swisstopo.get_canton_boundary(code)
+                self.assertEqual(urlopen.call_count, calls)
+                for call, text in urls:
+                    self.assertIn(text, urlopen.call_args_list[call].args[0].full_url)
+                if won:
+                    self.assertEqual(result["features"][0]["properties"]["ak"], won)
+                elif urls:
+                    self.assertIsNotNone(result)
+                else:
+                    self.assertIsNone(result)
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_nominatim_fallback_geometry_is_converted(self, urlopen):
@@ -819,27 +835,6 @@ class SwisstopoResolverTests(TestCase):
         self.assertEqual(len(feature["geometry"]["coordinates"]), 2)
         self.assertEqual(feature["properties"]["display_name"], "Bern/Berne, Schweiz")
 
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_last_resort_used_when_first_two_sources_fail(self, urlopen):
-        empty_collection = _FakeHTTPResponse(
-            {"type": "FeatureCollection", "features": []}
-        )
-        api3 = _FakeHTTPResponse(
-            {
-                "feature": {
-                    "attributes": {"ak": "BE"},
-                    "geometry": {
-                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
-                    },
-                }
-            }
-        )
-        empty_nominatim = _FakeHTTPResponse([])
-        urlopen.side_effect = [empty_collection, empty_nominatim, api3]
-        result = swisstopo.get_canton_boundary("BE")
-        self.assertEqual(urlopen.call_count, 3)
-        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
-
     @override_settings(
         PLUGINS_CONFIG={
             "network_map": {
@@ -850,36 +845,9 @@ class SwisstopoResolverTests(TestCase):
     )
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_fallbacks_can_be_disabled(self, urlopen):
-        urlopen.return_value = _FakeHTTPResponse(
-            {"type": "FeatureCollection", "features": []}
-        )
+        urlopen.return_value = _FakeHTTPResponse(self._EMPTY)
         self.assertIsNone(swisstopo.get_canton_boundary("BE"))
         self.assertEqual(urlopen.call_count, 1)
-
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_features_without_geometry_fall_back(self, urlopen):
-        no_geometry = _FakeHTTPResponse(
-            {
-                "type": "FeatureCollection",
-                "features": [
-                    {"type": "Feature", "properties": {"id": 2}, "geometry": None}
-                ],
-            }
-        )
-        api3 = _FakeHTTPResponse(
-            {
-                "feature": {
-                    "attributes": {"ak": "BE"},
-                    "geometry": {
-                        "rings": [[[7.0, 47.0], [7.0, 47.1], [7.1, 47.1], [7.0, 47.0]]]
-                    },
-                }
-            }
-        )
-        urlopen.side_effect = [no_geometry, api3]
-        result = swisstopo.get_canton_boundary("BE")
-        self.assertEqual(urlopen.call_count, 2)
-        self.assertEqual(result["features"][0]["properties"]["ak"], "BE")
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_boundary_cached_after_first_fetch(self, urlopen):
@@ -887,17 +855,6 @@ class SwisstopoResolverTests(TestCase):
         swisstopo.get_canton_boundary("BE")
         swisstopo.get_canton_boundary("BE")
         self.assertEqual(urlopen.call_count, 1)
-
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen", side_effect=OSError)
-    def test_fetch_failure_returns_none(self, urlopen):
-        self.assertIsNone(swisstopo.get_canton_boundary("BE"))
-
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_empty_geometry_returns_none(self, urlopen):
-        urlopen.return_value = _FakeHTTPResponse(
-            {"type": "FeatureCollection", "features": []}
-        )
-        self.assertIsNone(swisstopo.get_canton_boundary("BE"))
 
     def test_unknown_code_returns_none_without_request(self):
         with mock.patch("network_map.swisstopo.urllib.request.urlopen") as urlopen:
@@ -953,9 +910,7 @@ class CountryBorderTests(TestCase):
         self.assertFalse(swisstopo.boundary_configured(None))
 
     def test_the_default_border_stays_a_canton(self):
-        # Selecting the country was added without moving the shipped default:
-        # an install that never mentions canton_boundary_code drew a canton
-        # border before, and it has to keep drawing one.
+        # The shipped default stays a canton: unnamed installs keep drawing one.
         self.assertEqual(DEFAULT_CANTON_BOUNDARY_CODE, "BE")
         self.assertFalse(swisstopo.is_country(DEFAULT_CANTON_BOUNDARY_CODE))
         self.assertTrue(swisstopo.boundary_configured(DEFAULT_CANTON_BOUNDARY_CODE))
@@ -976,18 +931,6 @@ class CountryBorderTests(TestCase):
         )
         self.assertEqual(urlopen.call_count, 1)
         self.assertEqual(result["features"][0]["geometry"]["type"], "Polygon")
-
-    @mock.patch("network_map.swisstopo.urllib.request.urlopen")
-    def test_the_country_falls_back_to_a_hole_carrying_source(self, urlopen):
-        nominatim = _FakeHTTPResponse(
-            [{"geojson": {"type": "Polygon", "coordinates": []}}]
-        )
-        urlopen.side_effect = [OSError("no route to swisstopo"), nominatim]
-        result = swisstopo.get_canton_boundary("CH")
-        self.assertIsNotNone(result)
-        second = urlopen.call_args_list[1].args[0].full_url
-        self.assertIn("q=Switzerland", second)
-        self.assertIn("featuretype=country", second)
 
     @mock.patch("network_map.swisstopo.urllib.request.urlopen")
     def test_the_country_is_fetched_once(self, urlopen):
@@ -1063,8 +1006,7 @@ class MapDataCantonBoundaryTests(TestCase):
             data = view.build_map_data([])
         self.assertEqual(data["canton_boundary_url"], boundary_url)
         self.assertEqual(data["canton_label"], "Kanton Bern")
-        # The exporter gets the same room the served picture leaves around the
-        # border, so the two do not disagree about what belongs in them.
+        # The exporter gets the same room the served picture leaves around the border, so the two do not disagree about what belongs in them.
         self.assertEqual(set(data["export_room"]), {"border", "left", "bottom", "cut"})
 
     def test_build_map_data_omits_boundary_when_unset(self):
@@ -1081,8 +1023,7 @@ class MapDataCantonBoundaryTests(TestCase):
         self.assertIsNone(data["canton_label"])
 
 
-# Well-nested GeoJSON, unlike SAMPLE_BORDER: the map renderer reads the
-# polygon rings themselves, so it needs real MultiPolygon nesting.
+# Well-nested GeoJSON, unlike SAMPLE_BORDER: the map renderer reads the polygon rings themselves, so it needs real MultiPolygon nesting.
 MAP_BORDER = {
     "type": "FeatureCollection",
     "features": [
@@ -1106,9 +1047,7 @@ MAP_BORDER = {
     ],
 }
 
-# A canton drawn as a box around Bern alone, so that a site in Geneva lies far
-# enough outside to be clamped however much room the picture leaves around the
-# border it cuts along.
+# A canton drawn as a box around Bern alone, so that a site in Geneva lies far enough outside to be clamped however much room the picture.
 MAP_TIGHT_BORDER = {
     "type": "FeatureCollection",
     "features": [
@@ -1132,9 +1071,7 @@ MAP_TIGHT_BORDER = {
     ],
 }
 
-# What room a picture leaves around its border, and how far its cut stands
-# beyond the border, are settings that whoever installed the plugin may have
-# moved - so the tests about the frame say plainly what they assume.
+# What room a picture leaves around its border, and how far its cut stands beyond the border, are settings that whoever installed the plugin.
 MAP_FRAME = {
     "map_border_room": 22,
     "map_room_left": 20,
@@ -1243,10 +1180,7 @@ class SubnetMapSvgTests(TestCase):
             attribution="© Someone",
         )
         self.assertIn('<image href="data:image/jpeg;base64,TESTTILE"', svg)
-        # The tiles are asked for the ground the picture shows, and asked at the
-        # size the picture is drawn: metres per pixel. That ground is the
-        # border's box with room around it, so the line and its halo are not cut
-        # where the shape touches the box - the west and the south of most.
+        # The tiles are asked for the ground the picture shows, and asked at the size the picture is drawn: metres per pixel.
         ground = asked[0][0]
         border = svg_render.map_extent(MAP_BORDER)
         self.assertLess(ground[0], border[0])
@@ -1257,9 +1191,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertLess(svg.index("<image"), svg.index('class="map-border-halo"'))
         # Whoever the tiles come from is said under the picture.
         self.assertIn("© Someone", svg)
-        # The left and the bottom get room of their own, because that is where a
-        # shape touches its box - the west of Geneva and the south of Ticino are
-        # what used to be cut.
+        # Left and bottom get room of their own: shapes touch their box at Geneva's west and Ticino's south.
         self.assertGreater(border[0] - ground[0], ground[2] - border[2])
         self.assertGreater(border[1] - ground[1], ground[3] - border[3])
 
@@ -1274,26 +1206,37 @@ class SubnetMapSvgTests(TestCase):
             self.render(MAP_PINS, MAP_BORDER, "Kanton Bern", tiles_of=ground)
         return asked[0]
 
-    def test_the_room_around_the_border_can_be_switched_off(self):
-        ground = self.render_ground(
-            map_border_room=0, map_room_left=0, map_room_bottom=0
-        )
-        self.assertEqual(ground, svg_render.map_extent(MAP_BORDER))
-
-    def test_a_bigger_room_moves_the_cut_out_farther(self):
+    def test_the_room_and_the_cut_shape_the_ground(self):
+        # The room between border and picture edge decides which ground is asked for; the cut decides how wide the band of kept ground around.
+        border = svg_render.map_extent(MAP_BORDER)
+        off = self.render_ground(map_border_room=0, map_room_left=0, map_room_bottom=0)
+        with self.subTest(room="switched off"):
+            self.assertEqual(off, border)
         spare = self.render_ground(
             map_border_room=22, map_room_left=0, map_room_bottom=0
         )
         wide = self.render_ground(
             map_border_room=122, map_room_left=0, map_room_bottom=0
         )
-        border = svg_render.map_extent(MAP_BORDER)
-        self.assertGreater(border[0] - wide[0], border[0] - spare[0])
-        self.assertGreater(wide[2] - border[2], spare[2] - border[2])
+        with self.subTest(room="bigger"):
+            self.assertGreater(border[0] - wide[0], border[0] - spare[0])
+            self.assertGreater(wide[2] - border[2], spare[2] - border[2])
+        for asked, stroke in ((10, 20), (40, 80)):
+            config = dict(MAP_FRAME, map_border_cut=asked)
+            with self.subTest(cut=asked):
+                with override_settings(PLUGINS_CONFIG={"network_map": config}):
+                    svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+                self.assertIn(f'stroke-width="{stroke}"', svg)
+        with self.subTest(cut="on the line"):
+            with override_settings(
+                PLUGINS_CONFIG={"network_map": {"map_border_cut": 0}}
+            ):
+                svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
+            self.assertNotIn("map-ground", svg)
+            self.assertIn('class="map-outside"', svg)
 
     def test_a_picture_is_as_wide_as_it_can_be(self):
-        # These sites reach from Geneva to Zurich, so the picture of them fills
-        # the page instead of standing small in the middle of it.
+        # These sites reach from Geneva to Zurich, so the picture of them fills the page instead of standing small in the middle of it.
         svg = self.render(MAP_PINS)
         width = re.search(r'<rect class="map-frame"[^>]*width="([\d.]+)"', svg)
         self.assertIsNotNone(width)
@@ -1309,33 +1252,13 @@ class SubnetMapSvgTests(TestCase):
         self.assertIn("Kanton Bern", svg)
         # One border path, carrying the exterior ring and the hole.
         self.assertEqual(svg.count('class="map-border" d='), 1)
-        # Nothing beyond the border is drawn, so the picture ends with the
-        # canton and no frame line is left standing around it.
+        # Nothing beyond the border is drawn, so the picture ends with the canton and no frame line is left standing around it.
         self.assertIn('mask="url(#map-ground)"', svg)
         self.assertNotIn('class="map-outside"', svg)
         self.assertNotIn('class="map-frame"', svg)
 
-    def test_the_cut_stands_beyond_the_border(self):
-        # The ground is kept for the area and a band around it, so the picture
-        # is not cut on the line itself: a mask of a filled shape and the same
-        # shape stroked twice as wide is what leaves that band standing.
-        for asked, stroke in ((10, 20), (40, 80)):
-            config = dict(MAP_FRAME, map_border_cut=asked)
-            with override_settings(PLUGINS_CONFIG={"network_map": config}):
-                svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
-            self.assertIn(f'stroke-width="{stroke}"', svg)
-
-    def test_the_cut_can_run_on_the_border_itself(self):
-        # Without a mask the picture is cut on the line, which is the old
-        # painting-over: a renderer that cannot do masks gets a picture.
-        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": 0}}):
-            svg = self.render(MAP_PINS, MAP_BORDER, "Kanton Bern")
-        self.assertNotIn("map-ground", svg)
-        self.assertIn('class="map-outside"', svg)
-
     def test_a_site_outside_the_border_is_clamped_and_counted(self):
-        # Geneva lies far outside a canton drawn around Bern alone - far enough
-        # that the room around the border cannot bring it into the picture.
+        # Geneva lies far outside a canton drawn around Bern alone - far enough that the room around the border cannot bring it into the picture.
         svg = self.render_framed(MAP_PINS, MAP_TIGHT_BORDER, "Kanton Bern")
         self.assertIn('class="map-offframe"', svg)
         self.assertIn("outside the drawn area", svg)
@@ -1348,8 +1271,7 @@ class SubnetMapSvgTests(TestCase):
             return []
 
         svg = self.render(MAP_PINS, tiles_of=ground)
-        # Nothing to end the picture with, so it ends with the country: every
-        # site is on it, whichever canton it happens to stand in.
+        # Nothing to end the picture with, so it ends with the country: every site is on it, whichever canton it happens to stand in.
         self.assertEqual(asked[0], svg_render.SWITZERLAND)
         self.assertIn("RZ Bern", svg)
         self.assertIn("Filiale Genf", svg)
@@ -1359,9 +1281,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertEqual(svg_render.map_extent({}), svg_render.SWITZERLAND)
 
     def test_a_border_thicker_than_a_pixel_keeps_its_shape(self):
-        # The national border arrives with some fifty thousand points, most of
-        # them closer together than a pixel of the picture; those are left out,
-        # the corners of the country are not.
+        # The national border's fifty thousand points are thinned, its corners kept.
         ring = [[step / 1000.0, 47.0] for step in range(1000)]
         path = svg_render._ring_path(ring, lambda lon, lat: (lon * 100.0, 0.0))
         self.assertTrue(path.endswith("Z"))
@@ -1383,8 +1303,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertEqual(svg.count("RZ Bern"), 1)
         self.assertEqual(svg.count("Filiale Genf"), 1)
         self.assertEqual(svg.count('class="map-num"'), 2)
-        # Every pin sits on a dark disc, which is what stands it off from the
-        # background the picture may have.
+        # Every pin sits on a dark disc, which is what stands it off from the background the picture may have.
         self.assertEqual(svg.count('class="map-pin-back"'), 2)
 
     def test_a_site_of_several_machines_wants_a_thick_border(self):
@@ -1401,13 +1320,11 @@ class SubnetMapSvgTests(TestCase):
         )
 
     def test_several_subnets_of_one_site_are_listed_side_by_side(self):
-        # Neither subnet is dropped when the line of one site fills up, which a
-        # wide lettering does sooner: the line simply continues underneath.
+        # Neither subnet is dropped when the line of one site fills up, which a wide lettering does sooner: the line simply continues underneath.
         svg = self.render(MAP_PINS)
         self.assertIn("Prod-Web \u2014 10.10.10.0/24", svg)
         self.assertIn("Prod-DB \u2014 10.10.20.0/24", svg)
-        # A pair with room left is set side by side rather than under each
-        # other, whatever the width of the lettering is.
+        # A pair with room left is set side by side rather than under each other, whatever the width of the lettering is.
         short = [
             {**MAP_PINS[0], "subnet": "Web", "prefix": "10.0.0.0/24"},
             {**MAP_PINS[1], "subnet": "DB", "prefix": "10.1.1.0/24"},
@@ -1416,8 +1333,7 @@ class SubnetMapSvgTests(TestCase):
         self.assertIn("Web \u2014 10.0.0.0/24 \u00b7 DB \u2014 10.1.1.0/24", svg)
 
     def test_every_subnet_of_a_busy_site_is_listed(self):
-        # A site with many subnets is not stopped short and not summarised: its
-        # lines simply grow, wrapping into the column however long the row is.
+        # Many subnets simply grow the entry, wrapping into the column as needed.
         many = [
             {**MAP_PINS[0], "subnet": f"Net{i}", "prefix": f"10.0.{i}.0/24"}
             for i in range(40)
@@ -1513,8 +1429,7 @@ class MachineDescriptionTests(TestCase):
         return elements[0].machines[0]["description"]
 
     def test_a_comment_says_what_the_role_cannot(self):
-        # The role names the kind of thing it is; the comment says what it does
-        # here, and that is what the tooltip shows.
+        # The role names the kind of thing it is; the comment says what it does here, and that is what the tooltip shows.
         self.assertEqual(self.description(), "Nightly finance backup")
 
     def test_what_stands_on_the_machine_comes_first(self):
@@ -1542,8 +1457,7 @@ class HousePlanHoverTests(TestCase):
         script = _static("subnet_map.js")
         start = script.index("const named = machine.name")
         block = script[start : script.index("subnet-machine-tooltip", start)]
-        # The name, the address and - when NetBox has more to say than the name
-        # repeats - the description of the machine, all of them escaped.
+        # The name, the address and - when NetBox has more to say than the name repeats - the description of the machine, all of them escaped.
         for part in ("machine-name", "machine-ip", "machine-desc"):
             self.assertIn(part, block)
         for value in ("escapeHtml(named)", "escapeHtml(machine.ip)"):
@@ -1563,16 +1477,14 @@ class FloorPlanBandTitleTests(TestCase):
         self.layout = self.script[self.script.index("function buildLogicalLayout") :]
 
     def test_the_band_title_is_never_cut_off(self):
-        # "Other rooms" came out as "Other roo...", because the name was cut to
-        # what a column of a fixed width could hold; it is now wrapped whole.
+        # "Other rooms" came out as "Other roo...", because the name was cut to what a column of a fixed width could hold; it is now wrapped.
         self.assertNotIn("fmax", self.layout)
         self.assertNotIn("flabel", self.layout)
         self.assertIn("wrapWords(floor.label, BAND_W - 16", self.layout)
         self.assertNotIn("\u2026", self.layout[: self.layout.index("countChipText")])
 
     def test_the_column_grows_for_a_longer_name(self):
-        # A name that fits on one line gets a wider column rather than a wrap;
-        # only past the widest column does it go over lines.
+        # A name that fits on one line gets a wider column rather than a wrap; only past the widest column does it go over lines.
         self.assertIn(
             "Math.max(BAND_MIN, Math.ceil(widestFloor * FLOOR_LABEL_CHAR_W) + 24)",
             self.layout,
@@ -1588,8 +1500,7 @@ class FloorPlanLegendTests(TestCase):
         self.layout = self.script[self.script.index("function buildLogicalLayout") :]
 
     def test_every_colour_of_the_plan_is_named(self):
-        # A dot's colour says which prefix of which subnet a machine sits in,
-        # so every colour the plan shows has to be named in it as well.
+        # A dot's colour says which prefix of which subnet a machine sits in, so every colour the plan shows has to be named in it as well.
         self.assertIn("color: pin.color", self.layout)
         self.assertIn("subnet: pin.subnet || ''", self.layout)
         self.assertIn("prefix: pin.prefix || ''", self.layout)
@@ -1598,9 +1509,7 @@ class FloorPlanLegendTests(TestCase):
         self.assertIn("if (!pin.machines.length)", self.layout)
 
     def test_the_key_is_a_rectangle_of_its_own(self):
-        # The key stands to the right of the rooms in its own rectangle; the
-        # rooms are still measured against the plan without it, so they keep
-        # the width they had before the key existed.
+        # The key stands right of the rooms; the rooms keep the width they had before it existed.
         self.assertIn("const legendX = PLAN_W + GAP;", self.layout)
         self.assertIn(
             "const W = entries.length ? legendX + LEGEND_W + PAD : PLAN_W;", self.layout
@@ -1611,8 +1520,7 @@ class FloorPlanLegendTests(TestCase):
         self.assertIn("t('legend', 'Legend')", self.layout)
 
     def test_a_long_subnet_name_goes_under_its_prefix(self):
-        # Nothing of a subnet name is cut to the width of the key: what does
-        # not fit beside its prefix is written over lines under it.
+        # Nothing of a subnet name is cut to the width of the key: what does not fit beside its prefix is written over lines under it.
         self.assertIn("wrapWords(entry.note, legendInner, CHIP_CHAR_W)", self.layout)
         self.assertNotIn("entry.note.slice(", self.layout)
         self.assertIn(
@@ -1621,9 +1529,7 @@ class FloorPlanLegendTests(TestCase):
         )
 
     def test_the_key_follows_the_view_down_a_tall_plan(self):
-        # A plan taller than the window leaves its key behind at the second
-        # floor, so the key is drawn as one group that the page moves with the
-        # view - without ever pushing it out of the plan.
+        # A tall plan moves its key with the view: the key is one group, never pushed out of the plan.
         self.assertIn("<g class=\"plan-legend\">${key.join('')}</g>", self.script)
         self.assertIn("function stickLegend()", self.script)
         self.assertIn("map.on('move', stickLegend);", self.script)
@@ -1631,8 +1537,7 @@ class FloorPlanLegendTests(TestCase):
         self.assertIn("Math.max(0, Math.min(slack, seen - box.y))", self.script)
 
     def test_the_exported_picture_keeps_the_key_where_the_plan_puts_it(self):
-        # The exported picture is taken while the key may be stuck to the
-        # window, and nothing in it is hovered.
+        # The exported picture is taken while the key may be stuck to the window, and nothing in it is hovered.
         export = _static("svg_export.js")
         self.assertIn('/<g class="plan-legend"[^>]*>/g', export)
         self.assertIn("key-lit", export)
@@ -1640,8 +1545,7 @@ class FloorPlanLegendTests(TestCase):
     def test_both_dot_shapes_are_explained(self):
         self.assertIn("t('physical_machine', 'Physical machine')", self.layout)
         self.assertIn("t('virtual_machine', 'Virtual machine')", self.layout)
-        # The hollow chip is the virtual machine's dot: the plan's own ground
-        # showing through, ringed like the marker stylesheet draws it.
+        # The hollow chip is the virtual machine's dot: the plan's own ground showing through, ringed like the marker stylesheet draws it.
         self.assertIn('fill="#f7f4ea" stroke="#6b6b63" stroke-width="3"', self.layout)
 
     def test_the_key_words_come_from_the_server(self):
@@ -1658,8 +1562,7 @@ class HousePlanSubnetHoverTests(TestCase):
         self.script = _static("subnet_map.js")
 
     def test_only_the_machine_under_the_cursor_is_ringed(self):
-        # The colour of a dot already ties it to its subnet; ringing every dot
-        # of that subnet as well hid the one machine the cursor was on.
+        # The colour of a dot already ties it to its subnet; ringing every dot of that subnet as well hid the one machine the cursor was on.
         self.assertIn("subnet: pin.subnet || ''", self.script)
         self.assertIn("function lightSubnet(marker, subnet, on)", self.script)
         self.assertIn("classList.toggle('hovered', on)", self.script)
@@ -1784,7 +1687,7 @@ class SubnetShadeColorsTests(TestCase):
 
 
 class FloorPlanApiTests(TestCase):
-    """Which floor plans the API knows, and the picture each one draws."""
+    """The logical floor plans the API knows, and the picture each one draws."""
 
     @classmethod
     def setUpTestData(cls):
@@ -1799,8 +1702,7 @@ class FloorPlanApiTests(TestCase):
         permission.object_types.add(cls.map_content_type)
         cls.user.object_permissions.add(permission)
 
-        # Two buildings in one city: only the site names a plan apart, and
-        # NetBox keeps the city nowhere but in the site's address.
+        # Two buildings in one city: only the site names a plan apart, and NetBox keeps the city nowhere but in the site's address.
         cls.north = Site.objects.create(
             name="Musterweg 30",
             slug="musterweg-30",
@@ -1857,22 +1759,8 @@ class FloorPlanApiTests(TestCase):
                 assigned_object=interface,
             )
 
-    @staticmethod
-    def picture(color):
-        # A real picture, because the served plan carries its bytes along.
-        image = Image.new("RGB", (40, 30), color)
-        out = io.BytesIO()
-        image.save(out, format="PNG")
-        return ContentFile(out.getvalue(), name="plan.png")
-
     def setUp(self):
         super().setUp()
-        # The north building has two house plans uploaded, so one site holds
-        # more than the plan the map shows.
-        self.plans = [
-            self.upload(name, color)
-            for name, color in (("Erdgeschoss", "#ff0000"), ("Anbau", "#00ff00"))
-        ]
         # The mount prefix derives from the plugin's base_url/module name.
         self.prefix = "networkmap"
         for prefix in ("networkmap", "network_map"):
@@ -1880,17 +1768,6 @@ class FloorPlanApiTests(TestCase):
             if response.status_code != 404:
                 self.prefix = prefix
                 break
-
-    def upload(self, name, color):
-        attachment = ImageAttachment(
-            object_type=ContentType.objects.get_for_model(Site),
-            object_id=self.north.pk,
-            name=name,
-            image_width=40,
-            image_height=30,
-        )
-        attachment.image.save(f"{name}.png", self.picture(color), save=True)
-        return attachment
 
     def get_plan(self, path):
         return self.client.get(f"/api/plugins/{self.prefix}/{path}")
@@ -1901,76 +1778,38 @@ class FloorPlanApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return json.loads(response.content)
 
-    def test_the_index_lists_every_plan_of_a_site(self):
+    def test_the_index_lists_the_plan_of_every_site(self):
         self.client.force_login(self.user)
         plans = self.index("city=Bern")["plans"]
         ids = [plan["id"] for plan in plans]
-        first, second = (str(plan.pk) for plan in self.plans)
-        self.assertEqual(
-            ids,
-            [
-                "beispielweg-4:logical",
-                f"musterweg-30:{first}",
-                f"musterweg-30:{second}",
-                "musterweg-30:logical",
-            ],
-        )
-        # Which of them the map itself shows, and which one "first" draws.
-        self.assertEqual(
-            [(plan["id"], plan["main"]) for plan in plans if plan["main"]],
-            [("beispielweg-4:logical", True), (f"musterweg-30:{first}", True)],
-        )
-        # Both buildings stand in Bern, so their plans differ by their site.
+        # Both buildings stand in Bern and both have machines, each named by its site alone.
+        self.assertEqual(ids, ["beispielweg-4", "musterweg-30"])
         self.assertEqual(
             {plan["site"]["address"].rsplit(" ", 1)[-1] for plan in plans}, {"Bern"}
         )
         self.assertEqual(len(set(ids)), len(plans))
-        logical = next(plan for plan in plans if plan["id"] == "musterweg-30:logical")
+        logical = next(plan for plan in plans if plan["id"] == "musterweg-30")
         self.assertEqual(logical["rooms"], 2)
         self.assertEqual(logical["floors"], ["OG", "EG"])
         self.assertEqual(logical["machines"], 2)
         self.assertIn("picture", logical)
 
-    def test_the_index_narrows_to_a_city_a_site_or_a_kind(self):
+    def test_the_index_narrows_to_a_city_or_a_site(self):
         self.client.force_login(self.user)
         Site.objects.create(
             name="Depot", slug="depot", physical_address="Fabrikweg 2, Zollikofen"
         )
-        self.assertEqual(self.index("city=Bern")["count"], 4)
-        self.assertEqual(self.index("city=bern")["count"], 4)
+        self.assertEqual(self.index("city=Bern")["count"], 2)
+        self.assertEqual(self.index("city=bern")["count"], 2)
         self.assertEqual(self.index("city=Zollikofen")["count"], 0)
         self.assertEqual(
-            [p["id"] for p in self.index("site=beispielweg-4")["plans"]],
-            ["beispielweg-4:logical"],
+            [p["id"] for p in self.index("site=beispielweg-4")["plans"]], ["beispielweg-4"]
         )
-        self.assertEqual(self.index("kind=uploaded&city=Bern")["count"], 2)
-        self.assertEqual(self.index("kind=logical&city=Bern")["count"], 2)
-
-    def test_the_main_plan_is_the_one_the_map_shows(self):
-        self.client.force_login(self.user)
-        response = self.get_plan("floor-plan/musterweg-30/")
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response["Content-Type"].startswith("image/svg+xml"))
-        body = response.content.decode()
-        self.assertIn("Musterweg 30", body)
-        self.assertIn("data:image/png;base64,", body)
-
-    def test_a_second_upload_is_a_plan_of_its_own(self):
-        self.client.force_login(self.user)
-        drawn = {
-            self.get_plan(f"floor-plan/musterweg-30/{plan.pk}/").content
-            for plan in self.plans
-        }
-        self.assertEqual(len(drawn), 2)
-        for picture in drawn:
-            self.assertIn(b'<image href="data:image/png;base64,', picture)
 
     def test_the_plan_numbers_its_dots_and_lists_its_machines(self):
-        # Names, descriptions and addresses go into the picture the way the
-        # map export carries them: a number on the dot, the machine under the
-        # plan, in the dot's own colour.
+        # The plan numbers its dots and lists the machines under it, in the dots' own colours.
         self.client.force_login(self.user)
-        body = self.get_plan("floor-plan/musterweg-30/logical/").content.decode()
+        body = self.get_plan("floor-plan/musterweg-30/").content.decode()
         self.assertIn('<circle class="map-machine"', body)
         self.assertIn('class="map-machine-num"', body)
         self.assertIn(">1</text>", body)
@@ -1980,13 +1819,6 @@ class FloorPlanApiTests(TestCase):
         self.assertIn("Managed over the BMC \u2014 10.18.0.2", body)
         self.assertIn('style="fill:#', body)
 
-    def test_an_uploaded_plan_carries_its_machines_as_well(self):
-        self.client.force_login(self.user)
-        body = self.get_plan("floor-plan/musterweg-30/").content.decode()
-        self.assertIn('class="map-machine-num"', body)
-        self.assertIn("2  srv1.example.com", body)
-        self.assertIn("Managed over the BMC \u2014 10.18.0.2", body)
-
     def test_a_long_description_is_cut_rather_than_wide(self):
         long_name = "x" * 90
         cut = floor_plan.clip_to(f"1  {long_name}", 200, floor_plan.LIST_NAME_CHAR_W)
@@ -1994,30 +1826,17 @@ class FloorPlanApiTests(TestCase):
         self.assertLess(len(cut) * floor_plan.LIST_NAME_CHAR_W, 210)
         self.assertEqual(floor_plan.clip_to("srv1", 200, 9), "srv1")
 
-    def test_the_logical_plan_is_drawn_from_the_locations(self):
+    def test_the_plan_is_drawn_from_the_locations(self):
         self.client.force_login(self.user)
-        response = self.get_plan("floor-plan/musterweg-30/logical/")
+        response = self.get_plan("floor-plan/musterweg-30/")
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("image/svg+xml"))
         body = response.content.decode()
         self.assertIn("Musterweg 30", body)
         self.assertIn("logical floor map", body)
         self.assertIn("EG - B\u00fcro 019", body)
         self.assertIn('<g class="plan-legend">', body)
         self.assertIn("10.18.0.0/24", body)
-
-    def test_a_bigger_upload_is_linked_instead_of_carried(self):
-        self.client.force_login(self.user)
-        with mock.patch.object(floor_plan, "MAX_EMBED_BYTES", 10):
-            body = self.get_plan("floor-plan/musterweg-30/").content.decode("latin-1")
-        self.assertNotIn("data:image/png;base64,", body)
-        self.assertIn(self.plans[0].image.url, body)
-
-    def test_an_unknown_plan_names_the_ones_there_are(self):
-        self.client.force_login(self.user)
-        response = self.get_plan("floor-plan/musterweg-30/keller/")
-        self.assertEqual(response.status_code, 404)
-        self.assertIn(b"first", response.content)
-        self.assertIn(str(self.plans[1].pk).encode(), response.content)
 
     def test_a_site_without_a_plan_or_a_name_is_answered(self):
         self.client.force_login(self.user)
@@ -2038,20 +1857,10 @@ class FloorPlanApiTests(TestCase):
         self.assertEqual(self.get_plan("floor-plans/").status_code, 403)
         self.assertEqual(self.get_plan("floor-plan/musterweg-30/").status_code, 403)
 
-    def test_a_narrow_plan_still_names_where_it_hangs(self):
-        svg = floor_plan.render_uploaded(
-            "Musterweg 30 Anbau Ost", "data:image/png;base64,AAA==", 60, 40
-        )
-        width = int(re.search(r'<svg[^>]*width="(\d+)"', svg).group(1))
-        title = len("Musterweg 30 Anbau Ost \u2014 House plan")
-        self.assertGreaterEqual(
-            width - 2 * floor_plan.PAD, title * floor_plan.TITLE_CHAR_W
-        )
-
     @unittest.skipUnless(png_render.available(), "needs cairosvg or ImageMagick")
     def test_a_plan_can_be_handed_over_as_a_raster(self):
         self.client.force_login(self.user)
-        response = self.get_plan("floor-plan/musterweg-30/logical/?format=png")
+        response = self.get_plan("floor-plan/musterweg-30/?format=png")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response["Content-Type"].startswith("image/png"))
         self.assertTrue(response.content.startswith(png_render.PNG_MAGIC))
@@ -2117,6 +1926,46 @@ class FloorPlanParityTests(TestCase):
         ):
             with self.subTest(name=name):
                 self.assertEqual(floor_plan.logical_floor(name), expected)
+
+
+class SettingGettersTests(TestCase):
+    """The reading of plugin settings: numbers that stay numbers."""
+
+    def test_the_default_stands_when_nothing_is_set(self):
+        self.assertEqual(canton_code(), DEFAULT_CANTON_BOUNDARY_CODE)
+        self.assertEqual(int_setting("map_border_cut", 3), 3)
+        self.assertEqual(float_setting("request_timeout_seconds", 10), 10.0)
+
+    def test_a_set_number_is_read_as_its_kind(self):
+        with override_settings(
+            PLUGINS_CONFIG={
+                "network_map": {"map_border_cut": "7", "map_tile_budget_seconds": "1.5"}
+            }
+        ):
+            self.assertEqual(int_setting("map_border_cut", 3), 7)
+            self.assertEqual(float_setting("map_tile_budget_seconds", 20), 1.5)
+
+    def test_a_malformed_value_falls_back_instead_of_raising(self):
+        with override_settings(
+            PLUGINS_CONFIG={
+                "network_map": {
+                    "map_border_cut": "wide",
+                    "request_timeout_seconds": "forever",
+                }
+            }
+        ):
+            self.assertEqual(int_setting("map_border_cut", 3, minimum=0), 3)
+            self.assertEqual(float_setting("request_timeout_seconds", 10, 0), 10.0)
+
+    def test_the_minimum_holds_for_a_configured_value(self):
+        with override_settings(PLUGINS_CONFIG={"network_map": {"map_border_cut": -5}}):
+            self.assertEqual(int_setting("map_border_cut", 3, minimum=0), 0)
+
+    def test_the_canton_code_is_the_configured_one(self):
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"canton_boundary_code": "CH"}}
+        ):
+            self.assertEqual(canton_code(), "CH")
 
 
 class StaticUrlTagTests(TestCase):

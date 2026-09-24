@@ -5,6 +5,7 @@ __pycache__/
 network_map/.vscode/
 
 /build/
+/.opencode/
 
 # Canton boundary geometry is fetched live from swisstopo. Drop a local
 # copy here for offline development without committing it to git.

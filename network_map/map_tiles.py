@@ -19,12 +19,11 @@ from django.core.cache import cache
 from netbox.plugins import get_plugin_config
 
 from . import __version__, lv03
-from .defaults import int_setting
+from .defaults import float_setting, int_setting
 
 logger = logging.getLogger(__name__)
 
-# The national map in colour over the LV03 grid; {z}/{y}/{x} stand for the tile
-# address. A mirror of the same grid has to answer the same way.
+# The national map in colour over the LV03 grid; {z}/{y}/{x} stand for the tile address. A mirror of the same grid has to answer the same way.
 DEFAULT_TILE_URL = (
     "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe"
     "/default/current/21781/{z}/{y}/{x}.jpeg"
@@ -34,8 +33,7 @@ MAX_TILES = 64
 MAX_TILE_BYTES = 1_500_000
 WORKERS = 8
 CACHE_SECONDS = 60 * 60 * 24 * 30
-# A tile that is not there - the sea, the next canton - stays missing without
-# being asked for again on the next picture.
+# A tile that is not there - the sea, the next canton - stays missing without being asked for again on the next picture.
 MISSING_CACHE_SECONDS = 60 * 10
 REQUEST_TIMEOUT_SECONDS = 10
 BUDGET_SECONDS = 20
@@ -58,8 +56,7 @@ def _fetch(url, timeout):
     """One tile as a data URL, or None when it cannot be had."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        # The address comes from the plugin settings - an https tile server -
-        # plus the tile numbers, so urlopen cannot be steered to other schemes.
+        # A configured https tile server plus tile numbers, so urlopen stays on its scheme.
         with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             payload = response.read(MAX_TILE_BYTES + 1)
     except (OSError, ValueError) as error:
@@ -97,8 +94,7 @@ def _wanted(extent, zoom, limit):
     while zoom > lv03.MIN_ZOOM and lv03.tile_count(extent, zoom) > limit:
         zoom -= 1
     from_x, from_y, to_x, to_y = lv03.grid(extent, zoom)
-    # The grid starts at the corner of the country; the tile server answers 400
-    # for the negative indices outside it.
+    # The grid starts at the corner of the country; the tile server answers 400 for the negative indices outside it.
     tiles = [
         (x, y)
         for x in range(from_x, to_x + 1)
@@ -142,18 +138,11 @@ def background(extent, metres_per_pixel):
     if not tiles:
         return []
 
-    timeout = get_plugin_config(
-        "network_map", "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS
-    )
-    cache_seconds = get_plugin_config(
-        "network_map", "map_tile_cache_seconds", CACHE_SECONDS
-    )
-    budget = get_plugin_config("network_map", "map_tile_budget_seconds", BUDGET_SECONDS)
+    timeout = float_setting("request_timeout_seconds", REQUEST_TIMEOUT_SECONDS, 0)
+    cache_seconds = int_setting("map_tile_cache_seconds", CACHE_SECONDS, 0)
+    budget = float_setting("map_tile_budget_seconds", BUDGET_SECONDS, 0)
 
-    # One tile after another costs seconds for a whole canton, which the caller
-    # waits for in front of a closed connection; a few requests run side by side
-    # under one shared deadline, and whatever is missing by then simply stays
-    # out of the picture.
+    # One tile after another costs seconds for a whole canton, which the caller waits for in front of a closed connection; a few requests run.
     found = []
     with ThreadPoolExecutor(max_workers=min(WORKERS, len(tiles))) as pool:
         pending = {
@@ -163,8 +152,7 @@ def background(extent, metres_per_pixel):
         wait(pending, timeout=budget)
         for future, (x, y) in pending.items():
             if not future.done():
-                # The deadline has passed; a tile still on its way would only
-                # make the caller wait for nothing.
+                # The deadline has passed; a tile still on its way would only make the caller wait for nothing.
                 future.cancel()
                 continue
             error = future.exception()

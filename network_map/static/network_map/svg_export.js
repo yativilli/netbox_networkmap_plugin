@@ -66,8 +66,7 @@
             .replace(/"/g, '&quot;');
     }
 
-    // Word wrapping with hard breaks for overlong tokens (URLs, hostnames);
-    // returns at most maxLines lines, the last one ellipsised on overflow.
+    // Word wrapping with hard breaks for overlong tokens (URLs, hostnames); returns at most maxLines lines, the last one ellipsised on overflow.
     function wrap(text, font, maxWidth, maxLines) {
         const words = String(text == null ? '' : text).split(/\s+/).filter(Boolean);
         const lines = [];
@@ -110,8 +109,7 @@
     }
 
     function locationRgb(el) {
-        // The cards expose their location color as an "r, g, b" custom
-        // property; read it from the live DOM instead of guessing.
+        // The cards expose their location color as an "r, g, b" custom property; read it from the live DOM instead of guessing.
         const raw = el ? getComputedStyle(el).getPropertyValue('--location-color').trim() : '';
         return raw ? `rgb(${raw.replace(/\s+/g, '')})` : 'rgb(108, 117, 125)';
     }
@@ -127,8 +125,7 @@
         });
     }
 
-    // Draws "Label: value..." and returns the height plus continuation-line
-    // x offset; shared by the parent and child cards of the machine list.
+    // Draws "Label: value..." and returns the height plus continuation-line x offset; shared by the parent and child cards of the machine list.
     function drawFields(out, fields, x, y, maxWidth, labelCls, valueCls, rowHeight, titleFont) {
         fields.forEach((field) => {
             const labelFont = `700 ${titleFont}px ${FONT}`;
@@ -342,9 +339,7 @@
 
     const MAP_PIN_R = 6;
     const MAP_MAX_TILES = 64;
-    // The map picture is drawn for this long edge, and its tiles are fetched
-    // at the zoom that fills that size: an overview comes out readable whether
-    // the screen was zoomed to the canton or to a single street.
+    // The map picture is drawn for this long edge, and its tiles are fetched at the zoom that fills that size: an overview comes out readable.
     const MAP_EDGE = 1200;
     const SCALE_STEPS_M = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
 
@@ -372,9 +367,7 @@
         return parts.join('');
     }
 
-    // Tiles are drawn cross origin, which taints the canvas, so each one is
-    // fetched again (plain CORS GET) and re-encoded through a canvas. A tile
-    // the server refuses simply stays out of the picture.
+    // Tiles are drawn cross origin, which taints the canvas, so each one is fetched again (plain CORS GET) and re-encoded through a canvas.
     function embedTile(url) {
         return fetch(url, { mode: 'cors', credentials: 'omit' })
             .then((response) => (response.ok ? response.blob() : null))
@@ -401,9 +394,7 @@
             .catch(() => null);
     }
 
-    // One tile after another costs seconds for a whole canton, which the user
-    // watches as a spinning button; a few parallel requests keep it short
-    // without flooding the tile server.
+    // Serial tiles take seconds per canton; a few parallel requests keep the wait short.
     async function embedTiles(items) {
         const step = 8;
         const done = [];
@@ -420,8 +411,7 @@
         return done;
     }
 
-    // The tiles the view happens to hold, for a page that does not say how its
-    // grid is addressed.
+    // The tiles the view happens to hold, for a page that does not say how its grid is addressed.
     function screenTiles(container, origin, frame, scale) {
         const entries = [];
         container.querySelectorAll('.leaflet-tile-pane img').forEach((img) => {
@@ -441,9 +431,7 @@
         return entries.slice(0, MAP_MAX_TILES);
     }
 
-    // Tile columns and rows covering a frame at a zoom, together with the
-    // frame's own place in that grid, so the tiles can be laid down without a
-    // second projection step.
+    // Tile rows and columns covering a frame at a zoom, with the frame's place in that grid.
     function tileSpan(map, frame, info, zoom) {
         const tileSize = Number(info.tileSize) || 256;
         const nw = map.project(map.containerPointToLatLng([frame.x, frame.y]), zoom);
@@ -460,10 +448,7 @@
         };
     }
 
-    // Zoom whose tiles fill the frame at MAP_EDGE px on the long edge. The
-    // LV03 grid does not simply halve its resolution per step, so the zooms
-    // are measured against the target and the closest one wins; the tile
-    // budget has the last word.
+    // Zoom whose tiles fill the frame at MAP_EDGE px on the long edge.
     function pickTileZoom(map, frame, info) {
         const crs = map.options.crs;
         const viewZoom = map.getZoom();
@@ -486,16 +471,13 @@
         return best;
     }
 
-    // The grid for a frame at a zoom: complete whatever the screen shows,
-    // because these tiles are requested for the picture instead of read off
-    // the map.
+    // The grid for a frame at a zoom: complete whatever the screen shows, because these tiles are requested for the picture instead of read.
     async function gridTiles(map, frame, info, zoom) {
         const span = tileSpan(map, frame, info, zoom);
         const wanted = [];
         for (let x = span.fromX; x <= span.toX; x += 1) {
             for (let y = span.fromY; y <= span.toY; y += 1) {
-                // The LV03 grid starts at 0/0; the tile server answers 400
-                // for the negative indices outside the country.
+                // The LV03 grid starts at 0/0; the tile server answers 400 for the negative indices outside the country.
                 if (x < 0 || y < 0) continue;
                 wanted.push({
                     url: L.Util.template(info.url, {z: zoom, x, y}),
@@ -509,8 +491,7 @@
         return embedTiles(wanted.slice(0, MAP_MAX_TILES));
     }
 
-    // One entry per site: a location is one thing on the map, also when
-    // several of its subnets are pinned there.
+    // One entry per site: a location is one thing on the map, also when several of its subnets are pinned there.
     function mapSites(pins) {
         const sites = new Map();
         pins.forEach((pin) => {
@@ -521,8 +502,7 @@
         return Array.from(sites.values());
     }
 
-    // Metres per exported pixel and a bar of a round length for it. A
-    // stretched plan (mapScale > 1) shrinks the ground one pixel covers.
+    // Metres per exported pixel and a bar of a round length for it. A stretched plan (mapScale > 1) shrinks the ground one pixel covers.
     function scaleBar(map, frame, mapScale) {
         const step = 100;
         const y = frame.y + frame.height - 20 / mapScale;
@@ -536,10 +516,7 @@
         return { bar, label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m` };
     }
 
-    // The room the served picture leaves around its border, which the server
-    // hands over so that the two pictures agree. `cut` is how far the cut
-    // itself stands beyond the border line; the fallbacks are the server's
-    // own defaults, used only when the page hands over nothing.
+    // The room the served picture leaves around its border, which the server hands over so that the two pictures agree.
     function exportRoom() {
         return Object.assign(
             {border: 22, left: 20, bottom: 20, cut: 3},
@@ -560,15 +537,7 @@
         const nw = map.latLngToContainerPoint(bounds.getNorthWest());
         const se = map.latLngToContainerPoint(bounds.getSouthEast());
         const frame = {x: nw.x, y: nw.y, width: se.x - nw.x, height: se.y - nw.y};
-        // Room around that box, as the server configured it for its own
-        // pictures: the frame would end where the border line, its white halo
-        // and the shape's own extremes still are, and those extremes sit on the
-        // west and the south of most areas. The exported picture is MAP_EDGE
-        // pixels across on its long edge however the screen is zoomed, so the
-        // room becomes a fraction of this frame rather than a number of screen
-        // pixels. The area stays the frame even when the screen shows less of
-        // it, because the tiles are fetched for the frame rather than read off
-        // the screen.
+        // Room around that box, as the server configured it for its own pictures: the frame would end where the border line, its white halo.
         const room = exportRoom();
         const edge = Math.max(frame.width, frame.height) / MAP_EDGE;
         const border = room.border * edge;
@@ -581,12 +550,7 @@
         };
     }
 
-    // The floor plan lives as inline SVG in the overlay pane; copy it into
-    // the export at the same place and size. Uploaded plans reference
-    // MEDIA_URL files relatively, which a standalone file must resolve.
-    // The plan frame is projected, not measured: it uses the very same
-    // transform the machine dots are placed with, so the two cannot drift
-    // apart after a panel toggle, a map resize or a page scroll.
+    // The floor plan lives as inline SVG in the overlay pane; copy it into the export at the same place and size.
     function planRect(house, toExport) {
         if (!house || !house.bounds) return null;
         const nw = toExport(L.latLng(house.bounds.n, house.bounds.w));
@@ -599,8 +563,7 @@
         if (!node || !rect) return '';
         const origin = window.location.origin;
         const inner = node.innerHTML
-            // A key stuck to the window on screen goes back to where the plan
-            // puts it, and nothing is left lit from a hover.
+            // A key stuck to the window on screen goes back to where the plan puts it, and nothing is left lit from a hover.
             .replace(/<g class="plan-legend"[^>]*>/g, '<g class="plan-legend">')
             .replace(/ key-lit(?=["\s])/g, '')
             .replace(/href="(\/[^"]*)"/g, `href="${origin}$1"`)
@@ -611,15 +574,13 @@
         const y = rect.y.toFixed(1);
         const w = rect.width.toFixed(1);
         const h = rect.height.toFixed(1);
-        // "meet" letterboxes the drawing inside the frame, exactly like the
-        // overlay does on screen.
+        // "meet" letterboxes the drawing inside the frame, exactly like the overlay does on screen.
         return `<rect class="map-plan" x="${x}" y="${y}" width="${w}" height="${h}"/>` +
             `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="${viewBox}" ` +
             `preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
     }
 
-    // Labels are always exported, also while the page hides them: the file
-    // is meant to be read on its own.
+    // Labels are always exported, also while the page hides them: the file is meant to be read on its own.
     function clipTo(value, font, maxWidth) {
         const text2 = String(value || '');
         if (textWidth(text2, font) <= maxWidth) return text2;
@@ -628,39 +589,29 @@
         return `${cut.replace(/[\s.,;:)+/-]+$/, '')}\u2026`;
     }
 
-    // A machine label is its name over its IP; the export stretches the
-    // floor plan until every dot has that much room, so the labels cannot
-    // touch. Only when even MAX_MAP_SCALE is not enough are the dots
-    // numbered and the machines listed beside the map instead.
+    // A machine label is its name over its IP; the export stretches the floor plan until every dot has that much room, so the labels cannot.
     const MAX_MAP_SCALE = 12;
     const PLAN_MARGIN = 28;
     const MACHINE_LABEL_HEIGHT = 26;
     const MACHINE_BADGE = 26;
-    // A plan exported at its on-screen size is cramped on paper, so it is
-    // always grown to this long edge before anything else is considered.
+    // A plan exported at its on-screen size is cramped on paper, so it is always grown to this long edge before anything else is considered.
     const MIN_PLAN_EDGE = 1100;
     const MACHINE_LABEL_MIN_AREA = 3400;
-    // Lettering inside the generated logical plan (its room labels) and the
-    // limit for the export's own text, so neither can dwarf the other.
+    // Lettering inside the generated logical plan (its room labels) and the limit for the export's own text, so neither can dwarf the other.
     const PLAN_TEXT_PX = 17;
     const LABEL_TEXT_PX = 10.5;
     const MAX_TEXT_SCALE = 4;
 
-    // Everything the export itself draws - dot badges, labels, legend,
-    // machine list - grows with the plan it annotates, so the picture keeps
-    // one typographic scale instead of a huge plan above tiny print.
+    // Everything the export itself draws - dot badges, labels, legend, machine list - grows with the plan it annotates, so the picture keeps.
     let TF = 1;
     const px = (base) => String(+(base * TF).toFixed(2));
     const nameFont = () => `700 ${px(10.5)}px ${FONT}`;
     const ipFont = () => `400 ${px(9.5)}px ${FONT}`;
-    // The list and the legend below the picture, at the sizes the served
-    // picture uses too, so both say the same thing in the same voice.
+    // The list and the legend below the picture, at the sizes the served picture uses too, so both say the same thing in the same voice.
     const listNameFont = () => `700 ${px(15)}px ${FONT}`;
     const listSubFont = () => `400 ${px(13.5)}px ${FONT}`;
 
-    // Room a label has before it hits a neighbour, measured on the dots
-    // themselves: dots in a row decide the width, dots below each other the
-    // height. Infinity when there is no such neighbour.
+    // A label's free room until it hits a neighbour: rows set the width, columns the height.
     function machineSpacing(points) {
         const gaps = { x: Infinity, y: Infinity, d: Infinity };
         points.forEach((a, index) => {
@@ -689,8 +640,7 @@
         };
     }
 
-    // How much the plan's own lettering is magnified in the export; the
-    // export's text aims at the same rendered size.
+    // How much the plan's own lettering is magnified in the export; the export's text aims at the same rendered size.
     function planTextFactor(frame, scale, house) {
         if (!house || !house.planW) return 1;
         const perUnit = (frame.width * scale) / house.planW;
@@ -698,9 +648,7 @@
             perUnit * PLAN_TEXT_PX / LABEL_TEXT_PX));
     }
 
-    // How far the plan must grow. Numbered dots only need room for their
-    // badge; carrying "name / IP" labels next to every dot needs a lot more,
-    // so a plan too dense for that is not inflated for nothing.
+    // How far the plan must grow.
     function planStretch(frame, need, gaps, count, withLabels) {
         const area = Math.max(1, frame.width * frame.height);
         const badge = MACHINE_BADGE * TF;
@@ -720,9 +668,7 @@
         return Math.min(MAX_MAP_SCALE, Math.max(...candidates));
     }
 
-    // Plan magnification, text factor and label verdict settle together: the
-    // text follows the plan, the plan follows the text. Three passes are
-    // enough because both converge from the same direction.
+    // Plan magnification, text factor and label verdict settle together: the text follows the plan, the plan follows the text.
     function solvePlan(frame, gaps, machines, house, withLabels) {
         let scale = 1;
         for (let pass = 0; pass < 3; pass += 1) {
@@ -739,9 +685,7 @@
         };
     }
 
-    // Numbered badges may not overlap. Rather than inflating the whole plan
-    // until the closest pair of dots has room, the dots that sit too close
-    // are nudged apart; the plan keeps its computed size.
+    // Numbered badges may not overlap.
     function spreadOut(points, minDistance, bounds) {
         if (!(minDistance > 0) || points.length < 2) return points;
         const anchors = points.map((point) => ({ x: point.x, y: point.y }));
@@ -763,8 +707,7 @@
                     moved = true;
                 }
             }
-            // A dot may leave its slot to make room for a neighbour, but it
-            // must not wander across the plan: every pass pulls it back.
+            // A dot may leave its slot to make room for a neighbour, but it must not wander across the plan: every pass pulls it back.
             points.forEach((point, index) => {
                 point.x += (anchors[index].x - point.x) * 0.1;
                 point.y += (anchors[index].y - point.y) * 0.1;
@@ -815,17 +758,14 @@
         });
     }
 
-    // Numbered machines listed in columns, keeping the dot's colour coding:
-    // the badge number and name in the machine's colour, its description and
-    // IP address underneath.
+    // Numbered machines in columns, dot colours kept: name in the machine's colour, IP underneath.
     function machineList(machines, width, startY, out) {
         if (!machines.length) return startY;
         const colWidth = 384 * TF;
         const rowHeight = 40 * TF;
         const columns = Math.max(1, Math.floor(width / colWidth));
         const perColumn = Math.ceil(machines.length / columns);
-        // Entries are as tall as the subnets under them need, so a column
-        // stacks them up instead of spacing every entry the same.
+        // Entries are as tall as the subnets under them need, so a column stacks them up instead of spacing every entry the same.
         const bottoms = new Array(columns).fill(0);
         machines.forEach((machine, index) => {
             const column = Math.floor(index / perColumn);
@@ -842,9 +782,7 @@
             out.push(text(x + 20 * TF, y, clipTo(label, listNameFont(), colWidth - 34 * TF),
                 'map-list-name', ` style="fill:${color}"`));
             if (machine.subnets && machine.subnets.length > 1) {
-                // Several subnets are listed side by side and wrapped into the
-                // column, instead of one line that has to be cut off, so every
-                // subnet of an entry is said.
+                // Subnets listed side by side and wrapped into the column, so none is cut off.
                 const font = listSubFont();
                 const room = colWidth - 34 * TF;
                 const gap = textWidth(' · ', font);
@@ -897,10 +835,7 @@
             ? (house.machines || []).filter((m) => m.lat != null && m.lng != null)
             : [];
 
-        // A floor plan is stretched until every machine has room for its
-        // label, so a dense plan comes out larger instead of turning its
-        // labels into noise. A regional view picks its scale from the tile
-        // grid it fetches for the picture instead.
+        // A plan grows until every label fits; a regional view scales with its tile grid.
         const rawProject = (latlng) => map.latLngToContainerPoint(latlng);
         const rawFrame = house ? planRect(house, rawProject) : null;
         let mapScale = 1;
@@ -916,8 +851,7 @@
             };
             const gaps = machineSpacing(machines.map(
                 (machine) => rawProject(L.latLng(machine.lat, machine.lng))));
-            // Labels are tried first; when they cannot be placed without
-            // touching, the plan is sized for numbered badges alone.
+            // Labels are tried first; when they cannot be placed without touching, the plan is sized for numbered badges alone.
             const labelled = solvePlan(rawFrame, gaps, machines, house, true);
             crowded = labelled.crowded;
             const plan = crowded
@@ -930,9 +864,7 @@
                 ? {x: 0, y: 0, width: size.x, height: size.y}
                 : mapCrop(map, size, boundary);
             if (!house && tileInfo && tileInfo.url) {
-                // Tiles come for the picture, not off the screen, so the frame
-                // may reach beyond the viewport and keep its detail however
-                // far the view happens to be zoomed.
+                // Tiles come for the picture, not off the screen, so the frame may reach beyond the viewport and keep its detail however far.
                 gridZoom = pickTileZoom(map, frame, tileInfo);
                 mapScale = map.options.crs.scale(gridZoom) /
                     map.options.crs.scale(map.getZoom());
@@ -954,14 +886,7 @@
             `<rect x="0" y="0" width="${width.toFixed(1)}" height="${height.toFixed(1)}" ` +
             `fill="${house ? '#f8f5ec' : '#eef1f4'}"/>`
         );
-        // Tiles come in whole squares and the canton border is whatever it is,
-        // so both are cut at the edge of the map: nothing may run into the
-        // space the list of sites uses underneath the picture.
-        // What the border looks like has to be known before the ground is laid,
-        // because the ground is cut with it: the mask keeps the area and a band
-        // around it, so the cut runs beyond the line instead of on it. Painted
-        // inline, since a renderer that skips the document's styles would
-        // otherwise mask the ground away altogether.
+        // Tiles and border are cut at the map edge, which ends above the site list.
         const areaRings = house ? [] : mapRings(boundary || {features: []});
         const areaPath = areaRings.length ? mapBorderPath(areaRings, toExport) : '';
         const beyond = areaPath ? exportRoom().cut : 0;
@@ -998,11 +923,7 @@
             out.push(planGraphics(container, house, planFrame));
         } else if (areaPath) {
             if (!cutMasked) {
-                // A bounding box can only hug the canton where its shape
-                // touches the box, which leaves the map of the neighbouring
-                // cantons standing around the empty corners - the south of
-                // Bern for one. Without the mask, which runs the cut beyond the
-                // line, everything outside the border is painted over instead.
+                // A bounding box can only hug the canton where its shape touches the box, which leaves the map of the neighbouring cantons.
                 out.push(
                     `<path class="map-outside" d="M0,0 H${width.toFixed(1)} ` +
                     `V${height.toFixed(1)} H0 Z${areaPath}"/>`
@@ -1020,14 +941,7 @@
             drawMachines(house, toExport, crowded,
                 { x: 0, y: 0, width, height }, out);
         } else {
-            // Sites carry a number and are listed below the map. A name box
-            // per site has to overlap its neighbour in a dense canton - a
-            // number never does, and the list underneath has room for the
-            // subnets that belong to it.
-            // One pin per site, coloured per site and carrying its number; a
-            // name box per site has to overlap its neighbour in a dense canton,
-            // a number never does, and the list underneath has room for the
-            // subnets that belong to the site.
+            // Sites carry a number and are listed below the map.
             const listed = mapSites(pins).map((site) => {
                 const placed = site.pins.map(
                     (pin) => toExport(L.latLng(pin.lat, pin.lon))
@@ -1054,10 +968,7 @@
                         point.x > width || point.y > height)
                 };
             });
-            // Sites that are close together on the map belong next to each
-            // other in the list too: start in the north-west and always take
-            // the closest site that is still missing. Sites of one place share
-            // their coordinates and therefore end up side by side.
+            // Neighbouring sites belong side by side too: start north-west, take the closest missing.
             const pool = listed.slice().sort((a, b) => (a.x + a.y) - (b.x + b.y));
             let previous = pool.shift();
             listed.length = 0;
@@ -1075,8 +986,7 @@
                 previous = pool.splice(nearest, 1)[0];
                 listed.push(previous);
             }
-            // Pins may not sit on top of each other either; one that has to
-            // move stays near the site it stands for.
+            // Pins may not sit on top of each other either; one that has to move stays near the site it stands for.
             const inset = MAP_PIN_R + 4;
             const spots = listed.map((site) => ({
                 x: Math.min(Math.max(site.x, inset), width - inset),
@@ -1092,12 +1002,9 @@
                         `cy="${(spot.y - 13).toFixed(1)}" r="4"/>`
                     );
                 }
-                // A thick border marks a site holding more than one machine,
-                // a thin one a site with a single machine - as in the plan.
+                // A thick border marks a site holding more than one machine, a thin one a site with a single machine - as in the plan.
                 const many = site.machines > 1;
-                // Tiles are coloured and light in places, so the pin sits on a
-                // dark disc: the white border stays the marker of how many
-                // machines a site holds, and the pin stands out either way.
+                // Tiles are coloured and light in places, so the pin sits on a dark disc: the white border stays the marker of how many.
                 out.push(
                     '<circle class="map-pin-back" ' +
                     `cx="${spot.x.toFixed(1)}" cy="${spot.y.toFixed(1)}" ` +
@@ -1122,8 +1029,7 @@
         out.push(text(Math.round(18 * TF + scale.bar), Math.round(height - 16 * TF),
             scale.label, 'map-scale-label'));
 
-        // A floor plan only ever shows one site, so its legend lists just
-        // the subnets that are visible on it.
+        // A floor plan only ever shows one site, so its legend lists just the subnets that are visible on it.
         const legendPins = house ? pins.filter((pin) => pin.site === house.site) : pins;
         const seen = new Set();
         const entries = legendPins.filter((pin) => {
@@ -1132,21 +1038,17 @@
             seen.add(key);
             return true;
         });
-        // Numbered lists want more width than a narrow plan strip offers; a
-        // site list is short, so it may spread over columns early.
+        // Numbered lists want more width than a narrow plan strip offers; a site list is short, so it may spread over columns early.
         const listColumns = numbered.length
             ? Math.max(1, Math.min(4, Math.ceil(numbered.length / (house ? 40 : 6))))
             : 1;
         const listWidth = (listColumns * 384 + 24) * TF;
         const outWidth = Math.max(width, listWidth);
         const step = 21 * TF;
-        // Below the map, with room enough that the last row of tiles and the
-        // first line of the list never touch.
+        // Below the map, with room enough that the last row of tiles and the first line of the list never touch.
         let y = height + 42 * TF;
         y = machineList(numbered, listWidth, y, out);
-        // A floor plan only shows one site, so its legend lists the subnets
-        // that are visible on it; the regional picture lists them per site
-        // above and needs no second legend.
+        // A floor plan only shows one site, so its legend lists the subnets that are visible on it; the regional picture lists them per site.
         if (house) {
             entries.slice(0, 14).forEach((pin) => {
                 const value = pin.prefix ? `${pin.subnet} — ${pin.prefix}` : pin.subnet;
@@ -1183,8 +1085,7 @@
             (data.ui || {}).attribution || 'Map data: © swisstopo',
             'map-attribution'
         ));
-        // A floor plan is a drawing meant to be printed at any size; the
-        // regional map is a picture of map tiles, which comes out as PNG.
+        // A floor plan is a drawing meant to be printed at any size; the regional map is a picture of map tiles, which comes out as PNG.
         return {
             width: outWidth, height: y + 26 * TF, markup: out.join(''),
             format: house ? 'svg' : 'png'
@@ -1197,9 +1098,7 @@
         'subnet-map': drawSubnetMap,
     };
 
-    // Rasterising multiplies the canvas, because a canton map printed at its
-    // natural size has labels too small to read; browsers cap canvas sizes,
-    // so the factor shrinks for very large pictures.
+    // Rasterising multiplies the canvas, because a canton map printed at its natural size has labels too small to read; browsers cap canvas.
     const PNG_SCALE = 2;
     const PNG_MAX_EDGE = 2400;
 
@@ -1236,9 +1135,7 @@
         });
     }
 
-    // Sizes live in the stylesheet, so the whole picture - plan and text -
-    // is generated at one scale instead of mixing magnified plans with
-    // footnote-sized legends.
+    // Sizes live in the stylesheet, so plan and text share one scale.
     function styleSheet(scale) {
         if (scale === 1) return STYLE;
         return STYLE
@@ -1279,8 +1176,7 @@
                     blob = await rasterize(source, width, height);
                     extension = 'png';
                 } catch (error) {
-                    // Some browsers refuse to rasterise very large pictures;
-                    // the vector file holds the identical content.
+                    // Some browsers refuse to rasterise very large pictures; the vector file holds the identical content.
                     console.error('PNG export failed', error);
                 }
             }

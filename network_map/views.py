@@ -2,14 +2,12 @@ from collections import Counter
 
 from dcim.models import Device, Location, Site
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from extras.models import ImageAttachment
 from ipam.models import VLAN, IPAddress, Prefix
 from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
@@ -23,7 +21,10 @@ from .colors import (
     color_for_location_hex,
     shade_of,
 )
-from .defaults import DEFAULT_CANTON_BOUNDARY_CODE, DEFAULT_GATEWAY_SEARCH_TAG
+from .defaults import (
+    DEFAULT_GATEWAY_SEARCH_TAG,
+    canton_code,
+)
 from .geocoding import geocode_sites
 from .models import (
     DetailsElement,
@@ -38,8 +39,7 @@ from .swisstopo import boundary_configured, get_canton_boundary, get_canton_labe
 class NetworkMapPermissionRequiredMixin(
     ConditionalLoginRequiredMixin, PermissionRequiredMixin
 ):
-    # AccessMixin defaults: anonymous users are redirected to the login
-    # page, authenticated users without the permission get a 403.
+    # AccessMixin defaults: anonymous users are redirected to the login page, authenticated users without the permission get a 403.
     permission_required = "network_map.view_vlanelement"
 
 
@@ -79,11 +79,7 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
                     vm = getattr(assigned_object, "virtual_machine", None)
 
                     room = None
-                    # What the machine is for is said by the free text NetBox
-                    # holds about it - first what was written on the machine,
-                    # then what was written on its address. The role only speaks
-                    # when nobody wrote anything down, because it says what kind
-                    # of thing it is rather than what it does here.
+                    # What the machine is for is said by the free text NetBox holds about it - first what was written on the machine, then.
                     if device:
                         location = device.site.name if device.site else ""
                         url = device.get_absolute_url()
@@ -248,97 +244,26 @@ class VlanTopologyView(CenterDeviceMixin, VlanElementListView):
 class SubnetLocationView(VlanElementListView):
     template_name = "network_map/subnet_map.html"
 
-    def build_all_site_plans(self, sites):
-        """
-        Map each site name to every image attachment it carries, oldest first,
-        as the uploaded house plans of that building. A site with no upload is
-        left out; the map then shows the logical floor map instead.
-        """
-        if not sites:
-            return {}
-        site_type = ContentType.objects.get_for_model(Site)
-        plans = {}
-        attachments = (
-            ImageAttachment.objects.filter(
-                object_type=site_type,
-                object_id__in=[site.pk for site in sites],
-            )
-            .order_by("object_id", "id")
-            .only("object_id", "id", "name", "image", "image_width", "image_height")
-        )
-        site_ids = {site.pk: str(site.name) for site in sites}
-        for attachment in attachments:
-            name = site_ids.get(attachment.object_id)
-            if name is None:
-                continue
-            try:
-                url = attachment.image.url
-            except ValueError:
-                continue
-            plans.setdefault(name, []).append(
-                {
-                    "id": attachment.pk,
-                    "label": str(attachment.name or attachment.image.name),
-                    "url": url,
-                    "width": attachment.image_width or 1200,
-                    "height": attachment.image_height or 850,
-                    "attachment": attachment,
-                }
-            )
-        return plans
-
-    def build_site_plans(self, sites):
-        """
-        Map each site name to its first image attachment, which is the plan the
-        map shows when one zooms into that building. Sites without an upload
-        are left out, so the caller can fall back to the logical floor map.
-        """
-        return {
-            name: plans[0] for name, plans in self.build_all_site_plans(sites).items()
-        }
-
     def build_floor_plans(self, map_data):
         """
-        Every floor plan the subnet map can show, one entry per uploaded plan
-        and one logical map per site. `map_data` is what the page is given, so
-        the same machines, rooms and colours end up in both.
+        Every floor plan the subnet map can show, one logical map per site.
+        `map_data` is what the page is given, so the same machines, rooms and
+        colours end up in both.
         """
         by_site = {}
         for pin in map_data["pins"]:
             by_site.setdefault(pin["site"], []).append(pin)
         sites = list(Site.objects.filter(name__in=by_site).order_by("name"))
-        uploads = self.build_all_site_plans(sites)
         plans = []
         for site in sites:
             name = str(site.name)
             pins = by_site.get(name, [])
             rooms = map_data["locations"].get(name, [])
-            for index, plan in enumerate(uploads.get(name, [])):
-                plans.append(
-                    {
-                        "site": site,
-                        "kind": "uploaded",
-                        # Every upload is addressed by its own number; the one
-                        # the map shows can also be asked for as "first".
-                        "plan": str(plan["id"]),
-                        "main": index == 0,
-                        "label": plan["label"],
-                        "width": plan["width"],
-                        "height": plan["height"],
-                        "url": plan["url"],
-                        "attachment": plan["attachment"],
-                        "pins": pins,
-                        "rooms": rooms,
-                        "machines": sum(len(pin["machines"]) for pin in pins),
-                    }
-                )
             if pins:
                 plans.append(
                     {
                         "site": site,
-                        "kind": "logical",
                         "plan": "logical",
-                        "main": not uploads.get(name),
                         "label": str(_("logical floor map")),
                         "pins": pins,
                         "rooms": rooms,
@@ -376,10 +301,7 @@ class SubnetLocationView(VlanElementListView):
         }
         sites = list(Site.objects.filter(name__in=site_names).order_by("name"))
         coordinates = geocode_sites(sites)
-        # One colour per site, cycled through the location palette and shaded
-        # once it runs out: the regional picture colours the locations apart,
-        # which colours by subnet cannot do for two sites holding no subnet in
-        # common.
+        # One colour per site, cycled through the location palette and shaded once it runs out: the regional picture colours the locations.
         palette = len(LOCATION_COLORS)
         site_colors = {
             site.name: shade_of(
@@ -387,8 +309,6 @@ class SubnetLocationView(VlanElementListView):
             )
             for index, site in enumerate(sites)
         }
-
-        site_plans = self.build_site_plans(sites)
 
         placements = {}
         for element in elements:
@@ -413,9 +333,7 @@ class SubnetLocationView(VlanElementListView):
 
         pins = []
         unplaced = []
-        # One base colour per subnet, its prefixes drawn in lighter and
-        # darker shades of it, so several prefixes of one subnet read as a
-        # family in the map, the floor plan and the SVG exports.
+        # One base colour per subnet, prefixes in shades of it, so they read as one family.
         subnet_base = {}
         subnet_prefixes = {}
         subnet_colors = {}
@@ -435,7 +353,6 @@ class SubnetLocationView(VlanElementListView):
                 if not coords:
                     continue
                 placed_any = True
-                plan = site_plans.get(location) or {}
                 pins.append(
                     {
                         "subnet": placement["subnet"],
@@ -446,9 +363,6 @@ class SubnetLocationView(VlanElementListView):
                         "site": str(location),
                         "lat": coords[0],
                         "lon": coords[1],
-                        "plan_url": plan.get("url"),
-                        "plan_w": plan.get("width"),
-                        "plan_h": plan.get("height"),
                         "machines": [
                             {
                                 "name": str(machine["dns_name"] or machine["ip"]),
@@ -473,12 +387,9 @@ class SubnetLocationView(VlanElementListView):
                     }
                 )
 
-        canton_code = get_plugin_config(
-            "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
-        )
         canton_url = (
             reverse("plugins:network_map:canton_boundary")
-            if boundary_configured(canton_code)
+            if boundary_configured(canton_code())
             else None
         )
 
@@ -489,11 +400,8 @@ class SubnetLocationView(VlanElementListView):
             "unplaced": unplaced,
             "locations": self.build_site_locations(sites),
             "canton_boundary_url": canton_url,
-            "canton_label": get_canton_label(canton_code) if canton_url else None,
-            # How far the exported picture stands off the border it cuts along;
-            # the exporter could read the settings itself, but then the two
-            # pictures - the served one and the one the button makes - could
-            # disagree about what belongs in them.
+            "canton_label": get_canton_label(canton_code()) if canton_url else None,
+            # The exporter gets the room from the server, so both pictures agree on what belongs in them.
             "export_room": {
                 "border": border_room,
                 "left": room_left,
@@ -512,7 +420,6 @@ class SubnetLocationView(VlanElementListView):
                 "subnets": _("subnets"),
                 "details": _("Details"),
                 "floor_map": _("Floor map"),
-                "house_plan": _("House plan"),
                 "badge_hint": _("scroll out to return to the map"),
                 "logical_title": _("logical floor map"),
                 "generated_from": _("generated from NetBox locations"),
@@ -550,10 +457,7 @@ class CantonBoundaryView(NetworkMapPermissionRequiredMixin, View):
     """
 
     def get(self, request):
-        canton_code = get_plugin_config(
-            "network_map", "canton_boundary_code", DEFAULT_CANTON_BOUNDARY_CODE
-        )
-        boundary = get_canton_boundary(canton_code)
+        boundary = get_canton_boundary(canton_code())
         if boundary is None:
             return HttpResponse(status=204)
         return JsonResponse(boundary, content_type="application/geo+json")
@@ -691,8 +595,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
         context = {
             "elements": elements,
             "center_device": center_device,
-            # Info panel labels; extracted by makemessages and rendered
-            # by the _info_item include (a plain variable there).
+            # Info panel labels; extracted by makemessages and rendered by the _info_item include (a plain variable there).
             "labels": {
                 "address": _("Address"),
                 "comments": _("Comments"),

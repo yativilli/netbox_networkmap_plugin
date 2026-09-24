@@ -110,9 +110,7 @@ def _ph(value):
     return value if value.strip() else "—"
 
 
-# ----------------------------------------------------------------------
-# Machine list
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------- Machine list
 
 
 def _machine_fields(machine):
@@ -255,9 +253,7 @@ def render_machine_list(elements):
     return build_svg(WIDTH, y + BOTTOM_PAD, "".join(out))
 
 
-# ----------------------------------------------------------------------
-# Logical map (VLAN connections tree)
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------- Logical map (VLAN connections tree)
 
 
 def _tree_node(out, y, depth, title, sub, items):
@@ -367,9 +363,7 @@ def render_logical_tree(elements, center_device):
     return build_svg(WIDTH, y + BOTTOM_PAD, "".join(out))
 
 
-# ----------------------------------------------------------------------
-# Topology map (port of vlan_topology.js buildGraph)
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------- Topology map (port of vlan_topology.js buildGraph)
 
 HUB_R = 60
 SUB_W = 150
@@ -625,41 +619,26 @@ def render_topology(topology_data):
     return build_svg(width, height, "".join(out), TOPO_STYLE)
 
 
-# ----------------------------------------------------------------------
-# Subnet location map
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------- Subnet location map
 
 MAP_WIDTH = WIDTH
 MAP_MARGIN = 24
 MAP_MIN_H = 300
-# The long edge of the map picture, in pixels, which is what the browser export
-# draws too: the picture comes out this big unless the page is too narrow.
+# The map's long edge in pixels; the browser export draws to the same size.
 MAP_EDGE = 1200
-# Room the picture leaves around the border it cuts along, in pixels of the
-# picture: the line and its white halo hang over the geometry, and a shape
-# touches its bounding box at a point - mostly in the west and the south, which
-# is where Geneva's edge and Ticino's tip get cut. `map_border_room` moves the
-# cut away from the border, `map_room_left` and `map_room_bottom` add room on
-# the two edges that need it most.
+# Room between border and picture edge: shapes touch their box at the west and south.
 BORDER_ROOM = 22
 ROOM_LEFT = 20
 ROOM_BOTTOM = 20
-# How far the cut itself stands beyond the border, so that the picture is not
-# cut directly on the line but leaves this much of the neighbouring ground
-# visible: `map_border_cut` changes it, `0` cuts on the line.
+# How far the cut stands beyond the border line; `map_border_cut`, 0 cuts on the line.
 BORDER_CUT = 3
-# A picture of a single address still shows some ground around it.
-# Switzerland's own bounding box in LV03 metres, the limits of the national
-# border as swisstopo publishes them rounded outward. A picture without a border
-# to stand on shows the country instead of a box around whatever happens to be
-# registered.
+# A single address still shows ground around it; SWITZERLAND is the country's box.
 SWITZERLAND = (485000.0, 75000.0, 834000.0, 296000.0)
 PIN_R = 6
 # A site is one pin with its number in it, like the machine dots of a plan.
 SITE_R = 9
 SITE_SPACE = 26
-# Below the map the sites are listed in columns of a few entries each, with
-# their subnets flowing side by side underneath the name.
+# Below the map the sites are listed in columns of a few entries each, with their subnets flowing side by side underneath the name.
 LIST_ROWS = 6
 LIST_COLUMNS = 3
 LIST_COL_WIDTH = 384
@@ -676,8 +655,7 @@ MAP_STYLE = "\n".join(
         ".map-frame { fill: none; stroke: #c6cccb; stroke-width: 1; }",
         ".map-border { fill: #f8f7f2; fill-rule: evenodd; stroke: #c8102e;",
         "  stroke-width: 2; stroke-dasharray: 8 6; }",
-        # The same line without the beige ground of its own, for a picture
-        # whose ground is the map it was drawn on.
+        # The same line without the beige ground of its own, for a picture whose ground is the map it was drawn on.
         ".map-border-line { fill: none; stroke: #c8102e; stroke-width: 2;",
         "  stroke-dasharray: 8 6; }",
         ".map-border-halo { fill: none; stroke: #ffffff; stroke-width: 7;",
@@ -690,9 +668,7 @@ MAP_STYLE = "\n".join(
         "  text-anchor: middle; paint-order: stroke;",
         "  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }",
         ".map-offframe { fill: #6c757d; stroke: #ffffff; stroke-width: 1.5; }",
-        # Two sizes for everything the picture says about itself, so the
-        # lettering reads as one voice next to a map of real place names:
-        # entries and their legend in one, everything underneath in the other.
+        # Two sizes for everything the picture says about itself, so the lettering reads as one voice next to a map of real place names.
         ".map-list-name { font-size: 15px; font-weight: 700; }",
         ".map-list-sub { font-size: 13.5px; fill: #6c757d; }",
         ".map-legend { font-size: 15px; fill: #212529; }",
@@ -1113,9 +1089,7 @@ def render_subnet_map(
     avail_w = MAP_WIDTH - 2 * MAP_MARGIN
     scale = _fit_scale(max_east - min_east, max_north - min_north, avail_w)
     if rings:
-        # Room around the ground, measured in metres at this scale; the frame
-        # would otherwise end where the border line and the shape's own western
-        # and southern extremes still are.
+        # Room around the ground in metres at this scale; without it the frame clips the border.
         border, left, bottom = frame_room()
         min_east -= (border + left) / scale
         min_north -= (border + bottom) / scale
@@ -1142,13 +1116,7 @@ def render_subnet_map(
         f'x="{origin_x:.1f}" y="{origin_y:.1f}" '
         f'width="{map_w:.1f}" height="{map_h:.1f}"'
     )
-    # The cut: the ground is asked for the whole box, but only what lies within
-    # the border belongs in the picture. The mask keeps the area and the band
-    # around it - the area filled, and the same shape stroked wide - so the cut
-    # runs `border_cut()` pixels beyond the line instead of on it. Masks are
-    # painted inline, since a renderer that does not read the document's styles
-    # would otherwise mask the ground away entirely, and a picture of a canton
-    # is worth more than a picture of its neighbours.
+    # The cut: the ground is asked for the whole box, but only what lies within the border belongs in the picture.
     outline = "".join(_ring_path(ring, project) for ring in rings)
     offset = border_cut() if rings else 0
     defs = f'<clipPath id="map-clip"><rect {frame}/></clipPath>'
@@ -1164,9 +1132,7 @@ def render_subnet_map(
         ground_mask = ' mask="url(#map-ground)"'
     out.append(f"<defs>{defs}</defs>")
 
-    # Ground first, so the border and the pins lie on top of it: the tiles
-    # asked for are the ones of this ground at this size. A background of its
-    # own shows through wherever a tile could not be had.
+    # Ground first, so the border and the pins lie on top of it: the tiles asked for are the ones of this ground at this size.
     out.append(
         f'<g clip-path="url(#map-clip)"{ground_mask}><rect class="map-back" {frame}/>'
     )
@@ -1176,9 +1142,7 @@ def render_subnet_map(
 
     if rings:
         path = outline
-        # What the mask did not keep: without a mask to run the cut beyond the
-        # line, everything outside the border is painted over instead, which
-        # cuts the picture on the line itself.
+        # What the mask did not keep: without a mask to run the cut beyond the line, everything outside the border is painted over instead.
         outside = ""
         if not ground_mask:
             cut = (
@@ -1186,10 +1150,7 @@ def render_subnet_map(
                 f"V{origin_y + map_h:.1f}H{origin_x:.1f}Z"
             )
             outside = f'<path class="map-outside" d="{cut}{path}"/>'
-        # Painting the outside with a mask, rather than as one path with the
-        # border as its inner edge, lets the cut stand off that line: the black
-        # shape of the mask - the area, filled and stroked - keeps a band of
-        # ground on both sides of the border visible.
+        # The outside is painted through a mask, so the cut can stand off the border line.
         out.append(
             '<g clip-path="url(#map-clip)">'
             f"{outside}"
@@ -1222,8 +1183,7 @@ def render_subnet_map(
         site["y"] = min(max(y, inside[1]), inside[3])
         (named if site["name"] else nameless).append(site)
 
-    # One numbered pin per site, in the order the places lie next to each
-    # other, which is also the order of the list underneath the map.
+    # One numbered pin per site, in the order the places lie next to each other, which is also the order of the list underneath the map.
     named = _proximity_order(named)
     _spread(named, SITE_SPACE, inside)
     for site in nameless:

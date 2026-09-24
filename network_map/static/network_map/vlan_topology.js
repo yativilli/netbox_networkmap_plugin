@@ -100,9 +100,7 @@
         return Math.max(machineReach, SUB_DIAG + GAP);
     }
 
-    // Biggest clusters claim slots along the golden angle first, so
-    // comparably sized clusters never sit adjacent; smaller clusters
-    // fill the gaps evenly around the circle.
+    // Clusters claim golden-angle slots, so comparably sized ones never sit adjacent.
     function goldenSlots(subnets) {
         const bySize = subnets
             .map((subnet, index) => index)
@@ -116,8 +114,7 @@
         return slots;
     }
 
-    // Iteratively push oversized clusters further out along the ring
-    // until every pair keeps `clearance` of free space. Mutates radii.
+    // Iteratively push oversized clusters further out along the ring until every pair keeps `clearance` of free space. Mutates radii.
     function resolveCollisions({ radii, footprints, pushedOut, angleAt, clearance }) {
         for (let pass = 0; pass < 500; pass += 1) {
             let moved = false;
@@ -166,10 +163,7 @@
         const count = ordered.length;
         const angleAt = (index) => -Math.PI / 2 + (index * 2 * Math.PI) / count;
 
-        // Every subnet shares one common ring, including the ones without any
-        // machines. Clusters bigger than the median never fit on that ring;
-        // they are pushed out only as far as needed to keep PUSH_CLEARANCE of
-        // free space to everything else.
+        // Every subnet shares one common ring, including the ones without any machines.
         const PUSH_CLEARANCE = 50;
         const sortedFootprints = [...footprints].sort((a, b) => a - b);
         const medianFootprint = sortedFootprints[Math.floor(sortedFootprints.length / 2)];
@@ -408,8 +402,7 @@
     const exportButton = document.querySelector('[data-export-svg]');
 
     async function svgStyles() {
-        // Inline the plugin stylesheet so the downloaded file renders styled;
-        // falls back to unstyled if the fetch fails.
+        // Inline the plugin stylesheet so the downloaded file renders styled; falls back to unstyled if the fetch fails.
         const link = document.querySelector('link[href*="vlan_topology.css"]');
         try {
             let css = await fetch(link.href).then((response) => response.text());
@@ -425,8 +418,7 @@
         if (!svg) return;
         const clone = svg.cloneNode(true);
         clone.setAttribute('xmlns', SVG_NS);
-        // Static export: unwrap links into plain groups (keeping their
-        // classes for the fills/strokes) and drop hover tooltips.
+        // Static export: unwrap links into plain groups (keeping their classes for the fills/strokes) and drop hover tooltips.
         clone.querySelectorAll('a').forEach((anchor) => {
             const group = svgEl('g', { class: anchor.getAttribute('class') });
             while (anchor.firstChild) group.appendChild(anchor.firstChild);

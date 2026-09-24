@@ -7,6 +7,7 @@ import urllib.request
 from netbox.plugins import get_plugin_config
 
 from . import __version__
+from .defaults import float_setting
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +49,11 @@ def geocode_site(site):
     )
 
     try:
-        # The URL comes from the plugin settings (an https Nominatim
-        # instance) plus an encoded query string, so urlopen cannot be
-        # steered to other schemes.
+        # A configured https instance plus an encoded query, so urlopen stays on its scheme.
         with urllib.request.urlopen(  # nosec B310
             request,
-            timeout=get_plugin_config(
-                "network_map", "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS
+            timeout=float_setting(
+                "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS, 0
             ),
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -83,9 +82,7 @@ def geocode_sites(sites):
     Geocode an iterable of sites, respecting the Nominatim usage policy
     (max one request per configured interval). Returns {site_name: (lat, lon)}.
     """
-    interval = get_plugin_config(
-        "network_map", "request_interval_seconds", REQUEST_INTERVAL_SECONDS
-    )
+    interval = float_setting("request_interval_seconds", REQUEST_INTERVAL_SECONDS, 0)
     coordinates = {}
     geocoded_now = 0
 

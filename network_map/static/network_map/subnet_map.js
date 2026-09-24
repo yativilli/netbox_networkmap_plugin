@@ -10,13 +10,10 @@
     const SWISSSTOPO_URL =
         'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/21781/{z}/{y}/{x}.jpeg';
     const EMPTY_TILE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=';
-    // Switzerland plus a margin; also keeps the view inside the
-    // area covered by the LV03 tile grid.
+    // Switzerland plus a margin; also keeps the view inside the area covered by the LV03 tile grid.
     const COVERAGE_BOUNDS = L.latLngBounds([[45.82, 6.0], [47.9, 10.75]]);
 
-    // swisstopo LV03 (EPSG:21781) tile grid: origin 420000/350000,
-    // resolution 4000 - 250 * z m/px for z <= 13, then per the
-    // official WMTSCapabilities down to 0.1.
+    // swisstopo LV03 (EPSG:21781) tile grid: origin 420000/350000, resolution 4000 - 250 * z m/px for z <= 13, then per the official.
     const LV03_RESOLUTIONS = (() => {
         const resolutions = [];
         for (let z = 0; z <= 13; z++) {
@@ -27,10 +24,7 @@
         return resolutions;
     })();
 
-    // LV03 CRS fed by the precomputed projection grid (lv03_grid.js,
-    // generated from the official EPSG:4326 -> EPSG:21781 operation),
-    // which reproduces the swisstopo tile grid; the legacy +towgs84
-    // proj4 string used previously drifts by up to tens of km.
+    // LV03 CRS fed by lv03_grid.js, which reproduces the swisstopo tile grid exactly.
     const LV03_CRS = L.extend({}, L.CRS, {
         code: 'EPSG:21781',
         projection: {
@@ -75,20 +69,13 @@
         groups[key].pins.push(pin);
     });
 
-    // House mode: deep zoom onto a site swaps the map for the
-    // building's floor plan and scatters that site's machines on it.
+    // House mode: deep zoom onto a site swaps the map for the building's floor plan and scatters that site's machines on it.
     const siteLocations = mapData.locations || {};
     const layoutCache = {};
     const HOUSE_ENTER_ZOOM = 24;
     const HOUSE_EXIT_ZOOM = 23;
     const HOUSE_ENTER_M = 150;
     const HOUSE_LEAVE_M = 400;
-    // Slot grid (fractional x/y) for uploaded custom plans, which have
-    // no server-side layout.
-    const CUSTOM_SLOTS = [];
-    [0.3, 0.5, 0.7].forEach((fy) => {
-        [0.2, 0.4, 0.6, 0.8].forEach((fx) => CUSTOM_SLOTS.push([fx, fy]));
-    });
     const house = {
         activeKey: null,
         group: null,
@@ -128,8 +115,7 @@
         });
     }
 
-    // The regional map is exported as a raster picture, a building's floor
-    // plan as a scalable drawing that stays sharp when printed large.
+    // The regional map is exported as a raster picture, a building's floor plan as a scalable drawing that stays sharp when printed large.
     function setExportCaption(inHouse) {
         const exportButton = document.querySelector('[data-export-svg]');
         if (exportButton) {
@@ -172,9 +158,7 @@
 
     const ipCmp = (a, b) => a.ip.localeCompare(b.ip, undefined, {numeric: true});
 
-    // Flatten one site group's machines into one list, ordered by IP
-    // like the dots on the floor plan. Panel lists and house-mode
-    // markers share it so the two always show the same set and order.
+    // Flatten one site group's machines into one list, ordered by IP like the dots on the floor plan.
     function collectMachines(group) {
         const machines = [];
         group.pins.forEach((pin) => {
@@ -415,27 +399,21 @@
     }
 
     function housePlanOf(group) {
-        const withPlan = group.pins.find((pin) => pin.plan_url);
-        if (withPlan) {
-            return {
-                url: withPlan.plan_url,
-                w: withPlan.plan_w || 1200,
-                h: withPlan.plan_h || 850,
-                custom: true
-            };
-        }
-        return {logical: true, url: '', w: 1400, h: 850, custom: false};
+        // Data is static for the page's lifetime; build each site's layout once and reuse it.
+        const layout = layoutCache[group.site] ||
+            (layoutCache[group.site] = buildLogicalLayout(group));
+        return {
+            markup: layout.markup,
+            legend: layout.legend,
+            w: layout.w,
+            h: layout.h,
+            layout
+        };
     }
 
     function houseFootprint(plan) {
-        // The default footprint is ~120 m x 85 m of ground area;
-        // uploaded plans keep it, adjusted to their aspect ratio.
-        // Logical maps grow with the number of floors so each stays
-        // readable.
-        let area = 120 * 85;
-        if (plan.logical) {
-            area = Math.min(20400, Math.max(10200, 10200 * plan.h / 850));
-        }
+        // The footprint starts at ~120 m x 85 m of ground area; logical maps grow with the number of floors so each stays readable.
+        const area = Math.min(20400, Math.max(10200, 10200 * plan.h / 850));
         const ratio = plan.w / plan.h;
         return {w: Math.sqrt(area * ratio), h: Math.sqrt(area / ratio)};
     }
@@ -446,8 +424,7 @@
         return L.latLngBounds([[lat - dLat, lon - dLon], [lat + dLat, lon + dLon]]);
     }
 
-    // Fractional position on the plan -> coordinates, interpolated
-    // in projected space so it holds in any CRS.
+    // Fractional position on the plan -> coordinates, interpolated in projected space so it holds in any CRS.
     function slotToLatLng(bounds, fx, fy) {
         const zoom = 27;
         const nw = currentMap.project(bounds.getNorthWest(), zoom);
@@ -456,19 +433,7 @@
             L.point(nw.x + fx * (se.x - nw.x), nw.y + fy * (se.y - nw.y)), zoom);
     }
 
-    function ipHash(text) {
-        let hash = 0;
-        for (let i = 0; i < text.length; i++) {
-            hash = (hash * 31 + text.charCodeAt(i)) | 0;
-        }
-        return Math.abs(hash);
-    }
-
-    // Derive a floor from a NetBox location name, e.g.
-    // "2. Stock - Gang - DigiKri" -> 2. Stock, "U204" -> UG,
-    // "O 242" -> OG (attic), "Büro 267" -> 2. Stock, "019" -> EG.
-    // The German labels (UG/EG/OG, "N. Stock") are the Swiss
-    // building convention and deliberately stay untranslated.
+    // Derive a floor from a NetBox location name, e.g. "2.
     function logicalFloor(name) {
         let m = name.match(/(\d+)\.\s*stock\b/i);
         if (m) {
@@ -492,9 +457,7 @@
         return {sort: 200, label: t('other_rooms', 'Other rooms')};
     }
 
-    // Calibrated font/geometry metrics; they keep room labels and
-    // count chips from ever overlapping and were tuned against
-    // real floor-plan renderings.
+    // Calibrated font/geometry metrics; they keep room labels and count chips from ever overlapping and were tuned against real floor-plan.
     const CHIP_CHAR_W = 7.4;         // glyph width of the 14px count chip
     const ROOM_LABEL_CHAR_W = 8.6;   // glyph width of the 17px room label
     const FLOOR_LABEL_CHAR_W = 11.7; // glyph width of the 22px floor label
@@ -506,8 +469,7 @@
 
     const FLOOR_LINE_H = 24;          // pitch of a wrapped floor name's lines
 
-    // The colour and shape key standing in its own rectangle to the right of
-    // the generated plan.
+    // The colour and shape key standing in its own rectangle to the right of the generated plan.
     const LEGEND_SWATCH = 20;      // side of a prefix's colour chip
     const LEGEND_TEXT_DX = 30;     // from an entry's chip to its text
     const LEGEND_ROW_H = 30;       // height of an entry's own line
@@ -517,9 +479,7 @@
     const LEGEND_MIN = 240;        // the key is never narrower ...
     const LEGEND_MAX = 460;        // ... nor wider, so the plan stays a plan
 
-    // Words of a label placed on as many lines as the given width takes. Only
-    // a word wider than the line itself is broken, so nothing of a name is
-    // lost the way a cut-off one is.
+    // Words of a label placed on as many lines as the given width takes.
     function wrapWords(value, widthPx, charW) {
         const take = Math.max(1, Math.floor(widthPx / charW));
         const words = [];
@@ -548,18 +508,14 @@
             : name;
     }
 
-    // Columns a room box of the given width fits for `count`
-    // machines: enough that dots fill the box without touching.
+    // Columns a room box of the given width fits for `count` machines: enough that dots fill the box without touching.
     function roomGridCols(widthPx, count) {
         return Math.max(1, Math.min(
             Math.floor((widthPx - GRID_PAD) / GRID_DOT_DX),
             Math.ceil(Math.sqrt(count * GRID_DOT_DENSITY))));
     }
 
-    // Logical building map generated from NetBox locations: rooms
-    // are Location objects, floors are parsed from their names and
-    // drawn as bands (top floor first); empty rooms are shown too.
-    // Sites without any rooms get a single machine band instead.
+    // Logical building map generated from NetBox locations: rooms are Location objects, floors are parsed from their names and drawn as bands.
     function buildLogicalLayout(group) {
         const counts = {};
         let vmTotal = 0;
@@ -615,16 +571,13 @@
         const PLAN_W = 1400, PAD = 34, GAP = 14;
         const BAND_MIN = 150;   // the floor name's column is never narrower
         const BAND_MAX = 300;   // nor wider; a longer name goes over lines
-        // The column keeps room for the longest floor name on one line, so a
-        // name such as "Other rooms" is not cut to what the column was.
+        // The column fits the longest floor name on one line, so "Other rooms" is never cut.
         const widestFloor = floors.reduce(
             (wide, floor) => Math.max(wide, String(floor.label).length), 0);
         const BAND_W = Math.min(
             BAND_MAX, Math.max(BAND_MIN, Math.ceil(widestFloor * FLOOR_LABEL_CHAR_W) + 24));
 
-        // Pre-plan each floor band: room widths go by machine
-        // count and the band grows tall enough that the machine
-        // grids never collapse onto each other.
+        // Floor bands are pre-planned: room widths by machine count, tall enough for workable grids.
         const bands = floors.map((floor) => {
             const gap = floor.rooms.length > 1 ? 10 : 0;
             const availW =
@@ -649,11 +602,7 @@
             const boxH = Math.max(ROOM_MIN_H, maxRows * GRID_ROW_H + 24);
             return {floor, gap, widths, boxH, stacked, shift: stacked ? 24 : 0};
         });
-        // The colour and shape key of the plan: one entry per prefix the site
-        // holds a machine in, in the very colour its dots carry, and the two
-        // dot shapes next to them. It stands in a rectangle of its own to the
-        // right of the rooms, which therefore keep the width they had, and the
-        // exported picture copies it along with them.
+        // The plan's colour and shape key: one entry per prefix, in the dots' own colours.
         const shades = [];
         group.pins.forEach((pin) => {
             if (!pin.machines.length) {
@@ -685,9 +634,7 @@
             entries.push({shape: 'hollow', text: t('virtual_machine', 'Virtual machine')});
         }
 
-        // Wide enough for the widest entry on one line, and never wider than
-        // LEGEND_MAX: what does not fit goes under the prefix instead of being
-        // cut, so a long subnet name is never lost to the rectangle's edge.
+        // Never wider than LEGEND_MAX; what does not fit goes under the prefix, nothing is cut.
         const LEGEND_W = entries.length
             ? Math.min(LEGEND_MAX, Math.max(
                 LEGEND_MIN,
@@ -742,8 +689,7 @@
             svg.push(`<rect x="${PAD}" y="${y0}" width="${PLAN_W - 2 * PAD}" ` +
                 `height="${boxH + 74 + shift}" rx="8" fill="#ece7da" ` +
                 'stroke="#d8d2c2" stroke-width="1.5"/>');
-            // The name is written whole, in the column it was given and in as
-            // many lines as that column takes.
+            // The name is written whole, in the column it was given and in as many lines as that column takes.
             wrapWords(floor.label, BAND_W - 16, FLOOR_LABEL_CHAR_W).forEach(
                 (line, k) => {
                     svg.push(`<text x="${PAD + BAND_W / 2}" ` +
@@ -758,8 +704,7 @@
                 const count = counts[name] || 0;
                 const chip = count > 0 ? countChipText(name, count) : '';
                 if (name !== '' && name !== '__virtual__') {
-                    // Narrow boxes stack name over count instead
-                    // of letting them run into each other.
+                    // Narrow boxes stack name over count instead of letting them run into each other.
                     const budget = stacked ? w - 6
                         : w - (count > 0 ? countChipWidth(name, count) + 12 : 10);
                     svg.push(`<text x="${x}" ` +
@@ -783,9 +728,7 @@
         }
 
         if (entries.length) {
-            // One group, so the whole key can be moved as one - the plan is
-            // often taller than the window, and a key that stays at the top of
-            // a tall plan is gone as soon as one has scrolled down.
+            // One group so the whole key moves at once - plans are often taller than the window.
             const key = [
                 `<rect x="${legendX}" y="110" width="${LEGEND_W}" ` +
                 `height="${legendH}" rx="8" fill="#ece7da" ` +
@@ -803,9 +746,7 @@
                 const base = ly + 20;
                 const lines = [];
                 if (entry.shape) {
-                    // The plan draws a machine as a dot of its prefix's
-                    // colour; a virtual one is the same dot with its middle
-                    // left out, which is what these two chips stand for.
+                    // A machine is a dot in its prefix's colour; a virtual one is the same dot, hollow.
                     lines.push(`<circle cx="${x + LEGEND_SWATCH / 2}" ` +
                         `cy="${base - LEGEND_SWATCH / 2 + 5}" r="9" ` +
                         (entry.shape === 'full'
@@ -831,8 +772,7 @@
                         `y="${base + (k + 1) * LEGEND_NOTE_H}" font-size="14" ` +
                         `fill="#8a8378">${escapeHtml(line)}</text>`);
                 });
-                // Named by its subnet, so hovering a machine can pick its
-                // entry out.
+                // Named by its subnet, so hovering a machine can pick its entry out.
                 key.push(`<g class="legend-entry"` +
                     (entry.shape ? '' : ` data-subnet="${escapeHtml(entry.subnet)}"`) +
                     `>${lines.join('')}</g>`);
@@ -861,11 +801,7 @@
         return countChipText(name, count).length * CHIP_CHAR_W + 4;
     }
 
-    // The floor plan as a hand-rolled SVG overlay: Firefox drops
-    // raster content (img, canvas, background) inside the deeply
-    // translated map panes at house zoom, but paints vectors
-    // reliably, so the plan is inlined into an <svg> sized to the
-    // footprint on every view change.
+    // The floor plan as a hand-rolled SVG overlay: Firefox drops raster content (img, canvas, background) inside the deeply translated map.
     function createPlanOverlay(plan, bounds) {
         const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         node.setAttribute('class', 'house-plan-overlay');
@@ -873,9 +809,7 @@
         node.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         node.style.position = 'absolute';
 
-        // The key of the plan is worth reading while one works down a tall
-        // plan, so it travels with the view instead of staying at the top of
-        // the drawing, where it is out of sight after two floors.
+        // The key travels with the view, or it sits unseen above the second floor.
         function stickLegend() {
             const box = plan.legend;
             const group = box && node.querySelector('.plan-legend');
@@ -885,8 +819,7 @@
             }
             const nw = currentMap.latLngToLayerPoint(bounds.getNorthWest());
             const top = currentMap.containerPointToLayerPoint([0, 0]).y;
-            // Where the window's top edge falls inside the plan, in the plan's
-            // own units, and how far down the key may go without leaving it.
+            // Where the window's top edge falls inside the plan, in the plan's own units, and how far down the key may go without leaving it.
             const seen = (top - nw.y) * plan.h / taken;
             const slack = plan.h - (box.y + box.h) - 20;
             const dy = Math.max(0, Math.min(slack, seen - box.y));
@@ -910,42 +843,7 @@
             map.on('zoomend moveend viewreset', reset);
             map.on('move', stickLegend);
             reset();
-            if (plan.markup) {
-                node.innerHTML = plan.markup;
-            } else if (/\.svg(\?|$)/i.test(plan.url)) {
-                fetch(plan.url)
-                    .then((response) => (response.ok ? response.text() : ''))
-                    .then((text) => {
-                        const root = new DOMParser()
-                            .parseFromString(text, 'image/svg+xml')
-                            .querySelector('svg');
-                        if (!root) {
-                            return;
-                        }
-                        // An uploaded SVG is a document of someone else's
-                        // making: once inline in the page its scripts would
-                        // run, so they and their inline event handlers are
-                        // stripped before the import.
-                        root.querySelectorAll('script').forEach((script) => script.remove());
-                        root.querySelectorAll('*').forEach((element) => {
-                            for (const attribute of Array.from(element.attributes)) {
-                                if (/^on/i.test(attribute.name)) {
-                                    element.removeAttribute(attribute.name);
-                                }
-                            }
-                        });
-                        root.setAttribute('width', '100%');
-                        root.setAttribute('height', '100%');
-                        node.appendChild(document.importNode(root, true));
-                    })
-                    .catch(() => {});
-            } else {
-                const raster = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-                raster.setAttribute('href', plan.url);
-                raster.setAttribute('width', plan.w);
-                raster.setAttribute('height', plan.h);
-                node.appendChild(raster);
-            }
+            node.innerHTML = plan.markup;
         }
 
         function detach(map) {
@@ -963,24 +861,17 @@
         const layer = L.layerGroup();
         const machines = collectMachines(group);
 
-        // Physical machines go into their room's box grid, virtual
-        // ones into the server-built "Virtual" band.
+        // Physical machines go into their room's box grid, virtual ones into the server-built "Virtual" band.
         const gridRoom = (machine) => (machine.physical ? machine.room : '__virtual__');
-        const layout = plan.layout || null;
+        const layout = plan.layout;
         const roomTotals = {};
-        if (layout) {
-            machines.forEach((machine) => {
-                const room = gridRoom(machine);
-                roomTotals[room] = (roomTotals[room] || 0) + 1;
-            });
-        }
+        machines.forEach((machine) => {
+            const room = gridRoom(machine);
+            roomTotals[room] = (roomTotals[room] || 0) + 1;
+        });
         const roomSeen = {};
 
-        // Hovering a machine picks its subnet out of the plan: the dot under
-        // the cursor gains a ring, and the entry of the key that names its
-        // subnet is marked with it - the colour says which subnet it is, now
-        // the word does too. Only that one dot is ringed: a whole subnet
-        // alight hides the machine the cursor is on.
+        // Hovering rings the machine's dot and lights the key entry naming its subnet.
         function lightSubnet(marker, subnet, on) {
             const element = marker.getElement && marker.getElement();
             const dot = element && element.querySelector('.subnet-machine-pin');
@@ -993,36 +884,24 @@
             ).forEach((entry) => entry.classList.toggle('key-lit', on));
         }
 
-        machines.forEach((machine, index) => {
-            let fx;
-            let fy;
-            if (layout) {
-                const room = gridRoom(machine);
-                const box = layout.boxes[room] || layout.boxes[''] ||
-                    {x: 40, y: layout.h / 2, w: layout.w - 80, h: 60};
-                const k = roomSeen[room] = roomSeen[room] || 0;
-                roomSeen[room] = k + 1;
-                const total = roomTotals[room];
-                const cols = box.cols || roomGridCols(box.w, total);
-                const rows = Math.max(1, Math.ceil(total / cols));
-                const cellW = (box.w - GRID_PAD) / cols;
-                const cellH = Math.max(GRID_PAD, (box.h - GRID_PAD) / rows);
-                fx = (box.x + 8 + ((k % cols) + 0.5) * cellW) / layout.w;
-                fy = (box.y + 8 + Math.floor(k / cols) * cellH + cellH / 2) / layout.h;
-            } else {
-                const slot = CUSTOM_SLOTS[index % CUSTOM_SLOTS.length];
-                const round = Math.floor(index / CUSTOM_SLOTS.length);
-                const hash = ipHash(machine.ip) + round * 17;
-                fx = slot[0] + (round === 0 ? 0 : ((hash % 7) - 3) * 0.012);
-                fy = slot[1] + (round === 0 ? 0 : (((hash >> 3) % 7) - 3) * 0.02);
-            }
+        machines.forEach((machine) => {
+            const room = gridRoom(machine);
+            const box = layout.boxes[room] || layout.boxes[''] ||
+                {x: 40, y: layout.h / 2, w: layout.w - 80, h: 60};
+            const k = roomSeen[room] = roomSeen[room] || 0;
+            roomSeen[room] = k + 1;
+            const total = roomTotals[room];
+            const cols = box.cols || roomGridCols(box.w, total);
+            const rows = Math.max(1, Math.ceil(total / cols));
+            const cellW = (box.w - GRID_PAD) / cols;
+            const cellH = Math.max(GRID_PAD, (box.h - GRID_PAD) / rows);
+            const fx = (box.x + 8 + ((k % cols) + 0.5) * cellW) / layout.w;
+            const fy = (box.y + 8 + Math.floor(k / cols) * cellH + cellH / 2) / layout.h;
             const style = machine.physical
                 ? `background:${machine.color}`
                 : `background:#fff;border-color:${machine.color}`;
             const at = slotToLatLng(bounds, fx, fy);
-            // The SVG export draws permanent name/IP labels for these dots;
-            // on screen the same data is only a hover tooltip, which has room
-            // for one more line: what the machine is for.
+            // The SVG export draws permanent name/IP labels for these dots; on screen the same data is only a hover tooltip, which has room.
             machine.lat = at.lat;
             machine.lng = at.lng;
             const marker = L.marker(at, {
@@ -1035,9 +914,7 @@
                 }),
                 zIndexOffset: 6000 + index
             });
-            // A device without a DNS name is named by its address, and the
-            // description - what it is or does - is said underneath unless it
-            // would only repeat that name.
+            // No DNS name, the address names it; the description goes underneath unless it repeats that.
             const named = machine.name || machine.ip;
             const purpose = machine.description && machine.description !== named
                 ? `<span class="machine-desc">${escapeHtml(machine.description)}</span>`
@@ -1058,9 +935,7 @@
         window.__subnetMapHouse = {
             site: group.site,
             machines: machines,
-            // The SVG export places the plan in the very same geographic
-            // frame these dots sit in, instead of the overlay node's live
-            // CSS box, which is stale after a panel toggle or resize.
+            // The SVG export places the plan in the very same geographic frame these dots sit in, instead of the overlay node's live CSS box.
             bounds: {
                 n: bounds.getNorth(), s: bounds.getSouth(),
                 e: bounds.getEast(), w: bounds.getWest()
@@ -1076,16 +951,6 @@
         collapseAll(map);
         setExportCaption(true);
         const plan = housePlanOf(group);
-        if (plan.logical) {
-            // Data is static for the page's lifetime; build each
-            // site's layout once and reuse it.
-            plan.layout = layoutCache[group.site] ||
-                (layoutCache[group.site] = buildLogicalLayout(group));
-            plan.markup = plan.layout.markup;
-            plan.legend = plan.layout.legend;
-            plan.w = plan.layout.w;
-            plan.h = plan.layout.h;
-        }
         const footprint = houseFootprint(plan);
         const bounds = houseBounds(group.lat, group.lon, footprint.w, footprint.h);
 
@@ -1098,8 +963,7 @@
         if (tileLayer) {
             map.removeLayer(tileLayer);
         }
-        // The canton fill is a translucent red; left in place it would
-        // tint the plain background behind the plan.
+        // The canton fill is a translucent red; left in place it would tint the plain background behind the plan.
         cantonLayers.forEach((layer) => map.removeLayer(layer));
         mapContainer.classList.add('house-active');
 
@@ -1116,18 +980,15 @@
         const badge = document.createElement('div');
         badge.className = 'house-plan-badge';
         badge.appendChild(el('span', 'badge-site',
-            (plan.logical ? t('floor_map', 'Floor map') : t('house_plan', 'House plan')) +
-            ` \u2014 ${group.site}`));
+            `${t('floor_map', 'Floor map')} \u2014 ${group.site}`));
         badge.appendChild(el('span', 'badge-hint',
             t('badge_hint', 'scroll out to return to the map')));
         mapContainer.appendChild(badge);
         house.badge = badge;
 
-        // Frame the plan once on entry: zoom in as far as the plan
-        // still fits within the fill fraction of the viewport.
-        // Logical maps are usually tall, so they get more room.
+        // Frame the plan once on entry: zoom in as far as the plan still fits within the fill fraction of the viewport.
         const size = map.getSize();
-        const fill = plan.logical ? 0.75 : 0.6;
+        const fill = 0.75;
         let zoom = HOUSE_ENTER_ZOOM;
         for (let z = HOUSE_ENTER_ZOOM; z <= map.getMaxZoom(); z++) {
             const res = LV03_RESOLUTIONS[z];
@@ -1205,11 +1066,7 @@
 
         const crs = map.options.crs;
         if (crs && crs.code === 'EPSG:21781') {
-            // Leaflet's getBoundsZoom assumes crs.scale(0) === 1,
-            // which is false for the LV03 tile grid, so pick the
-            // zoom from the projected spans manually. The grid is
-            // rotated, so project all four bounds corners. Use an
-            // integer zoom so tiles render at their native scale.
+            // Leaflet's getBoundsZoom assumes crs.scale(0) === 1, which is false for the LV03 tile grid, so pick the zoom from the projected.
             const size = map.getSize();
             const corners = [
                 bounds.getNorthWest(), bounds.getNorthEast(),
@@ -1258,9 +1115,7 @@
             ? L.map('subnet-map', {
                 crs: LV03_CRS,
                 minZoom: 6,
-                // Tiles go natively to 27 (0.25 m/px); the view
-                // overzooms to 30 so the vector floor plan can be
-                // inspected at close range.
+                // Tiles go natively to 27 (0.25 m/px); the view overzooms to 30 so the vector floor plan can be inspected at close range.
                 maxZoom: 30,
                 zoomAnimation: false,
                 maxBounds: COVERAGE_BOUNDS.pad(0.15),
@@ -1278,9 +1133,7 @@
             attribution: '&copy; <a href="https://www.swisstopo.ch/">swisstopo</a>'
         });
         layer.getTileUrl = function (coords) {
-            // The LV03 grid starts at tile 0/0 at its origin; the
-            // WMTS server answers 400 for negative indices, which
-            // happens at wide zooms and outside the country.
+            // The LV03 grid starts at tile 0/0 at its origin; the WMTS server answers 400 for negative indices, which happens at wide zooms.
             if (coords.x < 0 || coords.y < 0) {
                 return EMPTY_TILE;
             }
@@ -1288,17 +1141,14 @@
         };
         layer.addTo(map);
         tileLayer = layer;
-        // The exporter fetches the tile grid itself (see svg_export.js), so
-        // its picture is not limited to the tiles this view happens to hold.
-        // For that it needs to know how the grid is addressed.
+        // The exporter fetches the tile grid itself (see svg_export.js), so its picture is not limited to the tiles this view happens to hold.
         window.__subnetMapTiles = {
             url: SWISSSTOPO_URL,
             tileSize: layer.options.tileSize || 256,
             minNativeZoom: layer.options.minNativeZoom,
             maxNativeZoom: layer.options.maxNativeZoom
         };
-        // Leaflet rebuilds the attribution control HTML whenever
-        // layers are added; re-apply the new-tab target each time.
+        // Leaflet rebuilds the attribution control HTML whenever layers are added; re-apply the new-tab target each time.
         const openAttributionLinks = () => {
             map.attributionControl.getContainer()
                 .querySelectorAll('a')
@@ -1312,9 +1162,7 @@
 
         addCantonBorder(map);
         buildPins(map);
-        // Clicking anywhere outside the pins collapses expanded
-        // clusters again and closes the detail panel. (Suppressed
-        // in house-plan mode, where the plan is the whole map.)
+        // Clicking anywhere outside the pins collapses expanded clusters again and closes the detail panel.
         map.on('click', () => {
             if (house.activeKey) {
                 return;
@@ -1332,8 +1180,7 @@
     let currentMap = null;
     let tileLayer = null;
 
-    // How far the exported picture stands off the border it cuts along; the
-    // served picture reads the same settings, so both agree.
+    // How far the exported picture stands off the border it cuts along; the served picture reads the same settings, so both agree.
     window.__subnetMapExportRoom = mapData.export_room || null;
 
     const boundaryUrl = mapData.canton_boundary_url;
@@ -1342,8 +1189,7 @@
             .then((response) => (response.ok ? response.json() : null))
             .then((geojson) => {
                 cantonBoundary = geojson;
-                // Read by the SVG exporter to draw the border at the
-                // exact position the map shows it.
+                // Read by the SVG exporter to draw the border at the exact position the map shows it.
                 window.__subnetMapBoundary = geojson;
             })
             .catch(() => {

@@ -17,8 +17,7 @@ import math
 # The grid's top left corner and the side of one tile, in metres.
 TILE_ORIGIN = (420000.0, 350000.0)
 TILE_SIZE = 256
-# Metres per pixel of every zoom step: 4000 - 250 m down to zoom 13, then the
-# steps the capabilities document lists for the rest of the ladder.
+# Metres per pixel of every zoom step: 4000 - 250 m down to zoom 13, then the steps the capabilities document lists for the rest of the ladder.
 RESOLUTIONS = tuple(4000.0 - 250.0 * step for step in range(14)) + (
     650.0,
     500.0,
@@ -42,8 +41,7 @@ MIN_ZOOM = 8
 # The highest zoom the canton tiles are published at.
 MAX_ZOOM = 27
 
-# The auxiliary values of the transformation are the difference from the
-# country's centre, counted in ten-thousandths of an arc second.
+# The auxiliary values of the transformation are the difference from the country's centre, counted in ten-thousandths of an arc second.
 _CENTER_LAT = 169028.66
 _CENTER_LON = 26782.5
 _ARCSEC = 10000.0

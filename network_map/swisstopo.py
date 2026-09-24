@@ -7,11 +7,11 @@ from django.core.cache import cache
 from netbox.plugins import get_plugin_config
 
 from . import __version__
+from .defaults import float_setting, int_setting
 
 logger = logging.getLogger(__name__)
 
-# BFS / swisstopo canton numbers, keyed by the two-letter canton code.
-# These are the feature ids of the swisstopo canton-area layer.
+# BFS / swisstopo canton numbers, keyed by the two-letter canton code. These are the feature ids of the swisstopo canton-area layer.
 CANTON_IDS = {
     "ZH": 1,
     "BE": 2,
@@ -74,40 +74,28 @@ CANTON_NAMES = {
     "JU": "Jura",
 }
 
-# Primary geometry source: swisstopo WFS. The raw feature type carries the
-# canton polygon *with* interior rings, so holes (neighbouring-canton pockets
-# such as the Solothurn exclave at Steinhof) are preserved and excluded from
-# the drawn area. {id} is replaced with the BFS canton number. srsName=EPSG:4326
-# returns WGS84 lon/lat, which the Leaflet map projects through its LV03 CRS.
+# Primary geometry source: swisstopo WFS.
 DEFAULT_URL_TEMPLATE = (
     "https://wfs.geo.admin.ch/?service=WFS&version=2.0.0&request=GetFeature"
     "&typeNames=ch.swisstopo.swissboundaries3d-kanton-flaeche.fill"
     "&outputFormat=application%2Fjson&srsName=EPSG%3A4326&CQL_FILTER=id%3D{id}"
 )
 
-# Fallback geometry source: OpenStreetMap/Nominatim. Public Nominatim search
-# with polygon_geojson=1 returns the administrative boundary with interior
-# rings, so holes such as Steinhof SO are preserved when the WFS source is
-# unreachable. {code} is replaced with the canton's ISO/CH code (e.g. CH-BE).
+# Fallback geometry source: OpenStreetMap/Nominatim.
 FALLBACK_URL_TEMPLATE = (
     "https://nominatim.openstreetmap.org/search?q=CH-{code}"
     "&countrycodes=ch&featuretype=country_subdivision"
     "&polygon_geojson=1&format=json&limit=1"
 )
 
-# Last-resort geometry source: the map.geo.admin.ch feature endpoint. Its
-# polygon is display-optimised and carries no interior rings, so holes are not
-# cut out. Used when the hole-carrying WFS and Nominatim sources are both
-# unavailable.
+# Last-resort geometry source: the map.geo.admin.ch feature endpoint.
 LAST_RESORT_URL_TEMPLATE = (
     "https://api3.geo.admin.ch/rest/services/api/MapServer"
     "/ch.swisstopo.swissboundaries3d-kanton-flaeche.fill/{id}"
     "?geometry=true&returnGeometry=true&sr=4326&f=json"
 )
 
-# The whole country instead of a canton, which "CH" (or "SW") in
-# canton_boundary_code asks for. The national border lives in its own layer,
-# whose single feature is addressed by "CH".
+# The whole country instead of a canton, which "CH" (or "SW") in canton_boundary_code asks for.
 COUNTRY = "CH"
 COUNTRY_CODES = ("CH", "SW")
 COUNTRY_NAME = "Schweiz"
@@ -118,9 +106,7 @@ COUNTRY_URL_TEMPLATE = (
     "?geometry=true&returnGeometry=true&sr=4326&f=json"
 )
 
-# Nominatim's country polygon carries interior rings, so enclaves such as
-# Büsingen stay outside the drawn country; the swisstopo feature endpoint above
-# is tried first because its geometry is the official one.
+# Nominatim's country polygon carries interior rings, so enclaves such as Büsingen stay outside the drawn country; the swisstopo feature.
 COUNTRY_FALLBACK_URL_TEMPLATE = (
     "https://nominatim.openstreetmap.org/search?q=Switzerland"
     "&countrycodes=ch&featuretype=country"
@@ -296,13 +282,11 @@ def _try_collection(source, template, canton_id, canton_code):
 
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        # The URL comes from the plugin settings (an https swisstopo
-        # endpoint) plus a numeric canton id, so urlopen cannot be steered
-        # to other schemes.
+        # A configured https endpoint plus a numeric id, so urlopen stays on its scheme.
         with urllib.request.urlopen(  # nosec B310
             request,
-            timeout=get_plugin_config(
-                "network_map", "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS
+            timeout=float_setting(
+                "request_timeout_seconds", REQUEST_TIMEOUT_SECONDS, 0
             ),
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -362,11 +346,30 @@ def _fetch_boundary(what, area_id, area_code, templates):
         return None
 
     logger.info("Border geometry for %s fetched from the %s source", what, source)
-    cache_seconds = get_plugin_config(
-        "network_map", "canton_boundary_cache_seconds", CACHE_SECONDS
+    cache.set(
+        cache_key,
+        feature_collection,
+        int_setting("canton_boundary_cache_seconds", CACHE_SECONDS, 0),
     )
-    cache.set(cache_key, feature_collection, cache_seconds)
     return feature_collection
+
+
+def _boundary_sources(prefix, defaults):
+    """
+    The chain of sources a border is tried through, as `(label, URL template)`
+    in the order to ask: one setting prefix names the three settings, one
+    tuple holds their defaults.
+    """
+    names = ("primary", "fallback", "last-resort")
+    settings = (
+        f"{prefix}_url_template",
+        f"{prefix}_fallback_url_template",
+        f"{prefix}_last_resort_url_template",
+    )
+    return tuple(
+        (label, get_plugin_config("network_map", setting, default))
+        for label, setting, default in zip(names, settings, defaults, strict=True)
+    )
 
 
 def get_canton_boundary(code):
@@ -385,30 +388,12 @@ def get_canton_boundary(code):
             COUNTRY,
             COUNTRY,
             COUNTRY,
-            (
+            _boundary_sources(
+                "country_boundary",
                 (
-                    "primary",
-                    get_plugin_config(
-                        "network_map",
-                        "country_boundary_url_template",
-                        COUNTRY_URL_TEMPLATE,
-                    ),
-                ),
-                (
-                    "fallback",
-                    get_plugin_config(
-                        "network_map",
-                        "country_boundary_fallback_url_template",
-                        COUNTRY_FALLBACK_URL_TEMPLATE,
-                    ),
-                ),
-                (
-                    "last-resort",
-                    get_plugin_config(
-                        "network_map",
-                        "country_boundary_last_resort_url_template",
-                        COUNTRY_LAST_RESORT_URL_TEMPLATE,
-                    ),
+                    COUNTRY_URL_TEMPLATE,
+                    COUNTRY_FALLBACK_URL_TEMPLATE,
+                    COUNTRY_LAST_RESORT_URL_TEMPLATE,
                 ),
             ),
         )
@@ -420,28 +405,12 @@ def get_canton_boundary(code):
         canton_id,
         canton_id,
         resolve_canton_code(code),
-        (
+        _boundary_sources(
+            "canton_boundary",
             (
-                "primary",
-                get_plugin_config(
-                    "network_map", "canton_boundary_url_template", DEFAULT_URL_TEMPLATE
-                ),
-            ),
-            (
-                "fallback",
-                get_plugin_config(
-                    "network_map",
-                    "canton_boundary_fallback_url_template",
-                    FALLBACK_URL_TEMPLATE,
-                ),
-            ),
-            (
-                "last-resort",
-                get_plugin_config(
-                    "network_map",
-                    "canton_boundary_last_resort_url_template",
-                    LAST_RESORT_URL_TEMPLATE,
-                ),
+                DEFAULT_URL_TEMPLATE,
+                FALLBACK_URL_TEMPLATE,
+                LAST_RESORT_URL_TEMPLATE,
             ),
         ),
     )
