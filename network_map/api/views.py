@@ -55,13 +55,14 @@ class PngRenderer(BaseRenderer):
     def render(self, data, accepted_media_type=None, renderer_context=None):
         markup = data if isinstance(data, str) else str(data)
         if not markup.lstrip().startswith(("<?xml", "<svg")):
-            # What is not a document - an error message for one - is worth
-            # more as its own text than as a picture of it.
             return markup.encode("utf-8")
         try:
             return png_render.render_png(markup)
         except png_render.PngRenderError as error:
-            raise PngRenderFailed(str(error)) from error
+            raise PngRenderFailed(
+                "Could not rasterise this picture; "
+                "Try ?format=svg, for which no rasteriser is needed."
+            ) from error
 
 
 class PluginApiRootView(APIView):
@@ -207,9 +208,9 @@ class MapSvgView(PictureAccessMixin, APIView):
                 map_data,
                 boundary,
                 get_canton_label(canton_code) if boundary else None,
-                tiles_of=map_tiles.background
-                if self._wants_background(request)
-                else None,
+                tiles_of=(
+                    map_tiles.background if self._wants_background(request) else None
+                ),
                 attribution=map_tiles.attribution(),
             )
         elif kind == "topology":
