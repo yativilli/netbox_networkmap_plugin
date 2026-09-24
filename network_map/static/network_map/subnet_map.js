@@ -884,7 +884,7 @@
             ).forEach((entry) => entry.classList.toggle('key-lit', on));
         }
 
-        machines.forEach((machine) => {
+        machines.forEach((machine, index) => {
             const room = gridRoom(machine);
             const box = layout.boxes[room] || layout.boxes[''] ||
                 {x: 40, y: layout.h / 2, w: layout.w - 80, h: 60};

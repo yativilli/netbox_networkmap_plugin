@@ -1468,6 +1468,14 @@ class HousePlanHoverTests(TestCase):
         sheet = _static("subnet_map.css")
         self.assertIn(".subnet-machine-tooltip .machine-desc", sheet)
 
+    def test_the_dots_are_placed_at_all(self):
+        # A refactor dropped the forEach index while the marker stacked by it, and no dot was painted.
+        script = _static("subnet_map.js")
+        start = script.index("function addMachineMarkers")
+        block = script[start : script.index("layer.addTo(currentMap", start)]
+        self.assertIn("zIndexOffset: 6000 + index", block)
+        self.assertRegex(block, r"machines\.forEach\(\(machine, index\) =>")
+
 
 class FloorPlanBandTitleTests(TestCase):
     """The floor name at the left of each band of the generated floor plan."""
