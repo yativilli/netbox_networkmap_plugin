@@ -442,6 +442,7 @@ class FloorPlanPictureView(PictureAccessMixin, APIView):
                 plan["url"],
                 plan["width"],
                 plan["height"],
+                pins=plan["pins"],
                 embedded=False,
             )
         return floor_plan.render_uploaded(
@@ -449,6 +450,7 @@ class FloorPlanPictureView(PictureAccessMixin, APIView):
             floor_plan.data_url(payload, mime),
             plan["width"],
             plan["height"],
+            pins=plan["pins"],
         )
 
 

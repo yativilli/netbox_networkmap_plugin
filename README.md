@@ -89,6 +89,9 @@ curl -H "Authorization: Token <token>" \
   where NetBox keeps it; `?site=` takes the site's slug.
 - An uploaded plan is drawn with its picture inside the document, so the file
   stands on its own; above 8 MB the picture stays a link and says so.
+- Both kinds carry their machines the way the browser export of the map does:
+  every dot is numbered in the machine's colour, virtual ones hollow, and under
+  the picture the machines are listed with their name, description and address.
 - The logical map is built from the site's locations, floor by floor, and
   carries the same colour key as the map page; the `network_map.floor_plan`
   module and `subnet_map.js` hold the same measurements, which

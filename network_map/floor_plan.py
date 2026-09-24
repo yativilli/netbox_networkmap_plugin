@@ -45,15 +45,44 @@ LEGEND_MIN = 240  # the key is never narrower ...
 LEGEND_MAX = 460  # ... nor wider, so the plan stays a plan
 TITLE_CHAR_W = 14  # glyph width of the 26px title over an uploaded plan
 
-DOT_R = 7  # a machine dot, in the plan's own units
-VIRTUAL_DOT_STROKE = 3.5
+# The machine dots carry their number and are listed under the plan, exactly
+# as the browser export does it when a plan is too dense for a name next to
+# every dot - which a room grid of dots always is.
+BADGE_R = 9  # a numbered machine dot
+LIST_EDGE = 24  # where the first list column starts
+LIST_COL_W = 384  # width of one machine column of the list
+LIST_ROW_H = 40  # height of a list entry's own two lines
+LIST_TEXT_DX = 20  # from an entry's dot to its text
+LIST_SUB_DY = 16  # from an entry's name to its description and address
+LIST_NAME_CHAR_W = 9.0  # glyph width of the 15px machine name
+LIST_SUB_CHAR_W = 8.1  # glyph width of the 13.5px line under it
+
+# The slots an uploaded plan's dots go into, as fractions of its picture: the
+# upload has no rooms to place machines in, so the page spreads them over this
+# grid and jitters every machine past the first round of it.
+CUSTOM_SLOTS = [(fx, fy) for fy in (0.3, 0.5, 0.7) for fx in (0.2, 0.4, 0.6, 0.8)]
 
 # An uploaded plan is handed out with its picture inside the document, so the
 # file stands on its own; a bigger upload keeps the address of its file
 # instead, which costs a second request but not a document of dozens of MB.
 MAX_EMBED_BYTES = 8_000_000
 
-PLAN_STYLE = f"text {{ font-family: {svg_render.FONT}; pointer-events: none; }}"
+PLAN_STYLE = "\n".join(
+    (
+        f"text {{ font-family: {svg_render.FONT}; pointer-events: none; }}",
+        ".map-machine { stroke-width: 2; }",
+        ".map-machine.is-vm { stroke-width: 3; }",
+        ".map-machine-num { font-size: 9.5px; font-weight: 700; fill: #ffffff;",
+        "  text-anchor: middle; paint-order: stroke;",
+        "  stroke: rgba(0, 0, 0, 0.45); stroke-width: 2px; }",
+        # The export halos a virtual machine's number white; on a plan of
+        # our own ground the number needs none, and a rasteriser without
+        # paint-order would paint it right over the digit.
+        ".map-machine-num.is-vm { fill: #1f2937; stroke: none; }",
+        ".map-list-name { font-size: 15px; font-weight: 700; }",
+        ".map-list-sub { font-size: 13.5px; fill: #6c757d; }",
+    )
+)
 
 STOCK = re.compile(r"(\d+)\.\s*stock\b", re.IGNORECASE)
 BASEMENT = re.compile(r"^(UG|ET|KG)\b|^U[\d\s]", re.IGNORECASE)
@@ -162,6 +191,10 @@ def collect_machines(pins):
     """
     machines = [
         {
+            # Name, description and address are what the plan lists under its
+            # picture, the way the map export lists the machines of a site.
+            "name": machine.get("name") or machine["ip"],
+            "description": machine.get("description") or "",
             "ip": machine["ip"],
             "room": machine.get("room") or "",
             "physical": machine.get("physical", True) is not False,
@@ -420,9 +453,14 @@ def build_layout(site_name, pins, room_names):
             x += room_w + band["gap"]
         y0 += box_h + 90 + GAP + shift
 
-    out.extend(_draw_dots(machines, boxes))
+    # The room grid keeps badges a dot width apart by construction, so the
+    # dots of a generated plan never need nudging.
+    out.extend(machine_badges(machines, grid_points(machines, boxes)))
     if key:
         out.append(_draw_key(key, entries, legend_x))
+    bottom, listing = machine_list(machines, width, height - PAD + GAP)
+    out.extend(listing)
+    height = max(height, bottom + PAD)
     return {
         "w": width,
         "h": height,
@@ -434,15 +472,18 @@ def build_layout(site_name, pins, room_names):
     }
 
 
-def _draw_dots(machines, boxes):
-    """Machine dots, room by room, in the order the machines are walked."""
+def grid_points(machines, boxes):
+    """
+    Where each machine's dot stands in its room, keyed by its place in the
+    machine list; room by room, in the order the machines are walked.
+    """
     totals = {}
     for machine in machines:
         room = machine["room"] if machine["physical"] else "__virtual__"
         totals[room] = totals.get(room, 0) + 1
     seen = {}
-    out = []
-    for machine in machines:
+    points = {}
+    for index, machine in enumerate(machines):
         room = machine["room"] if machine["physical"] else "__virtual__"
         box = boxes.get(room) or boxes.get("")
         if not box:
@@ -454,21 +495,152 @@ def _draw_dots(machines, boxes):
         rows = max(1, math.ceil(total / cols))
         cell_w = (box["w"] - GRID_PAD) / cols
         cell_h = max(GRID_PAD, (box["h"] - GRID_PAD) / rows)
-        cx = box["x"] + 8 + ((count % cols) + 0.5) * cell_w
-        cy = box["y"] + 8 + math.floor(count / cols) * cell_h + cell_h / 2
-        if machine["physical"]:
-            out.append(
-                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{DOT_R}" '
-                f'fill="{escape(machine["color"])}" stroke="#ffffff" '
-                'stroke-width="1.5"/>'
+        points[index] = (
+            box["x"] + 8 + ((count % cols) + 0.5) * cell_w,
+            box["y"] + 8 + math.floor(count / cols) * cell_h + cell_h / 2,
+        )
+    return points
+
+
+def ip_hash(text):
+    """The page's own hash of an address, which is what its jitter turns on."""
+    value = 0
+    for char in str(text):
+        value = (value * 31 + ord(char)) & 0xFFFFFFFF
+    return abs(value - 0x1_0000_0000 if value >= 0x8000_0000 else value)
+
+
+def scatter_points(machines, x, y, width, height):
+    """Where the dots of an uploaded plan go, as the page scatters them."""
+    points = {}
+    for index, machine in enumerate(machines):
+        slot = CUSTOM_SLOTS[index % len(CUSTOM_SLOTS)]
+        repeat = index // len(CUSTOM_SLOTS)
+        jitter = ip_hash(machine["ip"]) + repeat * 17
+        fx = slot[0] + (0 if not repeat else ((jitter % 7) - 3) * 0.012)
+        fy = slot[1] + (0 if not repeat else (((jitter >> 3) % 7) - 3) * 0.02)
+        points[index] = (x + fx * width, y + fy * height)
+    return spread_out(points, 2 * BADGE_R, (x, y, x + width, y + height))
+
+
+def spread_out(points, min_distance, bounds):
+    """
+    Dots that would cover a neighbour are nudged apart rather than crowding the
+    whole plan, but pulled back to their slot on every pass so they cannot
+    wander off the room they belong to.
+    """
+    if min_distance <= 0 or len(points) < 2:
+        return points
+    anchors = dict(points)
+    keys = sorted(points)
+    left, top, right, bottom = bounds
+    for _round in range(12):
+        moved = False
+        for a, b in (
+            (keys[i], keys[j])
+            for i in range(len(keys))
+            for j in range(i + 1, len(keys))
+        ):
+            dx = points[b][0] - points[a][0]
+            dy = points[b][1] - points[a][1]
+            distance = math.hypot(dx, dy)
+            if distance >= min_distance:
+                continue
+            push = ((min_distance - distance) / 2) or 0.5
+            ux = dx / distance if distance else (1 if a % 2 else -1)
+            uy = dy / distance if distance else 0
+            points[a] = (points[a][0] - ux * push, points[a][1] - uy * push)
+            points[b] = (points[b][0] + ux * push, points[b][1] + uy * push)
+            moved = True
+        for key in keys:
+            points[key] = (
+                points[key][0] + (anchors[key][0] - points[key][0]) * 0.1,
+                points[key][1] + (anchors[key][1] - points[key][1]) * 0.1,
             )
-        else:
-            out.append(
-                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{DOT_R - 1}" fill="#f7f4ea" '
-                f'stroke="{escape(machine["color"])}" '
-                f'stroke-width="{VIRTUAL_DOT_STROKE}"/>'
-            )
+        if not moved:
+            break
+    for key in keys:
+        x, y = points[key]
+        points[key] = (
+            min(max(x, left), right),
+            min(max(y, top), bottom),
+        )
+    return points
+
+
+def machine_badges(machines, points):
+    """
+    The dots, numbered and in the machine's colour, a virtual one hollow; the
+    number is what ties a dot to its line in the list under the plan.
+    """
+    out = []
+    for index, machine in enumerate(machines):
+        point = points.get(index)
+        if point is None:
+            continue
+        color = machine["color"] or "#6b6b63"
+        fill = color if machine["physical"] else "#ffffff"
+        virtual = "" if machine["physical"] else " is-vm"
+        out.append(
+            f'<circle class="map-machine{virtual}" cx="{point[0]:.1f}" '
+            f'cy="{point[1]:.1f}" r="{BADGE_R}" fill="{escape(fill)}" '
+            f'stroke="{escape(color)}"/>'
+        )
+        out.append(
+            f'<text class="map-machine-num{virtual}" x="{round(point[0])}" '
+            f'y="{round(point[1]) + 3}">{index + 1}</text>'
+        )
     return out
+
+
+def clip_to(value, width_px, char_w):
+    """A label cut to the room it has, with the ellipsis the export cuts with."""
+    label = str(value or "")
+    while len(label) > 1 and (len(label) + 1) * char_w > width_px:
+        label = label[:-1]
+    if label != str(value or ""):
+        label = re.sub(r"[\s.,;:)+/-]+$", "", label) + "\u2026"
+    return label
+
+
+def machine_list(machines, width, start_y):
+    """
+    The machines in columns under the plan: number and name in the colour of
+    their dot, what the machine is for and its address on the line under it.
+    """
+    if not machines:
+        return start_y, []
+    columns = max(1, int((width - 2 * LIST_EDGE) // LIST_COL_W) or 1)
+    per_column = math.ceil(len(machines) / columns)
+    room = LIST_COL_W - 34
+    bottoms = [0] * columns
+    out = []
+    for index, machine in enumerate(machines):
+        column = min(int(index / per_column), columns - 1)
+        x = LIST_EDGE + column * LIST_COL_W
+        y = start_y + bottoms[column]
+        color = machine["color"] or "#6b6b63"
+        fill = color if machine["physical"] else "#ffffff"
+        virtual = "" if machine["physical"] else " is-vm"
+        out.append(
+            f'<circle class="map-machine{virtual}" cx="{x + 6}" cy="{y - 4}" r="6" '
+            f'fill="{escape(fill)}" stroke="{escape(color)}"/>'
+        )
+        name = f"{index + 1}  {machine['name']}{'' if machine['physical'] else ' (VM)'}"
+        out.append(
+            f'<text class="map-list-name" x="{x + LIST_TEXT_DX}" y="{y}" '
+            f'style="fill:{escape(color)}">'
+            f"{escape(clip_to(name, room, LIST_NAME_CHAR_W))}</text>"
+        )
+        sub = " \u2014 ".join(
+            part for part in (machine["description"], machine["ip"]) if part
+        )
+        out.append(
+            f'<text class="map-list-sub" x="{x + LIST_TEXT_DX}" '
+            f'y="{y + LIST_SUB_DY}">{escape(clip_to(sub, room, LIST_SUB_CHAR_W))}</text>'
+        )
+        bottoms[column] += LIST_ROW_H
+    return start_y + max(bottoms) + 6, out
 
 
 def _draw_key(key, entries, legend_x):
@@ -548,10 +720,11 @@ def render_logical(site_name, pins, room_names):
     return svg_render.build_svg(layout["w"], layout["h"], body, style=PLAN_STYLE)
 
 
-def render_uploaded(site_name, href, width, height, embedded=True):
+def render_uploaded(site_name, href, width, height, pins=(), embedded=True):
     """
-    An uploaded house plan: its own picture inside a frame with the site's
-    name over it, the bytes inlined so the document stands on its own.
+    An uploaded house plan: its own picture inside a frame with the site's name
+    over it, the bytes inlined so the document stands on its own, and its
+    machines dotted over the picture and listed under it.
     """
     caption = 90
     title = f"{site_name} \u2014 {_('House plan')}"
@@ -559,7 +732,6 @@ def render_uploaded(site_name, href, width, height, embedded=True):
     # which is the one thing the document has to say.
     doc_w = max(int(width) + 2 * PAD, math.ceil(len(title) * TITLE_CHAR_W) + 2 * PAD)
     image_bottom = caption + int(height)
-    doc_h = image_bottom + PAD
     body = [
         (
             f'<rect x="{PAD}" y="{caption}" width="{int(width)}" height="{int(height)}" '
@@ -574,12 +746,19 @@ def render_uploaded(site_name, href, width, height, embedded=True):
             f"{escape(title)}</text>"
         ),
     ]
+    list_top = image_bottom + LIST_ROW_H
     if not embedded:
         body.append(
             f'<text x="{PAD}" y="{image_bottom + 24}" font-size="14" '
             f'fill="#8a8378">'
             f"{escape(_('plan image is linked, not embedded'))}</text>"
         )
+    machines = collect_machines(pins)
+    points = scatter_points(machines, PAD, caption, int(width), int(height))
+    body.extend(machine_badges(machines, points))
+    bottom, listing = machine_list(machines, doc_w, list_top)
+    body.extend(listing)
+    doc_h = max(image_bottom + PAD, bottom + PAD)
     return svg_render.build_svg(doc_w, doc_h, "".join(body), style=PLAN_STYLE)
 
 

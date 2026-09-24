@@ -1965,6 +1965,35 @@ class FloorPlanApiTests(TestCase):
         for picture in drawn:
             self.assertIn(b'<image href="data:image/png;base64,', picture)
 
+    def test_the_plan_numbers_its_dots_and_lists_its_machines(self):
+        # Names, descriptions and addresses go into the picture the way the
+        # map export carries them: a number on the dot, the machine under the
+        # plan, in the dot's own colour.
+        self.client.force_login(self.user)
+        body = self.get_plan("floor-plan/musterweg-30/logical/").content.decode()
+        self.assertIn('<circle class="map-machine"', body)
+        self.assertIn('class="map-machine-num"', body)
+        self.assertIn(">1</text>", body)
+        self.assertIn(">2</text>", body)
+        self.assertIn("1  srv0.example.com", body)
+        self.assertIn("Nightly finance backup \u2014 10.18.0.1", body)
+        self.assertIn("Managed over the BMC \u2014 10.18.0.2", body)
+        self.assertIn('style="fill:#', body)
+
+    def test_an_uploaded_plan_carries_its_machines_as_well(self):
+        self.client.force_login(self.user)
+        body = self.get_plan("floor-plan/musterweg-30/").content.decode()
+        self.assertIn('class="map-machine-num"', body)
+        self.assertIn("2  srv1.example.com", body)
+        self.assertIn("Managed over the BMC \u2014 10.18.0.2", body)
+
+    def test_a_long_description_is_cut_rather_than_wide(self):
+        long_name = "x" * 90
+        cut = floor_plan.clip_to(f"1  {long_name}", 200, floor_plan.LIST_NAME_CHAR_W)
+        self.assertTrue(cut.endswith("\u2026"))
+        self.assertLess(len(cut) * floor_plan.LIST_NAME_CHAR_W, 210)
+        self.assertEqual(floor_plan.clip_to("srv1", 200, 9), "srv1")
+
     def test_the_logical_plan_is_drawn_from_the_locations(self):
         self.client.force_login(self.user)
         response = self.get_plan("floor-plan/musterweg-30/logical/")
