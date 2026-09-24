@@ -61,6 +61,39 @@ curl -H "Authorization: Token <token>" \
 - `/api/plugins/networkmap/` links these addresses, and the schema lists them
   under the `network-map` tag.
 
+### Floor plans
+
+A floor plan is asked for by its site, because several buildings stand in one
+city and only the site is named uniquely. `/floor-plans/` lists what exists,
+and each plan is then drawn by its own address:
+
+| URL                                                | Answers                                                     |
+| -------------------------------------------------- | ----------------------------------------------------------- |
+| `/api/plugins/networkmap/floor-plans/`             | JSON list of every plan, filterable by `?city=`, `?site=` and `?kind=` |
+| `/api/plugins/networkmap/floor-plan/<site-slug>/`  | the plan the map shows: the first upload, else the logical map |
+| `/api/plugins/networkmap/floor-plan/<site-slug>/<plan>/` | `<plan>` is `logical` or the number of an uploaded plan |
+
+```bash
+curl -H "Authorization: Token <token>" \
+  "https://netbox.example.com/api/plugins/networkmap/floor-plans/?city=Bern"
+curl -H "Authorization: Token <token>" \
+  "https://netbox.example.com/api/plugins/networkmap/floor-plan/musterweg-30/214/" \
+  -o erdgeschoss.svg
+```
+
+- Every uploaded house plan is a plan of its own, in the order they were
+  uploaded; `first` means the one the map shows and is what the address without
+  a plan draws. The list calls a plan `<site-slug>:<plan>`, so two buildings in
+  Bern never share an address, and marks with `main` which one the map shows.
+- `?city=` reads the place out of the site's address or description, which is
+  where NetBox keeps it; `?site=` takes the site's slug.
+- An uploaded plan is drawn with its picture inside the document, so the file
+  stands on its own; above 8 MB the picture stays a link and says so.
+- The logical map is built from the site's locations, floor by floor, and
+  carries the same colour key as the map page; the `network_map.floor_plan`
+  module and `subnet_map.js` hold the same measurements, which
+  `FloorPlanParityTests` checks.
+
 ## Configuration
 
 ```python

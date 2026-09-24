@@ -248,12 +248,11 @@ class VlanTopologyView(CenterDeviceMixin, VlanElementListView):
 class SubnetLocationView(VlanElementListView):
     template_name = "network_map/subnet_map.html"
 
-    def build_site_plans(self, sites):
+    def build_all_site_plans(self, sites):
         """
-        Map each site name to its first image attachment (used as the house
-        plan shown when zooming into the building). Returns {} when the site
-        has no uploaded plan, in which case the map falls back to a generic
-        mock plan.
+        Map each site name to every image attachment it carries, oldest first,
+        as the uploaded house plans of that building. A site with no upload is
+        left out; the map then shows the logical floor map instead.
         """
         if not sites:
             return {}
@@ -265,22 +264,87 @@ class SubnetLocationView(VlanElementListView):
                 object_id__in=[site.pk for site in sites],
             )
             .order_by("object_id", "id")
-            .only("object_id", "image", "image_width", "image_height")
+            .only("object_id", "id", "name", "image", "image_width", "image_height")
         )
         site_ids = {site.pk: str(site.name) for site in sites}
         for attachment in attachments:
             name = site_ids.get(attachment.object_id)
-            if not name or name in plans:
+            if name is None:
                 continue
             try:
                 url = attachment.image.url
             except ValueError:
                 continue
-            plans[name] = {
-                "url": url,
-                "width": attachment.image_width or 1200,
-                "height": attachment.image_height or 850,
-            }
+            plans.setdefault(name, []).append(
+                {
+                    "id": attachment.pk,
+                    "label": str(attachment.name or attachment.image.name),
+                    "url": url,
+                    "width": attachment.image_width or 1200,
+                    "height": attachment.image_height or 850,
+                    "attachment": attachment,
+                }
+            )
+        return plans
+
+    def build_site_plans(self, sites):
+        """
+        Map each site name to its first image attachment, which is the plan the
+        map shows when one zooms into that building. Sites without an upload
+        are left out, so the caller can fall back to the logical floor map.
+        """
+        return {
+            name: plans[0] for name, plans in self.build_all_site_plans(sites).items()
+        }
+
+    def build_floor_plans(self, map_data):
+        """
+        Every floor plan the subnet map can show, one entry per uploaded plan
+        and one logical map per site. `map_data` is what the page is given, so
+        the same machines, rooms and colours end up in both.
+        """
+        by_site = {}
+        for pin in map_data["pins"]:
+            by_site.setdefault(pin["site"], []).append(pin)
+        sites = list(Site.objects.filter(name__in=by_site).order_by("name"))
+        uploads = self.build_all_site_plans(sites)
+        plans = []
+        for site in sites:
+            name = str(site.name)
+            pins = by_site.get(name, [])
+            rooms = map_data["locations"].get(name, [])
+            for index, plan in enumerate(uploads.get(name, [])):
+                plans.append(
+                    {
+                        "site": site,
+                        "kind": "uploaded",
+                        # Every upload is addressed by its own number; the one
+                        # the map shows can also be asked for as "first".
+                        "plan": str(plan["id"]),
+                        "main": index == 0,
+                        "label": plan["label"],
+                        "width": plan["width"],
+                        "height": plan["height"],
+                        "url": plan["url"],
+                        "attachment": plan["attachment"],
+                        "pins": pins,
+                        "rooms": rooms,
+                        "machines": sum(len(pin["machines"]) for pin in pins),
+                    }
+                )
+            if pins:
+                plans.append(
+                    {
+                        "site": site,
+                        "kind": "logical",
+                        "plan": "logical",
+                        "main": not uploads.get(name),
+                        "label": str(_("logical floor map")),
+                        "pins": pins,
+                        "rooms": rooms,
+                        "machines": sum(len(pin["machines"]) for pin in pins),
+                    }
+                )
         return plans
 
     def build_site_locations(self, sites):

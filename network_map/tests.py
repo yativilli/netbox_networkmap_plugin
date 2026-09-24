@@ -1,8 +1,10 @@
+import io
 import json
 import math
 import os
 import re
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -11,18 +13,22 @@ from dcim.models import (
     DeviceRole,
     DeviceType,
     Interface,
+    Location,
     Manufacturer,
     Site,
 )
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from extras.models import ImageAttachment
 from ipam.models import VLAN, IPAddress, Prefix, Role, VLANGroup
+from PIL import Image
 from users.models import ObjectPermission, User
 
-from . import lv03, map_tiles, png_render, svg_render, swisstopo
+from . import floor_plan, lv03, map_tiles, png_render, svg_render, swisstopo
 from .colors import shade_of
 from .defaults import DEFAULT_CANTON_BOUNDARY_CODE
 from .models import VlanInfo
@@ -1775,6 +1781,313 @@ class SubnetShadeColorsTests(TestCase):
         self.assertNotEqual(first, second)
         self.assertEqual(shade_of(first, 1), second)
         self.assertNotIn(colors[("Office", "10.3.0.0/24")], (first, second))
+
+
+class FloorPlanApiTests(TestCase):
+    """Which floor plans the API knows, and the picture each one draws."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.map_content_type = ContentType.objects.get(
+            app_label="network_map", model="vlanelement"
+        )
+        cls.user = User.objects.create_user(username="planviewer", password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name="test-view-networkmap-plans",
+            actions=["view"],
+        )
+        permission.object_types.add(cls.map_content_type)
+        cls.user.object_permissions.add(permission)
+
+        # Two buildings in one city: only the site names a plan apart, and
+        # NetBox keeps the city nowhere but in the site's address.
+        cls.north = Site.objects.create(
+            name="Musterweg 30",
+            slug="musterweg-30",
+            physical_address="Musterweg 30, 3000 Bern",
+            latitude=46.948,
+            longitude=7.447,
+        )
+        cls.south = Site.objects.create(
+            name="Beispielweg 4",
+            slug="beispielweg-4",
+            physical_address="Beispielweg 4, 3000 Bern",
+            latitude=46.95,
+            longitude=7.45,
+        )
+        ground = Location.objects.create(
+            name="EG - B\u00fcro 019", slug="eg-buero", site=cls.north
+        )
+        attic = Location.objects.create(name="O 242", slug="o-242", site=cls.north)
+        role, _ = DeviceRole.objects.get_or_create(
+            name="Server", defaults={"slug": "server-plan"}
+        )
+        manufacturer = Manufacturer.objects.create(name="Vendor", slug="vendor-plan")
+        device_type = DeviceType.objects.create(
+            manufacturer=manufacturer, model="PowerEdge", slug="poweredge-plan"
+        )
+        cls.vlan = VLAN.objects.create(vid=118, name="Plans")
+        Prefix.objects.create(prefix="10.18.0.0/24", vlan=cls.vlan)
+        cls.machine_said = [
+            ("Nightly finance backup", ""),
+            ("", "Managed over the BMC"),
+            ("Access switch of the depot", ""),
+        ]
+        for index, ((site, room), (comment, ip_comment)) in enumerate(
+            zip(
+                ((cls.north, ground), (cls.north, attic), (cls.south, None)),
+                cls.machine_said,
+            )
+        ):
+            device = Device.objects.create(
+                site=site,
+                location=room,
+                name=f"srv{index}",
+                role=role,
+                device_type=device_type,
+                comments=comment,
+            )
+            interface = Interface.objects.create(
+                device=device, name="eth0", type="1000base-t"
+            )
+            IPAddress.objects.create(
+                address=f"10.18.0.{index + 1}/24",
+                dns_name=f"srv{index}.example.com",
+                comments=ip_comment,
+                assigned_object=interface,
+            )
+
+    @staticmethod
+    def picture(color):
+        # A real picture, because the served plan carries its bytes along.
+        image = Image.new("RGB", (40, 30), color)
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        return ContentFile(out.getvalue(), name="plan.png")
+
+    def setUp(self):
+        super().setUp()
+        # The north building has two house plans uploaded, so one site holds
+        # more than the plan the map shows.
+        self.plans = [
+            self.upload(name, color)
+            for name, color in (("Erdgeschoss", "#ff0000"), ("Anbau", "#00ff00"))
+        ]
+        # The mount prefix derives from the plugin's base_url/module name.
+        self.prefix = "networkmap"
+        for prefix in ("networkmap", "network_map"):
+            response = self.client.get(f"/api/plugins/{prefix}/floor-plans/")
+            if response.status_code != 404:
+                self.prefix = prefix
+                break
+
+    def upload(self, name, color):
+        attachment = ImageAttachment(
+            object_type=ContentType.objects.get_for_model(Site),
+            object_id=self.north.pk,
+            name=name,
+            image_width=40,
+            image_height=30,
+        )
+        attachment.image.save(f"{name}.png", self.picture(color), save=True)
+        return attachment
+
+    def get_plan(self, path):
+        return self.client.get(f"/api/plugins/{self.prefix}/{path}")
+
+    def index(self, query=None):
+        url = "floor-plans/" + (f"?{query}" if query else "")
+        response = self.get_plan(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        return json.loads(response.content)
+
+    def test_the_index_lists_every_plan_of_a_site(self):
+        self.client.force_login(self.user)
+        plans = self.index("city=Bern")["plans"]
+        ids = [plan["id"] for plan in plans]
+        first, second = (str(plan.pk) for plan in self.plans)
+        self.assertEqual(
+            ids,
+            [
+                "beispielweg-4:logical",
+                f"musterweg-30:{first}",
+                f"musterweg-30:{second}",
+                "musterweg-30:logical",
+            ],
+        )
+        # Which of them the map itself shows, and which one "first" draws.
+        self.assertEqual(
+            [(plan["id"], plan["main"]) for plan in plans if plan["main"]],
+            [("beispielweg-4:logical", True), (f"musterweg-30:{first}", True)],
+        )
+        # Both buildings stand in Bern, so their plans differ by their site.
+        self.assertEqual(
+            {plan["site"]["address"].rsplit(" ", 1)[-1] for plan in plans}, {"Bern"}
+        )
+        self.assertEqual(len(set(ids)), len(plans))
+        logical = next(plan for plan in plans if plan["id"] == "musterweg-30:logical")
+        self.assertEqual(logical["rooms"], 2)
+        self.assertEqual(logical["floors"], ["OG", "EG"])
+        self.assertEqual(logical["machines"], 2)
+        self.assertIn("picture", logical)
+
+    def test_the_index_narrows_to_a_city_a_site_or_a_kind(self):
+        self.client.force_login(self.user)
+        Site.objects.create(
+            name="Depot", slug="depot", physical_address="Fabrikweg 2, Zollikofen"
+        )
+        self.assertEqual(self.index("city=Bern")["count"], 4)
+        self.assertEqual(self.index("city=bern")["count"], 4)
+        self.assertEqual(self.index("city=Zollikofen")["count"], 0)
+        self.assertEqual(
+            [p["id"] for p in self.index("site=beispielweg-4")["plans"]],
+            ["beispielweg-4:logical"],
+        )
+        self.assertEqual(self.index("kind=uploaded&city=Bern")["count"], 2)
+        self.assertEqual(self.index("kind=logical&city=Bern")["count"], 2)
+
+    def test_the_main_plan_is_the_one_the_map_shows(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plan/musterweg-30/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("image/svg+xml"))
+        body = response.content.decode()
+        self.assertIn("Musterweg 30", body)
+        self.assertIn("data:image/png;base64,", body)
+
+    def test_a_second_upload_is_a_plan_of_its_own(self):
+        self.client.force_login(self.user)
+        drawn = {
+            self.get_plan(f"floor-plan/musterweg-30/{plan.pk}/").content
+            for plan in self.plans
+        }
+        self.assertEqual(len(drawn), 2)
+        for picture in drawn:
+            self.assertIn(b'<image href="data:image/png;base64,', picture)
+
+    def test_the_logical_plan_is_drawn_from_the_locations(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plan/musterweg-30/logical/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Musterweg 30", body)
+        self.assertIn("logical floor map", body)
+        self.assertIn("EG - B\u00fcro 019", body)
+        self.assertIn('<g class="plan-legend">', body)
+        self.assertIn("10.18.0.0/24", body)
+
+    def test_a_bigger_upload_is_linked_instead_of_carried(self):
+        self.client.force_login(self.user)
+        with mock.patch.object(floor_plan, "MAX_EMBED_BYTES", 10):
+            body = self.get_plan("floor-plan/musterweg-30/").content.decode("latin-1")
+        self.assertNotIn("data:image/png;base64,", body)
+        self.assertIn(self.plans[0].image.url, body)
+
+    def test_an_unknown_plan_names_the_ones_there_are(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plan/musterweg-30/keller/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"first", response.content)
+        self.assertIn(str(self.plans[1].pk).encode(), response.content)
+
+    def test_a_site_without_a_plan_or_a_name_is_answered(self):
+        self.client.force_login(self.user)
+        other = Site.objects.create(name="Depot", slug="depot")
+        response = self.get_plan(f"floor-plan/{other.slug}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"no floor plan", response.content)
+        self.assertIn(
+            b"No site with the slug", self.get_plan("floor-plan/nothing/").content
+        )
+
+    def test_a_plan_needs_the_map_permission(self):
+        response = self.get_plan("floor-plans/")
+        self.assertIn(response.status_code, (302, 403))
+        self.client.force_login(
+            User.objects.create_user(username="plain", password="pass")  # nosec B106
+        )
+        self.assertEqual(self.get_plan("floor-plans/").status_code, 403)
+        self.assertEqual(self.get_plan("floor-plan/musterweg-30/").status_code, 403)
+
+    def test_a_narrow_plan_still_names_where_it_hangs(self):
+        svg = floor_plan.render_uploaded(
+            "Musterweg 30 Anbau Ost", "data:image/png;base64,AAA==", 60, 40
+        )
+        width = int(re.search(r'<svg[^>]*width="(\d+)"', svg).group(1))
+        title = len("Musterweg 30 Anbau Ost \u2014 House plan")
+        self.assertGreaterEqual(
+            width - 2 * floor_plan.PAD, title * floor_plan.TITLE_CHAR_W
+        )
+
+    @unittest.skipUnless(png_render.available(), "needs cairosvg or ImageMagick")
+    def test_a_plan_can_be_handed_over_as_a_raster(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plan/musterweg-30/logical/?format=png")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("image/png"))
+        self.assertTrue(response.content.startswith(png_render.PNG_MAGIC))
+
+    def test_the_api_root_points_at_the_plans(self):
+        self.client.force_login(self.user)
+        response = self.client.get(f"/api/plugins/{self.prefix}/")
+        self.assertIn(b"floor-plans", response.content)
+
+
+class FloorPlanParityTests(TestCase):
+    """
+    The served plan and the one the page draws are built apart, so the
+    measurements they lay a plan out by are only allowed to move together.
+    """
+
+    METRICS = (
+        "PLAN_W",
+        "PAD",
+        "GAP",
+        "BAND_MIN",
+        "BAND_MAX",
+        "CHIP_CHAR_W",
+        "ROOM_LABEL_CHAR_W",
+        "FLOOR_LABEL_CHAR_W",
+        "GRID_PAD",
+        "GRID_DOT_DX",
+        "GRID_DOT_DENSITY",
+        "GRID_ROW_H",
+        "ROOM_MIN_H",
+        "FLOOR_LINE_H",
+        "LEGEND_SWATCH",
+        "LEGEND_TEXT_DX",
+        "LEGEND_ROW_H",
+        "LEGEND_NOTE_H",
+        "LEGEND_PAD",
+        "LEGEND_TITLE_H",
+        "LEGEND_MIN",
+        "LEGEND_MAX",
+    )
+
+    def test_the_page_and_the_picture_measure_a_plan_alike(self):
+        java = (
+            Path(floor_plan.__file__).parent / "static/network_map/subnet_map.js"
+        ).read_text(encoding="utf-8")
+        for metric in self.METRICS:
+            with self.subTest(metric=metric):
+                python = getattr(floor_plan, metric)
+                digits = repr(python)
+                pattern = rf"\b{metric} = (-?[\d.]+)[,;]"
+                match = re.search(pattern, java)
+                self.assertIsNotNone(match, f"{metric} is gone from the page")
+                self.assertEqual(float(match.group(1)), float(python), digits)
+
+    def test_the_floor_of_a_location_is_read_the_same_way(self):
+        for name, expected in (
+            ("2. Stock - Gang - DigiKri", (2, "2. Stock")),
+            ("U204", (-2, "UG")),
+            ("O 242", (100, "OG")),
+            ("EG 12", (0, "EG")),
+            ("B\u00fcro 267", (2, "2. Stock")),
+            ("019", (0, "EG")),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(floor_plan.logical_floor(name), expected)
 
 
 class StaticUrlTagTests(TestCase):
