@@ -6,13 +6,20 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from dcim.models import Site
+from dcim.models import (
+    Device,
+    DeviceRole,
+    DeviceType,
+    Interface,
+    Manufacturer,
+    Site,
+)
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from ipam.models import VLAN, Prefix, Role, VLANGroup
+from ipam.models import VLAN, IPAddress, Prefix, Role, VLANGroup
 from users.models import ObjectPermission, User
 
 from . import lv03, map_tiles, png_render, svg_render, swisstopo
@@ -20,7 +27,7 @@ from .colors import shade_of
 from .defaults import DEFAULT_CANTON_BOUNDARY_CODE
 from .models import VlanInfo
 from .templatetags.network_map_static import static_url
-from .views import SubnetLocationView, VlanTopologyView
+from .views import SubnetLocationView, VlanElementListView, VlanTopologyView
 
 
 class VlanInfoFromVlanTests(TestCase):
@@ -1459,6 +1466,67 @@ class SubnetMapExportButtonTests(TestCase):
 
     def test_no_export_button_without_pins(self):
         self.assertNotContains(self.get_page(EMPTY_MAP_DATA), "data-export-svg")
+
+
+class MachineDescriptionTests(TestCase):
+    """What the line about a machine is taken from: comment first, role last."""
+
+    @classmethod
+    def setUpTestData(cls):
+        site = Site.objects.create(name="DC", slug="dc")
+        cls.role, _ = DeviceRole.objects.get_or_create(
+            name="Finance server", defaults={"slug": "finance-server"}
+        )
+        manufacturer = Manufacturer.objects.create(name="Vendor", slug="vendor")
+        device_type = DeviceType.objects.create(
+            manufacturer=manufacturer, model="PowerEdge", slug="poweredge"
+        )
+        cls.device = Device.objects.create(
+            site=site,
+            name="srv1",
+            role=cls.role,
+            device_type=device_type,
+            comments="Nightly finance backup",
+        )
+        interface = Interface.objects.create(
+            device=cls.device, name="eth0", type="1000base-t"
+        )
+        cls.vlan = VLAN.objects.create(vid=10, name="Prod")
+        Prefix.objects.create(prefix="10.1.0.0/24", vlan=cls.vlan)
+        cls.ip = IPAddress.objects.create(
+            address="10.1.0.10/24",
+            dns_name="srv1.example.com",
+            comments="Managed over the BMC",
+            assigned_object=interface,
+        )
+
+    def description(self):
+        elements = VlanElementListView().build_elements(
+            VLAN.objects.filter(pk=self.vlan.pk)
+        )
+        return elements[0].machines[0]["description"]
+
+    def test_a_comment_says_what_the_role_cannot(self):
+        # The role names the kind of thing it is; the comment says what it does
+        # here, and that is what the tooltip shows.
+        self.assertEqual(self.description(), "Nightly finance backup")
+
+    def test_what_stands_on_the_machine_comes_first(self):
+        self.device.description = "Firewall of the finance VLAN"
+        self.device.save()
+        self.assertEqual(self.description(), "Firewall of the finance VLAN")
+
+    def test_the_address_speaks_when_the_machine_stays_silent(self):
+        self.device.comments = ""
+        self.device.save()
+        self.assertEqual(self.description(), "Managed over the BMC")
+
+    def test_the_role_is_the_last_resort(self):
+        self.device.comments = ""
+        self.device.save()
+        self.ip.comments = ""
+        self.ip.save()
+        self.assertEqual(self.description(), self.role.name)
 
 
 class HousePlanHoverTests(TestCase):

@@ -79,11 +79,19 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
                     vm = getattr(assigned_object, "virtual_machine", None)
 
                     room = None
+                    # What the machine is for is said by the free text NetBox
+                    # holds about it - first what was written on the machine,
+                    # then what was written on its address. The role only speaks
+                    # when nobody wrote anything down, because it says what kind
+                    # of thing it is rather than what it does here.
                     if device:
                         location = device.site.name if device.site else ""
                         url = device.get_absolute_url()
                         description = (
-                            device.description or device.role or ip.comments or ""
+                            device.description
+                            or device.comments
+                            or ip.comments
+                            or str(device.role or "")
                         )
                         role = device.role or ""
                         device_location = getattr(device, "location", None) or getattr(
@@ -94,12 +102,16 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
                     elif vm:
                         location = vm.site.name if vm.site else ""
                         url = vm.get_absolute_url()
-                        description = vm.description or vm.comments or ""
+                        description = (
+                            vm.description or vm.comments or str(vm.role or "")
+                        )
                         role = vm.role or ""
                     else:
                         location = ""
                         url = ip.get_absolute_url()
-                        description = ip.description or ""
+                        description = (
+                            ip.description or ip.comments or str(ip.role or "")
+                        )
                         role = ip.role or ""
 
                     if location not in locations:
