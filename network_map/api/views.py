@@ -1,7 +1,6 @@
 from collections import OrderedDict
 
 from dcim.models import Site
-from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -228,43 +227,36 @@ def _map_floor_plans():
     return view.build_floor_plans(view.build_map_data(elements))
 
 
-def _floor_labels(plan):
+def _place_in(text):
     """
-    The floors a plan shows, named as the plan names its bands, so the index
-    and the picture agree without the index having to lay the plan out.
+    The place out of one line of text, or nothing. A place names itself with
+    letters and no house number, whether it stands before the street ("Bern,
+    Nordring 30") or after a postal code ("Nordring 30, 3000 Bern"); the segment
+    that carries no number - a leading postal code dropped - is the place.
     """
-    rooms = [name for name in plan["rooms"] if name]
-    labels = {}
-    for name in rooms:
-        sort, label = floor_plan.logical_floor(name)
-        labels.setdefault(sort, label)
-    machines = [machine for pin in plan["pins"] for machine in pin["machines"]]
-    if any(not machine.get("room") for machine in machines):
-        labels[-1000] = _("Machines") if not rooms else _("No location")
-    if any(machine.get("physical", True) is False for machine in machines):
-        labels[-2000] = _("Virtual")
-    return [labels[sort] for sort in sorted(labels, reverse=True)]
+    segments = [seg.strip() for seg in str(text or "").split(",") if seg.strip()]
+    for segment in segments:
+        if not any(word.isdigit() for word in segment.split()):
+            return segment
+    for segment in reversed(segments):
+        words = segment.split()
+        if words and words[0].isdigit():
+            return " ".join(words[1:])
+    return ""
 
 
 def _site_city(site):
     """
-    The place a site is in, read off its physical address; NetBox keeps no city
-    of its own. The place names itself with letters and no house number, whether
-    it stands before the street ("Bern, Musterweg 5") or after a postal
-    code ("Musterweg 5, 3000 Bern"), so the segment that carries no number
-    - with a leading postal code dropped - is the city; an address with nothing
-    in it says nothing.
+    The place a site is in. NetBox keeps no city of its own, so it is read off
+    wherever the site names it - the physical address, the shipping address, or,
+    as many sites do, the site's own name "Bern, Nordring 30" - and the first of
+    these that holds a place wins; a site that names none gives "".
     """
-    address = str(site.physical_address or "").strip()
-    if not address:
-        return ""
-    for segment in (part.strip() for part in address.split(",")):
-        words = segment.split()
-        if words and words[0].isdigit():
-            words = words[1:]
-        if words and not any(word.isdigit() for word in words):
-            return " ".join(words)
-    return address.rsplit(" ", 1)[-1]
+    for text in (site.physical_address, site.shipping_address, site.name):
+        city = _place_in(text)
+        if city:
+            return city
+    return ""
 
 
 def _floor_plan_entry(request, plan):
@@ -283,13 +275,12 @@ def _floor_plan_entry(request, plan):
             "id": site.pk,
             "name": str(site.name),
             "slug": site.slug,
-            # NetBox has no city field; the place is the text in the address or description.
+            # NetBox has no city field; the place is the text in the name or address.
             "address": str(site.physical_address or ""),
             "description": str(site.description or ""),
         },
         "machines": plan["machines"],
         "rooms": len([name for name in plan["rooms"] if name]),
-        "floors": _floor_labels(plan),
         "picture": {"svg": svg, "png": f"{svg}?format=png"},
     }
 
@@ -299,7 +290,12 @@ def _names_the_place(site, place):
     needle = str(place).casefold()
     return any(
         needle in str(field or "").casefold()
-        for field in (site.physical_address, site.shipping_address, site.description)
+        for field in (
+            site.physical_address,
+            site.shipping_address,
+            site.description,
+            site.name,
+        )
     )
 
 
@@ -320,7 +316,7 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Only the plans of sites whose address or description "
+                    "Only the plans of sites whose name, address or description "
                     "mentions this place, whatever it is spelled as."
                 ),
             ),

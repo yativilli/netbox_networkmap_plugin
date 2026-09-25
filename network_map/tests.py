@@ -1796,7 +1796,7 @@ class FloorPlanApiTests(TestCase):
         self.assertEqual(len(set(ids)), len(plans))
         logical = next(plan for plan in plans if plan["id"] == "musterweg-30")
         self.assertEqual(logical["rooms"], 2)
-        self.assertEqual(logical["floors"], ["OG", "EG"])
+        self.assertNotIn("floors", logical)
         self.assertEqual(logical["machines"], 2)
         self.assertIn("picture", logical)
 
@@ -1810,9 +1810,23 @@ class FloorPlanApiTests(TestCase):
             _site_city(Site(physical_address="Bern, Musterweg 30")), "Bern"
         )
         self.assertEqual(_site_city(Site(physical_address="3000 Bern")), "Bern")
-        self.assertEqual(_site_city(Site(physical_address="Musterweg 30")), "30")
+        self.assertEqual(_site_city(Site(physical_address="Musterweg 30")), "")
         self.assertEqual(_site_city(Site(physical_address="")), "")
         self.assertEqual(_site_city(Site()), "")
+        # The place often lives only in the site name, "Bern, Nordring 30".
+        self.assertEqual(_site_city(Site(name="Bern, Musterweg 30")), "Bern")
+        self.assertEqual(
+            _site_city(Site(name="Matten bei Interlaken, Wychelstrasse 28")),
+            "Matten bei Interlaken",
+        )
+        self.assertEqual(
+            _site_city(Site(name="Biel/Bienne, Spitalstrasse 20", physical_address="")),
+            "Biel/Bienne",
+        )
+        # The address names the place first, so it wins over the name.
+        self.assertEqual(
+            _site_city(Site(name="Musterweg 30", physical_address="3000 Bern")), "Bern"
+        )
 
     def test_the_index_narrows_to_a_city_or_a_site(self):
         self.client.force_login(self.user)
