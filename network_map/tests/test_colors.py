@@ -1,15 +1,70 @@
-"""Colour-shade tests."""
+"""Colour tests for the map palette and subnet prefix shades."""
 
+import colorsys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from dcim.models import (
-    Site,
-)
+from dcim.models import Site
 from django.test import TestCase
 
-from ..colors import shade_of
+from ..colors import (
+    BASE_COLORS,
+    LOCATION_COLORS,
+    MIN_BASE_DISTANCE,
+    oklab_distance,
+    shade_of,
+)
 from ..views import SubnetLocationView
+
+PALETTE_CSS = (
+    Path(__file__).resolve().parents[1]
+    / "static"
+    / "network_map"
+    / "vlan_element_list"
+    / "vlan_element_list.css"
+)
+
+
+def _rgb(color: str) -> tuple[int, int, int]:
+    return (
+        int(color[1:3], 16),
+        int(color[3:5], 16),
+        int(color[5:7], 16),
+    )
+
+
+def _hue(color: str) -> float:
+    red, green, blue = (channel / 255.0 for channel in _rgb(color))
+    return colorsys.rgb_to_hls(red, green, blue)[0] * 360.0
+
+
+def _hue_distance(left: str, right: str) -> float:
+    distance = abs(_hue(left) - _hue(right)) % 360.0
+    return min(distance, 360.0 - distance)
+
+
+def _lightness(color: str) -> float:
+    red, green, blue = (channel / 255.0 for channel in _rgb(color))
+    return colorsys.rgb_to_hls(red, green, blue)[1]
+
+
+class LocationPaletteTests(TestCase):
+    def test_base_palette_has_no_duplicates(self):
+        self.assertEqual(len(BASE_COLORS), len(set(BASE_COLORS)))
+
+    def test_base_palette_colours_are_perceptually_apart(self):
+        for index, left in enumerate(BASE_COLORS):
+            for right in BASE_COLORS[index + 1 :]:
+                with self.subTest(left=left, right=right):
+                    self.assertGreater(oklab_distance(left, right), MIN_BASE_DISTANCE)
+
+    def test_css_location_colors_match_the_python_palette(self):
+        css = PALETTE_CSS.read_text(encoding="utf-8")
+        for name, color in LOCATION_COLORS:
+            red, green, blue = _rgb(color)
+            expected = f".{name} {{ --location-color: {red}, {green}, {blue}; }}"
+            self.assertIn(expected, css)
 
 
 class ShadeOfTests(TestCase):
@@ -22,9 +77,19 @@ class ShadeOfTests(TestCase):
         for shade in shades:
             self.assertRegex(shade, r"^#[0-9a-f]{6}$")
 
+    def test_shades_keep_the_base_hue(self):
+        for index in range(1, 9):
+            with self.subTest(index=index):
+                self.assertLess(
+                    _hue_distance("#0072b2", shade_of("#0072b2", index)), 30
+                )
+
     def test_shades_alternate_lighter_and_darker(self):
-        self.assertGreater(shade_of("#0072b2", 1), "#0072b2")
-        self.assertLess(shade_of("#0072b2", 2), "#0072b2")
+        base = _lightness("#0072b2")
+        self.assertGreater(_lightness(shade_of("#0072b2", 1)), base)
+        self.assertLess(_lightness(shade_of("#0072b2", 2)), base)
+        self.assertGreater(_lightness(shade_of("#0072b2", 3)), base)
+        self.assertLess(_lightness(shade_of("#0072b2", 4)), base)
 
     def test_unparsable_colour_is_returned_unchanged(self):
         self.assertEqual(shade_of("bogus", 3), "bogus")
@@ -104,7 +169,8 @@ class SubnetShadeColorsTests(TestCase):
         self.assertEqual(len(colors), 3)
         first = colors[("Prod", "10.1.0.0/24")]
         second = colors[("Prod", "10.2.0.0/24")]
-        # Same subnet, second prefix: the base colour lightened one step.
+        # Same subnet: the colour family stays recognisable even when the
+        # lightness is nudged to keep the legend readable.
         self.assertNotEqual(first, second)
-        self.assertEqual(shade_of(first, 1), second)
+        self.assertLess(_hue_distance(first, second), 30)
         self.assertNotIn(colors[("Office", "10.3.0.0/24")], (first, second))

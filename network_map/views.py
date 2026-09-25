@@ -16,15 +16,17 @@ from utilities.views import ConditionalLoginRequiredMixin
 
 from . import svg_render
 from .colors import (
-    LOCATION_COLORS,
+    BASE_COLORS,
     color_for_location,
-    color_for_location_hex,
-    shade_of,
+    pick_distinct_color,
+    prefix_shade,
+    with_minimum_distance,
 )
 from .defaults import (
     DEFAULT_GATEWAY_SEARCH_TAG,
     canton_code,
 )
+from .floor_plan import _prefix_sort_key
 from .geocoding import geocode_sites
 from .models import (
     DetailsElement,
@@ -301,14 +303,20 @@ class SubnetLocationView(VlanElementListView):
         }
         sites = list(Site.objects.filter(name__in=site_names).order_by("name"))
         coordinates = geocode_sites(sites)
-        # One colour per site, cycled through the location palette and shaded once it runs out: the regional picture colours the locations.
-        palette = len(LOCATION_COLORS)
-        site_colors = {
-            site.name: shade_of(
-                color_for_location_hex(index % palette), index // palette
-            )
-            for index, site in enumerate(sites)
-        }
+        # One colour per site: choose palette colours with maximum perceptual
+        # distance, then shade further sites only when the palette is exhausted.
+        site_colors = {}
+        used_site_colors: list[str] = []
+        for index, site in enumerate(sites):
+            if index < len(BASE_COLORS):
+                color = pick_distinct_color(BASE_COLORS, used_site_colors)
+            else:
+                color = prefix_shade(
+                    BASE_COLORS[index % len(BASE_COLORS)], index // len(BASE_COLORS)
+                )
+            color = with_minimum_distance(color, used_site_colors)
+            site_colors[site.name] = str(color)
+            used_site_colors.append(str(color))
 
         placements = {}
         for element in elements:
@@ -333,18 +341,37 @@ class SubnetLocationView(VlanElementListView):
 
         pins = []
         unplaced = []
-        # One base colour per subnet, prefixes in shades of it, so they read as one family.
+        # One base colour per subnet, prefixes in shades of it. Sort before
+        # assigning so the same data gives the same colors, and keep used
+        # colors far enough apart for legends.
         subnet_base = {}
         subnet_prefixes = {}
         subnet_colors = {}
-        for placement in placements.values():
+        used_base_colors: list[str] = []
+        used_prefix_colors: list[str] = []
+        for placement in sorted(
+            placements.values(),
+            key=lambda item: (item["subnet"], _prefix_sort_key(item["prefix"])),
+        ):
             subnet = placement["subnet"]
             if subnet not in subnet_base:
-                subnet_base[subnet] = color_for_location_hex(len(subnet_base))
+                index = len(subnet_base)
+                if index < len(BASE_COLORS):
+                    base = pick_distinct_color(BASE_COLORS, used_base_colors)
+                else:
+                    base = prefix_shade(
+                        BASE_COLORS[index % len(BASE_COLORS)],
+                        index // len(BASE_COLORS),
+                    )
+                subnet_base[subnet] = str(base)
+                used_base_colors.append(str(base))
             color_key = f"{subnet}|{placement['prefix']}"
             if color_key not in subnet_colors:
                 seen = subnet_prefixes.setdefault(subnet, [])
-                subnet_colors[color_key] = shade_of(subnet_base[subnet], len(seen))
+                color = prefix_shade(subnet_base[subnet], len(seen))
+                color = with_minimum_distance(str(color), used_prefix_colors)
+                subnet_colors[color_key] = str(color)
+                used_prefix_colors.append(str(color))
                 seen.append(placement["prefix"])
 
             placed_any = False
