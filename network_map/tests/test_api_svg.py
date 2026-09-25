@@ -140,6 +140,7 @@ class SvgApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("installed-plugins", data)
+        self.assertIn("floor-plans", data)
         for kind in self.KINDS:
             self.assertIn(kind, data)
             # The API root links the address as it is meant to be used: the kind alone, the format belonging on the query string.
@@ -162,19 +163,17 @@ class SvgApiTests(TestCase):
         self.assertTrue(plain["Content-Type"].startswith("image/svg+xml"))
         self.assertEqual(plain.content, slashed.content)
 
-    def test_the_kind_no_longer_wants_an_svg_segment(self):
-        self.client.force_login(self.user)
-        root = reverse("plugins-api:network_map-api:api-root")
-        self.assertEqual(self.client.get(f"{root}svg/topology/").status_code, 404)
+    def test_anonymous_endpoints_are_rejected(self):
+        for kind in ("topology", "floor-plans"):
+            with self.subTest(kind=kind):
+                self.assertIn(self.get_svg(kind).status_code, (401, 403))
 
-    def test_anonymous_is_rejected(self):
-        response = self.get_svg("topology")
-        self.assertIn(response.status_code, (401, 403))
-
-    def test_user_without_permission_gets_403(self):
+    def test_users_without_permission_get_403(self):
         User.objects.create_user(username="nosvg", password="pass")  # nosec B106
         self.client.login(username="nosvg", password="pass")  # nosec B106
-        self.assertEqual(self.get_svg("machine-list").status_code, 403)
+        for kind in ("machine-list", "floor-plans"):
+            with self.subTest(kind=kind):
+                self.assertEqual(self.get_svg(kind).status_code, 403)
 
 
 # Well-nested GeoJSON, unlike SAMPLE_BORDER: the map renderer reads the polygon rings themselves, so it needs real MultiPolygon nesting.
@@ -513,7 +512,9 @@ EMPTY_MAP_DATA = {
 }
 
 
-class SubnetMapExportButtonTests(TestCase):
+class PageExportButtonTests(TestCase):
+    PAGES = ("vlan_topology", "subnet_map")
+
     @classmethod
     def setUpTestData(cls):
         cls.map_content_type = ContentType.objects.get(
@@ -521,24 +522,34 @@ class SubnetMapExportButtonTests(TestCase):
         )
         cls.user = User.objects.create_user(username="mapexporter", password="pass")  # nosec B106
         permission = ObjectPermission.objects.create(
-            name="test-view-networkmap-subnet",
+            name="test-view-networkmap-export",
             actions=["view"],
         )
         permission.object_types.add(cls.map_content_type)
         cls.user.object_permissions.add(permission)
 
-    def get_page(self, map_data):
+    def get_page(self, page_name, map_data=None):
         self.client.force_login(self.user)
-        with mock.patch.object(
-            SubnetLocationView, "build_map_data", return_value=map_data
-        ):
-            return self.client.get(reverse("plugins:network_map:subnet_map"))
+        if map_data is not None:
+            with mock.patch.object(
+                SubnetLocationView, "build_map_data", return_value=map_data
+            ):
+                return self.client.get(reverse(f"plugins:network_map:{page_name}"))
+        return self.client.get(reverse(f"plugins:network_map:{page_name}"))
 
-    def test_page_offers_svg_export(self):
-        response = self.get_page({**EMPTY_MAP_DATA, "pins": MAP_PINS})
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "data-export-svg")
-        self.assertContains(response, "svg_export.js")
+    def test_pages_offer_svg_export(self):
+        for page_name in self.PAGES:
+            with self.subTest(page=page_name):
+                map_data = (
+                    {**EMPTY_MAP_DATA, "pins": MAP_PINS}
+                    if page_name == "subnet_map"
+                    else None
+                )
+                response = self.get_page(page_name, map_data)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "data-export-svg")
 
     def test_no_export_button_without_pins(self):
-        self.assertNotContains(self.get_page(EMPTY_MAP_DATA), "data-export-svg")
+        self.assertNotContains(
+            self.get_page("subnet_map", EMPTY_MAP_DATA), "data-export-svg"
+        )

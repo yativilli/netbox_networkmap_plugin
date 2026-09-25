@@ -1,6 +1,7 @@
 """Web view and view serialization tests."""
 
 from types import SimpleNamespace
+from unittest import mock
 
 from dcim.models import (
     Device,
@@ -35,50 +36,58 @@ class ViewAccessTests(TestCase):
             app_label="network_map", model="vlanelement"
         )
 
+    def setUp(self):
+        # Views that build full pages may search for gateway objects; these
+        # tests care about routing and permissions, not NetBox's whole search.
+        for target in (
+            "network_map.views.search_backend.search",
+            "network_map.coverage.search_backend.search",
+        ):
+            patcher = mock.patch(target, return_value=[])
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _viewer(self, username, permission_name):
+        user = User.objects.create_user(username=username, password="pass")  # nosec B106
+        permission = ObjectPermission.objects.create(
+            name=permission_name,
+            actions=["view"],
+        )
+        permission.object_types.add(self.map_content_type)
+        user.object_permissions.add(permission)
+        return user
+
     def test_urls_resolve(self):
         for name in self.URL_NAMES:
             self.assertTrue(reverse(f"plugins:network_map:{name}"))
 
     @override_settings(LOGIN_REQUIRED=True)
-    def test_anonymous_redirected_to_login(self):
-        response = self.client.get(reverse("plugins:network_map:vlanelement_list"))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("/login/", response.url)
+    def test_anonymous_urls_redirect_to_login(self):
+        for name in self.URL_NAMES:
+            with self.subTest(name=name):
+                response = self.client.get(reverse(f"plugins:network_map:{name}"))
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("/login/", response.url)
 
-    def test_user_without_permission_gets_403(self):
+    def test_users_without_permission_get_403(self):
         User.objects.create_user(username="regular", password="pass")  # nosec B106
         self.client.login(username="regular", password="pass")  # nosec B106
-        response = self.client.get(reverse("plugins:network_map:vlanelement_list"))
-        self.assertEqual(response.status_code, 403)
+        for name in self.URL_NAMES:
+            with self.subTest(name=name):
+                response = self.client.get(reverse(f"plugins:network_map:{name}"))
+                self.assertEqual(response.status_code, 403)
 
-    def test_user_with_permission_gets_200(self):
-        user = User.objects.create_user(username="viewer", password="pass")  # nosec B106
-        permission = ObjectPermission.objects.create(
-            name="test-view-networkmap",
-            actions=["view"],
-        )
-        permission.object_types.add(self.map_content_type)
-        user.object_permissions.add(permission)
-        self.client.login(username="viewer", password="pass")  # nosec B106
-        response = self.client.get(reverse("plugins:network_map:vlanelement_list"))
-        self.assertEqual(response.status_code, 200)
-
-    def test_topology_page_offers_svg_export(self):
-        user = User.objects.create_user(username="exporter", password="pass")  # nosec B106
-        permission = ObjectPermission.objects.create(
-            name="test-view-networkmap-topology",
-            actions=["view"],
-        )
-        permission.object_types.add(self.map_content_type)
-        user.object_permissions.add(permission)
-        self.client.login(username="exporter", password="pass")  # nosec B106
-        response = self.client.get(reverse("plugins:network_map:vlan_topology"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "data-export-svg")
+    def test_pages_render_for_a_permitted_user(self):
+        user = self._viewer("viewer", "test-view-networkmap")
+        self.client.force_login(user)
+        for name in self.URL_NAMES:
+            with self.subTest(name=name):
+                response = self.client.get(reverse(f"plugins:network_map:{name}"))
+                self.assertEqual(response.status_code, 200, name)
 
 
 class TopologyDescriptionTests(TestCase):
-    def test_serialize_topology_includes_machine_description(self):
+    def test_serialize_topology_handles_machine_description(self):
         element = SimpleNamespace(
             name="Test VLAN",
             prefix="10.0.0.0/24",
@@ -90,30 +99,19 @@ class TopologyDescriptionTests(TestCase):
                     "url": "/ip/1/",
                     "location": "Site A",
                     "description": "Finance backup",
-                }
-            ],
-        )
-        data = VlanTopologyView().serialize_topology([element], None)
-        machine = data["subnets"][0]["machines"][0]
-        self.assertEqual(machine["description"], "Finance backup")
-
-    def test_serialize_topology_defaults_description_to_empty(self):
-        element = SimpleNamespace(
-            name="Test VLAN",
-            prefix="10.0.0.0/24",
-            url="/vlan/1/",
-            machines=[
+                },
                 {
-                    "dns_name": "host01",
-                    "ip": "10.0.0.10",
-                    "url": "/ip/1/",
+                    "dns_name": "host02",
+                    "ip": "10.0.0.11",
+                    "url": "/ip/2/",
                     "location": "Site A",
-                }
+                },
             ],
         )
         data = VlanTopologyView().serialize_topology([element], None)
-        machine = data["subnets"][0]["machines"][0]
-        self.assertEqual(machine["description"], "")
+        described, missing = data["subnets"][0]["machines"]
+        self.assertEqual(described["description"], "Finance backup")
+        self.assertEqual(missing["description"], "")
 
     def test_render_topology_includes_machine_description(self):
         data = {

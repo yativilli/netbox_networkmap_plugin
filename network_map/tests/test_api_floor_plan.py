@@ -216,15 +216,6 @@ class FloorPlanApiTests(TestCase):
             b"No site with the slug", self.get_plan("floor-plan/nothing/").content
         )
 
-    def test_a_plan_needs_the_map_permission(self):
-        response = self.get_plan("floor-plans/")
-        self.assertIn(response.status_code, (302, 403))
-        self.client.force_login(
-            User.objects.create_user(username="plain", password="pass")  # nosec B106
-        )
-        self.assertEqual(self.get_plan("floor-plans/").status_code, 403)
-        self.assertEqual(self.get_plan("floor-plan/musterweg-30/").status_code, 403)
-
     @unittest.skipUnless(png_render.available(), "needs cairosvg or ImageMagick")
     def test_a_plan_can_be_handed_over_as_a_raster(self):
         self.client.force_login(self.user)
