@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .. import floor_plan, map_tiles, png_render, svg_render
 from ..defaults import canton_code
+from ..places import site_city, site_names_the_place
 from ..swisstopo import get_canton_boundary, get_canton_label
 from ..views import (
     SubnetLocationView,
@@ -227,38 +228,6 @@ def _map_floor_plans():
     return view.build_floor_plans(view.build_map_data(elements))
 
 
-def _place_in(text):
-    """
-    The place out of one line of text, or nothing. A place names itself with
-    letters and no house number, whether it stands before the street ("Bern,
-    Nordring 30") or after a postal code ("Nordring 30, 3000 Bern"); the segment
-    that carries no number - a leading postal code dropped - is the place.
-    """
-    segments = [seg.strip() for seg in str(text or "").split(",") if seg.strip()]
-    for segment in segments:
-        if not any(word.isdigit() for word in segment.split()):
-            return segment
-    for segment in reversed(segments):
-        words = segment.split()
-        if words and words[0].isdigit():
-            return " ".join(words[1:])
-    return ""
-
-
-def _site_city(site):
-    """
-    The place a site is in. NetBox keeps no city of its own, so it is read off
-    wherever the site names it - the physical address, the shipping address, or,
-    as many sites do, the site's own name "Bern, Nordring 30" - and the first of
-    these that holds a place wins; a site that names none gives "".
-    """
-    for text in (site.physical_address, site.shipping_address, site.name):
-        city = _place_in(text)
-        if city:
-            return city
-    return ""
-
-
 def _floor_plan_entry(request, plan):
     """One plan as the index lists it, with the addresses of its picture."""
     site = plan["site"]
@@ -270,7 +239,7 @@ def _floor_plan_entry(request, plan):
     return {
         # Several buildings share a city, so only the site names a plan apart.
         "id": site.slug,
-        "city": _site_city(site),
+        "city": site_city(site),
         "site": {
             "id": site.pk,
             "name": str(site.name),
@@ -283,20 +252,6 @@ def _floor_plan_entry(request, plan):
         "rooms": len([name for name in plan["rooms"] if name]),
         "picture": {"svg": svg, "png": f"{svg}?format=png"},
     }
-
-
-def _names_the_place(site, place):
-    """Whether a site says it stands in the place one is looking for."""
-    needle = str(place).casefold()
-    return any(
-        needle in str(field or "").casefold()
-        for field in (
-            site.physical_address,
-            site.shipping_address,
-            site.description,
-            site.name,
-        )
-    )
 
 
 class FloorPlanIndexView(PictureAccessMixin, APIView):
@@ -334,7 +289,7 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
         city = request.query_params.get("city")
         if city:
             # The place is read out of the text that names where the site stands.
-            plans = [p for p in plans if _names_the_place(p["site"], city)]
+            plans = [p for p in plans if site_names_the_place(p["site"], city)]
         site = request.query_params.get("site")
         if site:
             plans = [p for p in plans if p["site"].slug == site]

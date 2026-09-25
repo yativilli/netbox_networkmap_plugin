@@ -127,7 +127,7 @@ class FloorPlanApiTests(TestCase):
         self.assertIn("picture", logical)
 
     def test_the_city_is_read_whichever_way_the_address_runs(self):
-        from network_map.api.views import _site_city
+        from network_map.places import site_city as _site_city
 
         self.assertEqual(
             _site_city(Site(physical_address="Musterweg 30, 3000 Bern")), "Bern"
