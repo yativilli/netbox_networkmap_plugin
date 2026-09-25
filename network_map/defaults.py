@@ -1,3 +1,5 @@
+from typing import overload
+
 from netbox.plugins import get_plugin_config
 
 DEFAULT_GATEWAY_SEARCH_TAG = "GATEWAY-TAG"
@@ -16,11 +18,17 @@ def _setting(name, cast, default, minimum=None):
         value = cast(get_plugin_config("network_map", name, default))
     except (TypeError, ValueError):
         value = default
+    if value is None:
+        value = default
     if minimum is not None and value is not None:
         value = max(minimum, value)
     return value
 
 
+@overload
+def int_setting(name: str, default: None, minimum: int | None = None) -> int | None: ...
+@overload
+def int_setting(name: str, default: int, minimum: int | None = None) -> int: ...
 def int_setting(name, default, minimum=None):
     """
     A plugin setting as an int: a value that cannot be read as a whole number
@@ -29,6 +37,12 @@ def int_setting(name, default, minimum=None):
     return _setting(name, int, default, minimum)
 
 
+@overload
+def float_setting(
+    name: str, default: None, minimum: float | None = None
+) -> float | None: ...
+@overload
+def float_setting(name: str, default: float, minimum: float | None = None) -> float: ...
 def float_setting(name, default, minimum=None):
     """
     A plugin setting as a float - for the waits and budgets that pace the

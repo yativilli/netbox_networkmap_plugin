@@ -403,16 +403,17 @@ def _cluster_footprint(plan):
 
 
 def _golden_slots(subnets):
-    by_size = sorted(
-        range(len(subnets)), key=lambda index: -len(subnets[index]["machines"])
-    )
-    slots = [None] * len(subnets)
+    total = len(subnets)
+    by_size = sorted(range(total), key=lambda index: -len(subnets[index]["machines"]))
+    order = [0] * total
+    used = [False] * total
     for rank, subnet_index in enumerate(by_size):
-        slot = int((((rank + 1) * 0.6180339887) % 1) * len(subnets))
-        while slots[slot] is not None:
-            slot = (slot + 1) % len(subnets)
-        slots[slot] = subnets[subnet_index]
-    return slots
+        slot = int((((rank + 1) * 0.6180339887) % 1) * total)
+        while used[slot]:
+            slot = (slot + 1) % total
+        used[slot] = True
+        order[slot] = subnet_index
+    return [subnets[index] for index in order]
 
 
 def _resolve_collisions(radii, footprints, pushed_out, angle_at, clearance):
@@ -1039,9 +1040,9 @@ def frame_room():
     every side gets, and what the left and the bottom add to it.
     """
     return (
-        int_setting("map_border_room", BORDER_ROOM, minimum=0),
-        int_setting("map_room_left", ROOM_LEFT, minimum=0),
-        int_setting("map_room_bottom", ROOM_BOTTOM, minimum=0),
+        int(int_setting("map_border_room", BORDER_ROOM, minimum=0)),
+        int(int_setting("map_room_left", ROOM_LEFT, minimum=0)),
+        int(int_setting("map_room_bottom", ROOM_BOTTOM, minimum=0)),
     )
 
 

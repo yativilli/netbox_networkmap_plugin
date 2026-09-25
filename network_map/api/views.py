@@ -246,6 +246,27 @@ def _floor_labels(plan):
     return [labels[sort] for sort in sorted(labels, reverse=True)]
 
 
+def _site_city(site):
+    """
+    The place a site is in, read off its physical address; NetBox keeps no city
+    of its own. The place names itself with letters and no house number, whether
+    it stands before the street ("Bern, Musterweg 5") or after a postal
+    code ("Musterweg 5, 3000 Bern"), so the segment that carries no number
+    - with a leading postal code dropped - is the city; an address with nothing
+    in it says nothing.
+    """
+    address = str(site.physical_address or "").strip()
+    if not address:
+        return ""
+    for segment in (part.strip() for part in address.split(",")):
+        words = segment.split()
+        if words and words[0].isdigit():
+            words = words[1:]
+        if words and not any(word.isdigit() for word in words):
+            return " ".join(words)
+    return address.rsplit(" ", 1)[-1]
+
+
 def _floor_plan_entry(request, plan):
     """One plan as the index lists it, with the addresses of its picture."""
     site = plan["site"]
@@ -257,6 +278,7 @@ def _floor_plan_entry(request, plan):
     return {
         # Several buildings share a city, so only the site names a plan apart.
         "id": site.slug,
+        "city": _site_city(site),
         "site": {
             "id": site.pk,
             "name": str(site.name),
@@ -323,6 +345,9 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
         return Response(
             {
                 "count": len(plans),
+                # The filters as they were asked for, so a caller sees what was applied.
+                "city": city,
+                "site": site,
                 "plans": [_floor_plan_entry(request, p) for p in plans],
             }
         )

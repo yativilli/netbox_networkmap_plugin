@@ -1792,15 +1792,27 @@ class FloorPlanApiTests(TestCase):
         ids = [plan["id"] for plan in plans]
         # Both buildings stand in Bern and both have machines, each named by its site alone.
         self.assertEqual(ids, ["beispielweg-4", "musterweg-30"])
-        self.assertEqual(
-            {plan["site"]["address"].rsplit(" ", 1)[-1] for plan in plans}, {"Bern"}
-        )
+        self.assertEqual({plan["city"] for plan in plans}, {"Bern"})
         self.assertEqual(len(set(ids)), len(plans))
         logical = next(plan for plan in plans if plan["id"] == "musterweg-30")
         self.assertEqual(logical["rooms"], 2)
         self.assertEqual(logical["floors"], ["OG", "EG"])
         self.assertEqual(logical["machines"], 2)
         self.assertIn("picture", logical)
+
+    def test_the_city_is_read_whichever_way_the_address_runs(self):
+        from .api.views import _site_city
+
+        self.assertEqual(
+            _site_city(Site(physical_address="Musterweg 30, 3000 Bern")), "Bern"
+        )
+        self.assertEqual(
+            _site_city(Site(physical_address="Bern, Musterweg 30")), "Bern"
+        )
+        self.assertEqual(_site_city(Site(physical_address="3000 Bern")), "Bern")
+        self.assertEqual(_site_city(Site(physical_address="Musterweg 30")), "30")
+        self.assertEqual(_site_city(Site(physical_address="")), "")
+        self.assertEqual(_site_city(Site()), "")
 
     def test_the_index_narrows_to_a_city_or_a_site(self):
         self.client.force_login(self.user)
@@ -1811,8 +1823,16 @@ class FloorPlanApiTests(TestCase):
         self.assertEqual(self.index("city=bern")["count"], 2)
         self.assertEqual(self.index("city=Zollikofen")["count"], 0)
         self.assertEqual(
-            [p["id"] for p in self.index("site=beispielweg-4")["plans"]], ["beispielweg-4"]
+            [p["id"] for p in self.index("site=beispielweg-4")["plans"]],
+            ["beispielweg-4"],
         )
+        # The index names the filter it applied, and echoes nothing when none was asked.
+        self.assertEqual(self.index("city=Bern")["city"], "Bern")
+        self.assertIsNone(self.index("city=Bern")["site"])
+        self.assertEqual(self.index("site=beispielweg-4")["site"], "beispielweg-4")
+        self.assertIsNone(self.index("site=beispielweg-4")["city"])
+        self.assertIsNone(self.index()["city"])
+        self.assertIsNone(self.index()["site"])
 
     def test_the_plan_numbers_its_dots_and_lists_its_machines(self):
         # The plan numbers its dots and lists the machines under it, in the dots' own colours.

@@ -69,22 +69,26 @@ and each plan is then drawn by its own address:
 
 | URL                                                | Answers                                       |
 | -------------------------------------------------- | --------------------------------------------- |
-| `/api/plugins/networkmap/floor-plans/`             | JSON list of every plan, filterable by `?city=` and `?site=` |
+| `/api/plugins/networkmap/floor-plans/`             | JSON `{"count", "city", "site", "plans"}`; the two filters are echoed back, and each plan carries a `city` read off its address |
 | `/api/plugins/networkmap/floor-plan/<site-slug>/`  | the site's logical floor map, as SVG or PNG   |
 
 ```bash
 curl -H "Authorization: Token <token>" \
   "https://netbox.example.com/api/plugins/networkmap/floor-plans/?city=Bern"
 curl -H "Authorization: Token <token>" \
-  "https://netbox.example.com/api/plugins/networkmap/floor-plan/musterweg-30/" \
-  -o erdgeschoss.svg
+  "https://netbox.example.com/api/plugins/networkmap/floor-plan/sample-site/" \
+  -o floor-plan.svg
 ```
 
 - The plan of a site is its logical floor map, built from the site's locations
   and named by the site's slug alone; a site whose machines the map places has
   a plan, every other address is answered 404.
-- `?city=` reads the place out of the site's address or description, which is
-  where NetBox keeps it; `?site=` takes the site's slug.
+- `?city=` reads the place out of the site's physical address, shipping address
+  or description, which is where NetBox keeps it; `?site=` takes the site's slug.
+- The answer echoes the `city` and `site` it filtered by (null when not given),
+  and every plan carries its own `city`, read off its address whether the place
+  stands before the street (`Bern, Musterweg 5`) or after a postal code
+  (`Musterweg 5, 3000 Bern`).
 - The plan carries its machines the way the browser export of the map does:
   every dot is numbered in the machine's colour, virtual ones hollow, and under
   the picture the machines are listed with their name, description and address.
