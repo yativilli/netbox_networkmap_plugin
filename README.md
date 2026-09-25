@@ -13,8 +13,8 @@ cd /opt/netbox/network_map_plugin
 ```
 
 The pages live under `/plugins/networkmap/` (`vlan-list/`, `vlan-topology/`,
-`vlan-connections/`, `subnet-map/`) and are linked from the NetBox menu. In
-production, collect static files before restarting.
+`vlan-connections/`, `subnet-map/`, `coverage/`) and are linked from the NetBox
+menu. In production, collect static files before restarting.
 
 ## Testing
 
@@ -97,6 +97,21 @@ curl -H "Authorization: Token <token>" \
   same colour key as the map page; the `network_map.floor_plan` module and
   `subnet_map.js` hold the same measurements, which `FloorPlanParityTests`
   checks.
+
+## Data Coverage
+
+`/plugins/networkmap/coverage/` is a read-only map-readiness report. It checks
+whether the NetBox data behind the existing maps is complete enough to draw
+useful pictures, without geocoding or saving anything while the page is opened.
+
+The first report covers:
+
+- sites with machines but missing coordinates or an unknown city,
+- VLANs without prefixes and prefixes without active/reserved IP addresses,
+- IP addresses with missing or blank DNS names,
+- machines without a site or without a room for floor plans,
+- locations whose floor cannot be inferred from the room name,
+- gateway-tag problems for the logical connection view.
 
 ## Configuration
 
@@ -187,10 +202,12 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 | File                                   | Purpose                                                            |
 | -------------------------------------- | ------------------------------------------------------------------ |
 | `models.py`                            | The `VlanElement` anchor model and the dataclasses the views fill. |
-| `views.py`                             | The four pages: collecting what to show and handing it to the browser. |
+| `views.py`                             | The plugin pages: collecting what to show and handing it to the browser. |
 | `urls.py`, `navigation.py`             | The page routes and the NetBox menu entries.                       |
 | `__init__.py`, `defaults.py`           | Plugin registration, version, and the settings with their defaults. |
 | `colors.py`                            | The location colour palette and the shades drawn from it.          |
+| `places.py`                            | Reading the city/place out of site names and addresses.            |
+| `coverage.py`                          | Read-only map-readiness checks for the Data Coverage page.         |
 | `lv03.py`                              | WGS84 to LV03 conversion and the swisstopo tile-grid maths.         |
 | `geocoding.py`                         | Nominatim lookup for Sites that have no coordinates yet.           |
 | `swisstopo.py`                         | Fetching the canton border, with fallbacks, from public services.  |
@@ -206,9 +223,10 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 | `api/views.py`                         | The picture and floor-plan endpoints and their permission gate.    |
 | `api/urls.py`                          | The API routes, with the path parts constrained by regex.          |
 | `templatetags/network_map_static.py`   | The `static_url` tag keeping cached scripts honest.                |
-| `templates/network_map/*.html`         | The four pages' markup, data included as JSON.                     |
+| `templates/network_map/*.html`         | The pages' markup, data included as JSON.                          |
 | `templates/network_map/includes/`      | `_info_item.html`, a detail-panel row of the connection page.      |
 | `static/network_map/shared/`           | `svg_export.js`, the browser's own picture export.                 |
+| `static/network_map/data_coverage/`    | Styles for the Data Coverage page.                                 |
 | `static/network_map/subnet_map/`       | Subnet-map script and styles, plus the generated LV03 grid.        |
 | `static/network_map/vlan_connection/`  | Styles for the VLAN connection page.                               |
 | `static/network_map/vlan_element_list/`| Styles for the machine list page.                                  |

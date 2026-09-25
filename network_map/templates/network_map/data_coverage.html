@@ -1,0 +1,146 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+{% load network_map_static %}
+
+{% block head %}
+  <link rel="stylesheet" href="{% static_url 'network_map/data_coverage/coverage.css' %}">
+{% endblock %}
+
+{% block title %}{% trans "Data Coverage" %}{% endblock %}
+
+{% block content %}
+  <div class="data-coverage">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="card-title mb-0">{% trans "Data Coverage" %}</h2>
+        <span class="text-muted">{% trans "Read-only map readiness report" %}</span>
+      </div>
+      <div class="card-body">
+        <p>
+          {% trans "This page checks whether the NetBox data behind the subnet map, floor plans, and logical topology is complete enough to draw useful pictures." %}
+        </p>
+
+        <form method="get" class="row g-2 align-items-end mb-3">
+          <div class="col-md-4">
+            <label class="form-label" for="coverage-category">{% trans "Category" %}</label>
+            <select class="form-select" id="coverage-category" name="category">
+              <option value="">{% trans "All categories" %}</option>
+              {% for category in coverage.categories %}
+                <option value="{{ category.key }}" {% if category.key == coverage.filters.category %}selected{% endif %}>
+                  {{ category.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="coverage-severity">{% trans "Severity" %}</label>
+            <select class="form-select" id="coverage-severity" name="severity">
+              <option value="">{% trans "All severities" %}</option>
+              {% for severity in coverage.severities %}
+                <option value="{{ severity.key }}" {% if severity.key == coverage.filters.severity %}selected{% endif %}>
+                  {{ severity.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="coverage-site">{% trans "Site or object" %}</label>
+            <input class="form-control" id="coverage-site" name="site" type="search"
+                   value="{{ coverage.filters.site }}"
+                   placeholder="{% trans 'Filter by site or object' %}">
+          </div>
+          <div class="col-md-2 d-flex gap-2">
+            <button class="btn btn-primary flex-fill" type="submit">{% trans "Apply" %}</button>
+            <a class="btn btn-outline-secondary" href="{% url 'plugins:network_map:data_coverage' %}">{% trans "Reset" %}</a>
+          </div>
+        </form>
+
+        {% if coverage.summary %}
+          <div class="coverage-summary-grid">
+            {% for group in coverage.summary %}
+              <article class="coverage-summary-card">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <h5 class="mb-0">{{ group.label }}</h5>
+                  <span class="badge text-bg-secondary">{{ group.total }}</span>
+                </div>
+                <ul class="coverage-severities">
+                  {% if group.severity_counts.blocking %}
+                    <li class="text-danger">
+                      {% blocktrans count count=group.severity_counts.blocking %}{{ count }} blocking{% plural %}{{ count }} blocking{% endblocktrans %}
+                    </li>
+                  {% endif %}
+                  {% if group.severity_counts.warning %}
+                    <li class="text-warning">
+                      {% blocktrans count count=group.severity_counts.warning %}{{ count }} warning{% plural %}{{ count }} warnings{% endblocktrans %}
+                    </li>
+                  {% endif %}
+                  {% if group.severity_counts.info %}
+                    <li class="text-info">
+                      {% blocktrans count count=group.severity_counts.info %}{{ count }} information{% plural %}{{ count }} information{% endblocktrans %}
+                    </li>
+                  {% endif %}
+                </ul>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-success mb-3" role="alert">
+            {% trans "No coverage issues found for the current filters." %}
+          </div>
+        {% endif %}
+
+        {% for group in coverage.groups %}
+          {% if group.total %}
+            <section class="card mt-3">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="h5 mb-0">{{ group.label }}</h3>
+                <span class="badge text-bg-secondary">{{ group.total }}</span>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">{% trans "Severity" %}</th>
+                      <th scope="col">{% trans "Object" %}</th>
+                      <th scope="col">{% trans "Issue" %}</th>
+                      <th scope="col">{% trans "Site" %}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for finding in group.items %}
+                      <tr>
+                        <td>
+                          <span class="badge text-bg-{% if finding.severity == 'blocking' %}danger{% elif finding.severity == 'warning' %}warning{% else %}info{% endif %}">
+                            {{ finding.severity }}
+                          </span>
+                        </td>
+                        <td>
+                          <div class="text-muted small">{{ finding.object_type }}</div>
+                          {% if finding.url %}
+                            <a href="{{ finding.url }}">{{ finding.label }}</a>
+                          {% else %}
+                            {{ finding.label }}
+                          {% endif %}
+                        </td>
+                        <td>
+                          <div>{{ finding.issue }}</div>
+                          <div class="text-muted small">{{ finding.detail }}</div>
+                        </td>
+                        <td>{{ finding.site|default:"-" }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% if group.truncated %}
+                <div class="card-footer text-muted">
+                  {% trans "Showing the first 50 issues in this category." %}
+                </div>
+              {% endif %}
+            </section>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock content %}

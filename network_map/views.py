@@ -22,6 +22,7 @@ from .colors import (
     prefix_shade,
     with_minimum_distance,
 )
+from .coverage import build_coverage
 from .defaults import (
     DEFAULT_GATEWAY_SEARCH_TAG,
     canton_code,
@@ -488,6 +489,25 @@ class CantonBoundaryView(NetworkMapPermissionRequiredMixin, View):
         if boundary is None:
             return HttpResponse(status=204)
         return JsonResponse(boundary, content_type="application/geo+json")
+
+
+class DataCoverageView(NetworkMapPermissionRequiredMixin, View):
+    """
+    Read-only map readiness report. It answers "why is this missing from the
+    map?" without drawing a map, geocoding, or saving anything back.
+    """
+
+    template_name = "network_map/data_coverage.html"
+
+    def get(self, request):
+        context = {
+            "coverage": build_coverage(
+                category=str(request.GET.get("category") or "").strip(),
+                site=str(request.GET.get("site") or "").strip(),
+                severity=str(request.GET.get("severity") or "").strip(),
+            )
+        }
+        return render(request, self.template_name, context)
 
 
 class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, View):

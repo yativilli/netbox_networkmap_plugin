@@ -14,4 +14,5 @@ urlpatterns = [
         views.CantonBoundaryView.as_view(),
         name="canton_boundary",
     ),
+    path("coverage/", views.DataCoverageView.as_view(), name="data_coverage"),
 ]

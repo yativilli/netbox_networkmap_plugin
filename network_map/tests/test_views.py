@@ -21,7 +21,13 @@ from ..views import VlanElementListView, VlanTopologyView
 
 
 class ViewAccessTests(TestCase):
-    URL_NAMES = ("vlanelement_list", "vlan_topology", "vlan_connections", "subnet_map")
+    URL_NAMES = (
+        "vlanelement_list",
+        "vlan_topology",
+        "vlan_connections",
+        "subnet_map",
+        "data_coverage",
+    )
 
     @classmethod
     def setUpTestData(cls):

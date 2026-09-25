@@ -22,4 +22,9 @@ menu_items = (
         link_text=_("Site Map"),
         permissions=["network_map.view_vlanelement"],
     ),
+    PluginMenuItem(
+        link="plugins:network_map:data_coverage",
+        link_text=_("Data Coverage"),
+        permissions=["network_map.view_vlanelement"],
+    ),
 )
