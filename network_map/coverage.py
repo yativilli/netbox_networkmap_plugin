@@ -12,7 +12,8 @@ from typing import Any
 
 from dcim.models import Location, Site
 from django.urls import NoReverseMatch, reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy as _lazy
 from extras.models import Tag
 from ipam.models import VLAN, IPAddress, Prefix
 from netbox.plugins import get_plugin_config
@@ -32,18 +33,18 @@ MAX_CATEGORY_ITEMS = 50
 MAX_SCAN_ROWS = 500
 
 CATEGORY_LABELS = {
-    "sites": _("Sites and coordinates"),
-    "vlans": _("VLANs and prefixes"),
-    "ips": _("IP addresses"),
-    "placements": _("Machine placement"),
-    "rooms": _("Rooms and floors"),
-    "gateways": _("Gateways"),
+    "sites": _lazy("Sites and coordinates"),
+    "vlans": _lazy("VLANs and prefixes"),
+    "ips": _lazy("IP addresses"),
+    "placements": _lazy("Machine placement"),
+    "rooms": _lazy("Rooms and floors"),
+    "gateways": _lazy("Gateways"),
 }
 
 SEVERITY_LABELS = {
-    BLOCKING: _("Blocking"),
-    WARNING: _("Warning"),
-    INFO: _("Information"),
+    BLOCKING: _lazy("Blocking"),
+    WARNING: _lazy("Warning"),
+    INFO: _lazy("Information"),
 }
 
 

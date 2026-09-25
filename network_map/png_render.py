@@ -13,6 +13,7 @@ either, a PNG request says so rather than sending a broken picture.
 import re
 import shutil
 import subprocess  # nosec B404 - only a fixed rasteriser command is run
+from typing import cast
 
 # SVG user units are pixels at 96 dpi, and cairosvg's scale multiplies that.
 PNG_SCALE = 2
@@ -75,7 +76,9 @@ def render_png(markup, scale=PNG_SCALE):
     cairosvg = _cairosvg()
     if cairosvg is not None:
         try:
-            return cairosvg.svg2png(bytestring=markup.encode("utf-8"), scale=scale)
+            return cairosvg.svg2png(
+                bytestring=markup.encode("utf-8"), scale=cast(int, scale)
+            )
         except Exception as error:
             # cairosvg raises whatever its parsers raise, none of it worth showing the requester beyond "could not do it".
             raise PngRenderError(

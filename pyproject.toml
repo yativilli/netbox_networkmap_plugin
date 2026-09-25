@@ -37,3 +37,11 @@ network_map = [
     "static/**",
     "locale/**/*.mo"
 ]
+
+[tool.pyright]
+include = ["network_map"]
+exclude = ["network_map/tests"]
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+reportMissingModuleSource = false
+reportUnnecessaryTypeIgnoreComment = true

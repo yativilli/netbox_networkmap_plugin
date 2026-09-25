@@ -6,6 +6,14 @@ repos:
         args: [network_map]
       - id: ruff-format
         args: [network_map]
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.414
+    hooks:
+      - id: pyright
+        name: pyright (network_map)
+        args: [--pythonpath, /opt/netbox/venv/bin/python]
+        files: ^network_map/.*\.py$
+        pass_filenames: false
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

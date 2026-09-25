@@ -111,10 +111,10 @@ def _hls_to_hex(hue: float, lightness: float, saturation: float) -> str:
 
 
 def _linear_channel(value: int) -> float:
-    value /= 255.0
-    if value <= 0.04045:
-        return value / 12.92
-    return ((value + 0.055) / 1.055) ** 2.4
+    normalized = value / 255.0
+    if normalized <= 0.04045:
+        return normalized / 12.92
+    return ((normalized + 0.055) / 1.055) ** 2.4
 
 
 def _to_oklab(color: str) -> tuple[float, float, float] | None:

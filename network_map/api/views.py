@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from typing import TYPE_CHECKING
 
 from dcim.models import Site
 from drf_spectacular.types import OpenApiTypes
@@ -70,7 +71,7 @@ class PluginApiRootView(APIView):
 
     @extend_schema(exclude=True)
     def get(self, request, format=None):
-        entries = OrderedDict(
+        entries: OrderedDict[str, str] = OrderedDict(
             (
                 (
                     "installed-plugins",
@@ -97,7 +98,10 @@ class PluginApiRootView(APIView):
         return Response(entries)
 
 
-class PictureAccessMixin:
+_PictureAccessBase = APIView if TYPE_CHECKING else object
+
+
+class PictureAccessMixin(_PictureAccessBase):
     """
     What every picture of this plugin answers to: the permission to see the
     network map, and - for a raster - a rasteriser on the server.

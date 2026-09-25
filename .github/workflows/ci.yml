@@ -21,6 +21,39 @@ jobs:
       - run: ruff check network_map
       - run: ruff format --check network_map
 
+  types:
+    name: Pyright
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve NetBox tag
+        id: nbtag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(gh release view --json tagName -q .tagName -R netbox-community/netbox) ||
+            tag=$(git ls-remote --tags --refs https://github.com/netbox-community/netbox \
+              | sed 's|.*refs/tags/||' | sort -V | tail -1)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved latest NetBox to $tag"
+      - name: Clone NetBox
+        env:
+          NB_TAG: ${{ steps.nbtag.outputs.tag }}
+        run: git clone --depth 1 --branch "$NB_TAG"
+          https://github.com/netbox-community/netbox.git "$RUNNER_TEMP/netbox"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install NetBox dependencies and Pyright
+        run: |
+          pip install -r "$RUNNER_TEMP/netbox/base_requirements.txt"
+          pip install "pyright[nodejs]==1.1.414"
+          pip install .
+      - name: Run Pyright
+        run: pyright
+
   tests:
     runs-on: ubuntu-latest
     strategy:

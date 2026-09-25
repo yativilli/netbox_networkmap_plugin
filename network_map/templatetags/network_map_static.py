@@ -20,7 +20,8 @@ def static_url(path):
     the cache is cleared by hand.
     """
     url = static(path)
-    source = finders.find(path)
+    found = finders.find(path)
+    source = found[0] if isinstance(found, list) else found
     if not source:
         return url
     try:

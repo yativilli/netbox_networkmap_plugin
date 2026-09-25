@@ -589,23 +589,24 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
         else:
             details = DetailsElement(
                 id=ip.pk,
-                name=ip.dns_name,
+                name=str(ip.dns_name or ""),
                 location="",
                 url=ip.get_absolute_url(),
-                description=ip.description or "",
+                description=str(ip.description or ""),
                 type="IP-Address",
             )
 
         return details
 
     def _get_ip_details(self, ip: IPAddress) -> IpDetailsElement:
+        address = getattr(ip.address, "ip", "")
         return IpDetailsElement(
             id=ip.pk,
-            address=str(ip.address.ip),
-            dns_name=ip.dns_name or "",
-            description=ip.description or "",
-            comments=ip.comments or "",
-            role=ip.role or "",
+            address=str(address or ""),
+            dns_name=str(ip.dns_name or ""),
+            description=str(ip.description or ""),
+            comments=str(ip.comments or ""),
+            role=str(ip.role or ""),
             details=self._get_device_vm_ip_details(ip),
             url=ip.get_absolute_url(),
             type="IP-Address",
