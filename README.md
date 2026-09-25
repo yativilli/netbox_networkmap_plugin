@@ -8,7 +8,7 @@ tiles.
 ## Install
 
 ```bash
-cd /opt/netbox/network_map_plugin/network_map
+cd /opt/netbox/network_map_plugin
 /opt/netbox/venv/bin/python -m pip install --editable . --no-deps
 ```
 
@@ -83,8 +83,9 @@ curl -H "Authorization: Token <token>" \
 - The plan of a site is its logical floor map, built from the site's locations
   and named by the site's slug alone; a site whose machines the map places has
   a plan, every other address is answered 404.
-- `?city=` reads the place out of the site's physical address, shipping address
-  or description, which is where NetBox keeps it; `?site=` takes the site's slug.
+- `?city=` reads the place out of the site name, physical address, shipping
+  address or description, which is where NetBox keeps it; `?site=` takes the
+  site's slug.
 - The answer echoes the `city` and `site` it filtered by (null when not given),
   and every plan carries its own `city`, read off its address whether the place
   stands before the street (`Bern, Musterweg 5`) or after a postal code
@@ -194,20 +195,28 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 | `geocoding.py`                         | Nominatim lookup for Sites that have no coordinates yet.           |
 | `swisstopo.py`                         | Fetching the canton border, with fallbacks, from public services.  |
 | `map_tiles.py`                         | Fetching and caching the swisstopo tiles a served map stands on.   |
-| `svg_render.py`                        | Drawing all four pictures on the server as SVG.                    |
-| `floor_plan.py`                        | Drawing a site's logical floor plan.                       |
+| `svg_render/`                          | Package entry re-exporting the server-side SVG renderers.          |
+| `svg_render/base.py`                   | Shared SVG primitives: text helpers, wrapping, and shared styles.  |
+| `svg_render/machine_list.py`           | Machine-list picture rendering.                                    |
+| `svg_render/logical_tree.py`           | Logical VLAN connection tree rendering.                            |
+| `svg_render/topology.py`               | Topology map rendering.                                            |
+| `svg_render/subnet_map.py`             | Geographic subnet map rendering, border framing, and tiles.        |
+| `floor_plan.py`                        | Drawing a site's logical floor plan.                               |
 | `png_render.py`                        | Rasterising a served SVG to PNG with cairosvg or ImageMagick.      |
 | `api/views.py`                         | The picture and floor-plan endpoints and their permission gate.    |
 | `api/urls.py`                          | The API routes, with the path parts constrained by regex.          |
 | `templatetags/network_map_static.py`   | The `static_url` tag keeping cached scripts honest.                |
 | `templates/network_map/*.html`         | The four pages' markup, data included as JSON.                     |
 | `templates/network_map/includes/`      | `_info_item.html`, a detail-panel row of the connection page.      |
-| `static/network_map/*.js`              | `subnet_map.js` the interactive map, `vlan_topology.js` the graph, `svg_export.js` the browser's own picture export, `lv03_grid.js` the generated projection grid. |
-| `static/network_map/*.css`             | The pages' styling, including the colour key's variables.          |
-| `static/network_map/leaflet/`          | The vendored Leaflet library the subnet map runs on.               |
+| `static/network_map/shared/`           | `svg_export.js`, the browser's own picture export.                 |
+| `static/network_map/subnet_map/`       | Subnet-map script and styles, plus the generated LV03 grid.        |
+| `static/network_map/vlan_connection/`  | Styles for the VLAN connection page.                               |
+| `static/network_map/vlan_element_list/`| Styles for the machine list page.                                  |
+| `static/network_map/vlan_topology/`    | Topology-map script and styles.                                    |
+| `static/network_map/vendor/leaflet/`   | The vendored Leaflet library the subnet map runs on.               |
 | `migrations/`                          | Django's record of the model's state.                              |
 | `locale/<lang>/LC_MESSAGES/`           | The German and French catalogs, compiled `.mo` included.           |
-| `tests.py`                             | The whole test suite, run as described under Testing.              |
+| `tests/`                               | The split test suite, run as described under Testing.              |
 
 ## Releases
 

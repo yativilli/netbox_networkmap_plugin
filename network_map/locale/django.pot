@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-24 12:02+0000\n"
+"POT-Creation-Date: 2026-09-25 11:44+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,64 +17,61 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: network_map/api/views.py:246 network_map/floor_plan.py:347
-#: network_map/svg_render.py:179
-#: network_map/templates/network_map/vlan_element_list.html:58
-#: network_map/views.py:441
-msgid "Machines"
-msgstr ""
-
-#: network_map/api/views.py:246 network_map/floor_plan.py:347
-#: network_map/views.py:439
-msgid "No location"
-msgstr ""
-
-#: network_map/api/views.py:248 network_map/floor_plan.py:353
-#: network_map/views.py:442
-msgid "Virtual"
-msgstr ""
-
-#: network_map/floor_plan.py:104 network_map/views.py:446
+#: network_map/floor_plan.py:98 network_map/views.py:433
 msgid "Other rooms"
 msgstr ""
 
-#: network_map/floor_plan.py:154 network_map/views.py:447
+#: network_map/floor_plan.py:148 network_map/views.py:434
 msgid "VM"
 msgstr ""
 
-#: network_map/floor_plan.py:154 network_map/views.py:448
+#: network_map/floor_plan.py:148 network_map/views.py:435
 msgid "VMs"
 msgstr ""
 
-#: network_map/floor_plan.py:155 network_map/views.py:430
+#: network_map/floor_plan.py:149 network_map/views.py:417
 msgid "machine"
 msgstr ""
 
-#: network_map/floor_plan.py:155 network_map/views.py:431
+#: network_map/floor_plan.py:149 network_map/views.py:418
 msgid "machines"
 msgstr ""
 
-#: network_map/floor_plan.py:271 network_map/views.py:444
+#: network_map/floor_plan.py:264 network_map/views.py:431
 msgid "Physical machine"
 msgstr ""
 
-#: network_map/floor_plan.py:273 network_map/views.py:445
+#: network_map/floor_plan.py:266 network_map/views.py:432
 msgid "Virtual machine"
 msgstr ""
 
-#: network_map/floor_plan.py:302
+#: network_map/floor_plan.py:295
 #: network_map/templates/network_map/subnet_map.html:18
 #: network_map/templates/network_map/vlan_topology.html:17
-#: network_map/views.py:443
+#: network_map/views.py:430
 msgid "Legend"
 msgstr ""
 
-#: network_map/floor_plan.py:375 network_map/views.py:272
-#: network_map/views.py:437
+#: network_map/floor_plan.py:340 network_map/svg_render/machine_list.py:85
+#: network_map/templates/network_map/vlan_element_list.html:58
+#: network_map/views.py:428
+msgid "Machines"
+msgstr ""
+
+#: network_map/floor_plan.py:340 network_map/views.py:426
+msgid "No location"
+msgstr ""
+
+#: network_map/floor_plan.py:346 network_map/views.py:429
+msgid "Virtual"
+msgstr ""
+
+#: network_map/floor_plan.py:368 network_map/views.py:267
+#: network_map/views.py:424
 msgid "logical floor map"
 msgstr ""
 
-#: network_map/floor_plan.py:379 network_map/views.py:438
+#: network_map/floor_plan.py:372 network_map/views.py:425
 msgid "generated from NetBox locations"
 msgstr ""
 
@@ -94,111 +91,120 @@ msgstr ""
 msgid "Site Map"
 msgstr ""
 
-#: network_map/svg_render.py:120 network_map/svg_render.py:301
-#: network_map/svg_render.py:363
+#: network_map/svg_render/logical_tree.py:56
+#: network_map/svg_render/logical_tree.py:73
+#: network_map/svg_render/logical_tree.py:118 network_map/views.py:608
+msgid "Name"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:57
+#: network_map/svg_render/logical_tree.py:76
+#: network_map/svg_render/logical_tree.py:103
+#: network_map/svg_render/logical_tree.py:119
+#: network_map/svg_render/machine_list.py:29
+#: network_map/svg_render/machine_list.py:83
+#: network_map/templates/network_map/vlan_element_list.html:56
+#: network_map/templates/network_map/vlan_element_list.html:70
+#: network_map/views.py:603
+msgid "Description"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:58
+#: network_map/svg_render/logical_tree.py:120
+#: network_map/svg_render/machine_list.py:26
 #: network_map/templates/network_map/vlan_element_list.html:67
-#: network_map/views.py:621
+#: network_map/views.py:607
 msgid "Location"
 msgstr ""
 
-#: network_map/svg_render.py:121
+#: network_map/svg_render/logical_tree.py:59 network_map/views.py:606
+msgid "IP-Address"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:60
+#: network_map/svg_render/logical_tree.py:77
+#: network_map/svg_render/logical_tree.py:90
+#: network_map/svg_render/logical_tree.py:106
+#: network_map/svg_render/logical_tree.py:121 network_map/views.py:611
+msgid "Type"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:72 network_map/views.py:612
+msgid "VLAN"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:74 network_map/views.py:604
+msgid "Gateway"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:75
+#: network_map/svg_render/logical_tree.py:102 network_map/views.py:602
+msgid "DNS Name"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:86
+#: network_map/svg_render/logical_tree.py:88
+#: network_map/templates/network_map/vlan_connection.html:72
+#: network_map/views.py:609
+msgid "Prefix"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:89 network_map/views.py:605
+msgid "ID"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:101 network_map/views.py:600
+msgid "Address"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:104 network_map/views.py:601
+msgid "Comments"
+msgstr ""
+
+#: network_map/svg_render/logical_tree.py:105
+#: network_map/svg_render/machine_list.py:28
+#: network_map/svg_render/machine_list.py:84
+#: network_map/templates/network_map/vlan_element_list.html:57
+#: network_map/templates/network_map/vlan_element_list.html:69
+#: network_map/views.py:610
+msgid "Role"
+msgstr ""
+
+#: network_map/svg_render/machine_list.py:27
 #: network_map/templates/network_map/vlan_element_list.html:68
 msgid "IP"
 msgstr ""
 
-#: network_map/svg_render.py:122 network_map/svg_render.py:178
-#: network_map/svg_render.py:348
-#: network_map/templates/network_map/vlan_element_list.html:57
-#: network_map/templates/network_map/vlan_element_list.html:69
-#: network_map/views.py:624
-msgid "Role"
-msgstr ""
-
-#: network_map/svg_render.py:123 network_map/svg_render.py:177
-#: network_map/svg_render.py:300 network_map/svg_render.py:319
-#: network_map/svg_render.py:346 network_map/svg_render.py:362
-#: network_map/templates/network_map/vlan_element_list.html:56
-#: network_map/templates/network_map/vlan_element_list.html:70
-#: network_map/views.py:617
-msgid "Description"
-msgstr ""
-
-#: network_map/svg_render.py:143
+#: network_map/svg_render/machine_list.py:49
 #: network_map/templates/network_map/vlan_element_list.html:17
 msgid "VLAN Overview"
 msgstr ""
 
-#: network_map/svg_render.py:168
+#: network_map/svg_render/machine_list.py:74
 #: network_map/templates/network_map/vlan_element_list.html:10
 #: network_map/templates/network_map/vlan_element_list.html:40
 msgid "VLAN Elements"
 msgstr ""
 
-#: network_map/svg_render.py:176
+#: network_map/svg_render/machine_list.py:82
 #: network_map/templates/network_map/vlan_element_list.html:55
 msgid "Group"
 msgstr ""
 
-#: network_map/svg_render.py:180
+#: network_map/svg_render/machine_list.py:86
 #: network_map/templates/network_map/vlan_element_list.html:59
 msgid "Range"
 msgstr ""
 
-#: network_map/svg_render.py:299 network_map/svg_render.py:316
-#: network_map/svg_render.py:361 network_map/views.py:622
-msgid "Name"
-msgstr ""
-
-#: network_map/svg_render.py:302 network_map/views.py:620
-msgid "IP-Address"
-msgstr ""
-
-#: network_map/svg_render.py:303 network_map/svg_render.py:320
-#: network_map/svg_render.py:333 network_map/svg_render.py:349
-#: network_map/svg_render.py:364 network_map/views.py:625
-msgid "Type"
-msgstr ""
-
-#: network_map/svg_render.py:315 network_map/views.py:626
-msgid "VLAN"
-msgstr ""
-
-#: network_map/svg_render.py:317 network_map/views.py:618
-msgid "Gateway"
-msgstr ""
-
-#: network_map/svg_render.py:318 network_map/svg_render.py:345
-#: network_map/views.py:616
-msgid "DNS Name"
-msgstr ""
-
-#: network_map/svg_render.py:329 network_map/svg_render.py:331
-#: network_map/templates/network_map/vlan_connection.html:72
-#: network_map/views.py:623
-msgid "Prefix"
-msgstr ""
-
-#: network_map/svg_render.py:332 network_map/views.py:619
-msgid "ID"
-msgstr ""
-
-#: network_map/svg_render.py:344 network_map/views.py:614
-msgid "Address"
-msgstr ""
-
-#: network_map/svg_render.py:347 network_map/views.py:615
-msgid "Comments"
-msgstr ""
-
-#: network_map/svg_render.py:1017 network_map/views.py:449
+#: network_map/svg_render/subnet_map.py:391 network_map/views.py:436
 msgid "… further subnets not listed"
 msgstr ""
 
-#: network_map/svg_render.py:1039 network_map/views.py:450
+#: network_map/svg_render/subnet_map.py:413 network_map/views.py:437
 msgid "site(s) outside the drawn area"
 msgstr ""
 
-#: network_map/svg_render.py:1048 network_map/views.py:451
+#: network_map/svg_render/subnet_map.py:422 network_map/views.py:438
 msgid "Map data: © swisstopo"
 msgstr ""
 
@@ -220,12 +226,12 @@ msgid "Show or hide the labels below the pins"
 msgstr ""
 
 #: network_map/templates/network_map/subnet_map.html:41
-#: network_map/views.py:426
+#: network_map/views.py:413
 msgid "Hide labels"
 msgstr ""
 
 #: network_map/templates/network_map/subnet_map.html:47
-#: network_map/views.py:428
+#: network_map/views.py:415
 msgid "Export as .PNG"
 msgstr ""
 
@@ -267,7 +273,7 @@ msgstr ""
 #: network_map/templates/network_map/vlan_connection.html:25
 #: network_map/templates/network_map/vlan_element_list.html:44
 #: network_map/templates/network_map/vlan_topology.html:28
-#: network_map/views.py:427
+#: network_map/views.py:414
 msgid "Export as .SVG"
 msgstr ""
 
@@ -279,7 +285,7 @@ msgstr ""
 
 #: network_map/templates/network_map/vlan_element_list.html:31
 #: network_map/templates/network_map/vlan_element_list.html:74
-#: network_map/views.py:440
+#: network_map/views.py:427
 msgid "No machines"
 msgstr ""
 
@@ -320,30 +326,30 @@ msgstr ""
 msgid "No VLAN topology data available."
 msgstr ""
 
-#: network_map/views.py:425
+#: network_map/views.py:412
 msgid "Show labels"
 msgstr ""
 
-#: network_map/views.py:429
+#: network_map/views.py:416
 msgid "The export could not be created"
 msgstr ""
 
-#: network_map/views.py:432
+#: network_map/views.py:419
 msgid "subnet"
 msgstr ""
 
-#: network_map/views.py:433
+#: network_map/views.py:420
 msgid "subnets"
 msgstr ""
 
-#: network_map/views.py:434
+#: network_map/views.py:421
 msgid "Details"
 msgstr ""
 
-#: network_map/views.py:435
+#: network_map/views.py:422
 msgid "Floor map"
 msgstr ""
 
-#: network_map/views.py:436
+#: network_map/views.py:423
 msgid "scroll out to return to the map"
 msgstr ""

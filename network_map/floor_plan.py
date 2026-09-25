@@ -3,7 +3,7 @@ The floor plan of one site as a picture of its own: the logical map built from
 NetBox locations.
 
 The logical layout is a port of `buildLogicalLayout()` in
-`network_map/static/network_map/subnet_map.js`, so the served plan and the one
+`network_map/static/network_map/subnet_map/subnet_map.js`, so the served plan and the one
 the map page draws agree on floors, room boxes and the colour key. Because the
 page keeps its own copy, the shared metrics are pinned in both files by
 `FloorPlanParityTests`, which fails when one of them moves on its own.
@@ -15,7 +15,7 @@ import re
 from django.utils.html import escape
 from django.utils.translation import gettext as _
 
-from . import svg_render
+from .svg_render.base import FONT, build_svg
 
 # The page's metrics, character for character, so both pictures come out the same size.
 PLAN_W = 1400
@@ -53,7 +53,7 @@ LIST_SUB_CHAR_W = 8.1  # glyph width of the 13.5px line under it
 
 PLAN_STYLE = "\n".join(
     (
-        f"text {{ font-family: {svg_render.FONT}; pointer-events: none; }}",
+        f"text {{ font-family: {FONT}; pointer-events: none; }}",
         ".map-machine { stroke-width: 2; }",
         ".map-machine.is-vm { stroke-width: 3; }",
         ".map-machine-num { font-size: 9.5px; font-weight: 700; fill: #ffffff;",
@@ -628,4 +628,4 @@ def render_logical(site_name, pins, room_names):
         'fill="none" stroke="#555" stroke-width="4"/>'
         f"{layout['body']}"
     )
-    return svg_render.build_svg(layout["w"], layout["h"], body, style=PLAN_STYLE)
+    return build_svg(layout["w"], layout["h"], body, style=PLAN_STYLE)

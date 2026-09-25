@@ -4,7 +4,7 @@
 {% load network_map_static %}
 
 {% block head %}
-  <link rel="stylesheet" href="{% static_url 'network_map/vlan_element_list.css' %}">
+  <link rel="stylesheet" href="{% static_url 'network_map/vlan_element_list/vlan_element_list.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Elements" %}{% endblock %}
@@ -84,5 +84,5 @@
     </div>
   </div>
 
-  <script src="{% static_url 'network_map/svg_export.js' %}"></script>
+  <script src="{% static_url 'network_map/shared/svg_export.js' %}"></script>
 {% endblock content %}
