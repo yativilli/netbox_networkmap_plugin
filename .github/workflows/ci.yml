@@ -50,9 +50,11 @@ jobs:
         run: |
           pip install -r "$RUNNER_TEMP/netbox/base_requirements.txt"
           pip install "pyright[nodejs]==1.1.414"
-          pip install .
+          pip install ".[png]"
       - name: Run Pyright
-        run: pyright
+        env:
+          PYTHONPATH: ${{ runner.temp }}/netbox/netbox
+        run: pyright --pythonpath "$(which python)"
 
   tests:
     runs-on: ubuntu-latest
@@ -60,8 +62,6 @@ jobs:
       fail-fast: false
       matrix:
         netbox: ["v4.5", "v4.6", "v4.7", "latest"]
-    # The "latest" entry is an early warning when a new NetBox appears;
-    # it must not block merges.
     continue-on-error: ${{ matrix.netbox == 'latest' }}
     permissions:
       contents: read
