@@ -76,10 +76,6 @@ def color_for_location(index: int) -> str:
     return LOCATION_COLORS[index % len(LOCATION_COLORS)][0]
 
 
-def color_for_location_hex(index: int) -> str:
-    return LOCATION_COLORS[index % len(LOCATION_COLORS)][1]
-
-
 def _clamp_channel(value: float) -> int:
     return max(0, min(255, round(value)))
 
