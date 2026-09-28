@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-25 14:07+0000\n"
+"POT-Creation-Date: 2026-09-28 06:14+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,270 +18,270 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: network_map/coverage.py:35
+#: network_map/coverage.py:36
 msgid "Sites and coordinates"
 msgstr ""
 
-#: network_map/coverage.py:36
+#: network_map/coverage.py:37
 msgid "VLANs and prefixes"
 msgstr ""
 
-#: network_map/coverage.py:37
+#: network_map/coverage.py:38
 msgid "IP addresses"
 msgstr ""
 
-#: network_map/coverage.py:38
+#: network_map/coverage.py:39
 msgid "Machine placement"
 msgstr ""
 
-#: network_map/coverage.py:39
+#: network_map/coverage.py:40
 msgid "Rooms and floors"
 msgstr ""
 
-#: network_map/coverage.py:40
+#: network_map/coverage.py:41
 msgid "Gateways"
 msgstr ""
 
-#: network_map/coverage.py:44
+#: network_map/coverage.py:45
 msgid "Blocking"
 msgstr ""
 
-#: network_map/coverage.py:45
+#: network_map/coverage.py:46
 msgid "Warning"
 msgstr ""
 
-#: network_map/coverage.py:46
+#: network_map/coverage.py:47
 msgid "Information"
 msgstr ""
 
-#: network_map/coverage.py:121
+#: network_map/coverage.py:122
 msgid "Site name is not present in NetBox"
 msgstr ""
 
-#: network_map/coverage.py:123
+#: network_map/coverage.py:124
 msgid ""
 "Machines point to this site name, but the subnet map cannot place them "
 "unless a Site with the same name exists."
 msgstr ""
 
-#: network_map/coverage.py:126 network_map/coverage.py:144
-#: network_map/coverage.py:163 network_map/coverage.py:180
+#: network_map/coverage.py:127 network_map/coverage.py:145
+#: network_map/coverage.py:164 network_map/coverage.py:181
 #: network_map/templates/network_map/data_coverage.html:106
 msgid "Site"
 msgstr ""
 
-#: network_map/coverage.py:139
+#: network_map/coverage.py:140
 msgid "Site name is ambiguous"
 msgstr ""
 
-#: network_map/coverage.py:141
+#: network_map/coverage.py:142
 msgid ""
 "Several sites share this name. Rename them or map machines by site so the "
 "map can choose the right one."
 msgstr ""
 
-#: network_map/coverage.py:158
+#: network_map/coverage.py:159
 msgid "No coordinates for a site with machines"
 msgstr ""
 
-#: network_map/coverage.py:160
+#: network_map/coverage.py:161
 msgid ""
 "Add latitude and longitude on the Site, or fill in an address so geocoding "
 "can find it later."
 msgstr ""
 
-#: network_map/coverage.py:175
+#: network_map/coverage.py:176
 msgid "City cannot be inferred from the site"
 msgstr ""
 
-#: network_map/coverage.py:177
+#: network_map/coverage.py:178
 msgid ""
 "Floor-plan filtering by city cannot find this site. Put the city in the site "
 "name or physical address."
 msgstr ""
 
-#: network_map/coverage.py:198
+#: network_map/coverage.py:199
 msgid "VLAN has no prefix"
 msgstr ""
 
-#: network_map/coverage.py:200
+#: network_map/coverage.py:201
 msgid ""
 "Machines are collected from IP addresses inside related prefixes, so a VLAN "
 "without a prefix stays empty."
 msgstr ""
 
-#: network_map/coverage.py:203 network_map/svg_render/logical_tree.py:72
-#: network_map/views.py:659
+#: network_map/coverage.py:204 network_map/svg_render/logical_tree.py:72
+#: network_map/views.py:660
 msgid "VLAN"
 msgstr ""
 
-#: network_map/coverage.py:233
+#: network_map/coverage.py:234
 msgid "Prefix has no active or reserved IP addresses"
 msgstr ""
 
-#: network_map/coverage.py:235
+#: network_map/coverage.py:236
 msgid ""
 "The map will show this prefix only as an empty subnet unless an active or "
 "reserved IP address is inside it."
 msgstr ""
 
-#: network_map/coverage.py:238 network_map/svg_render/logical_tree.py:86
+#: network_map/coverage.py:239 network_map/svg_render/logical_tree.py:86
 #: network_map/svg_render/logical_tree.py:88
 #: network_map/templates/network_map/vlan_connection.html:72
-#: network_map/views.py:656
+#: network_map/views.py:657
 msgid "Prefix"
 msgstr ""
 
-#: network_map/coverage.py:271
+#: network_map/coverage.py:272
 msgid "IP address has no DNS name"
 msgstr ""
 
-#: network_map/coverage.py:273
+#: network_map/coverage.py:274
 msgid ""
 "The current machine collection only picks up IP addresses with a DNS name."
 msgstr ""
 
-#: network_map/coverage.py:276 network_map/coverage.py:292
-#: network_map/coverage.py:309
+#: network_map/coverage.py:277 network_map/coverage.py:293
+#: network_map/coverage.py:310
 msgid "IP address"
 msgstr ""
 
-#: network_map/coverage.py:287
+#: network_map/coverage.py:288
 msgid "IP address has a blank DNS name"
 msgstr ""
 
-#: network_map/coverage.py:289
+#: network_map/coverage.py:290
 msgid ""
 "The machine list falls back to names or descriptions, which is harder to "
 "read than a real DNS name."
 msgstr ""
 
-#: network_map/coverage.py:304
+#: network_map/coverage.py:305
 msgid "IP address has no device or virtual machine"
 msgstr ""
 
-#: network_map/coverage.py:306
+#: network_map/coverage.py:307
 msgid ""
 "Assign the address to an interface if it represents a machine that should "
 "appear on the map."
 msgstr ""
 
-#: network_map/coverage.py:322
+#: network_map/coverage.py:323
 msgid "Assigned machine has no site"
 msgstr ""
 
-#: network_map/coverage.py:324
+#: network_map/coverage.py:325
 msgid ""
 "Give the device or virtual machine a site, otherwise the subnet map cannot "
 "place it."
 msgstr ""
 
-#: network_map/coverage.py:327 network_map/coverage.py:379
+#: network_map/coverage.py:328 network_map/coverage.py:380
 #: network_map/templates/network_map/vlan_topology.html:20
 msgid "Machine"
 msgstr ""
 
-#: network_map/coverage.py:340
+#: network_map/coverage.py:341
 msgid "Physical machine has no room"
 msgstr ""
 
-#: network_map/coverage.py:342
+#: network_map/coverage.py:343
 msgid ""
 "Set the device location, or a rack location, so the floor plan can put the "
 "machine in a room."
 msgstr ""
 
-#: network_map/coverage.py:345
+#: network_map/coverage.py:346
 msgid "Device"
 msgstr ""
 
-#: network_map/coverage.py:374
+#: network_map/coverage.py:375
 msgid "Machine is not attached to a site"
 msgstr ""
 
-#: network_map/coverage.py:376
+#: network_map/coverage.py:377
 msgid ""
 "It stays in the unplaced list because neither the assigned object nor the IP "
 "gives a site."
 msgstr ""
 
-#: network_map/coverage.py:417
+#: network_map/coverage.py:418
 msgid "Floor cannot be inferred from the room name"
 msgstr ""
 
-#: network_map/coverage.py:419
+#: network_map/coverage.py:420
 msgid ""
 "The floor plan will place this room under \"Other rooms\". Use a name such "
 "as \"2. Stock - Gang\", \"EG 12\", or \"OG 2\" to make the floor readable."
 msgstr ""
 
-#: network_map/coverage.py:423 network_map/coverage.py:443
+#: network_map/coverage.py:424 network_map/coverage.py:444
 #: network_map/svg_render/logical_tree.py:58
 #: network_map/svg_render/logical_tree.py:120
 #: network_map/svg_render/machine_list.py:26
 #: network_map/templates/network_map/vlan_element_list.html:67
-#: network_map/views.py:654
+#: network_map/views.py:655
 msgid "Location"
 msgstr ""
 
-#: network_map/coverage.py:438
+#: network_map/coverage.py:439
 msgid "Room has no machines"
 msgstr ""
 
-#: network_map/coverage.py:440
+#: network_map/coverage.py:441
 msgid ""
 "The room will be drawn, but it carries no physical machine from the current "
 "IP data."
 msgstr ""
 
-#: network_map/coverage.py:461
+#: network_map/coverage.py:462
 msgid "Gateway search tag is not configured"
 msgstr ""
 
-#: network_map/coverage.py:463
+#: network_map/coverage.py:464
 msgid ""
 "Set the network_map gateway_search_tag plugin setting to the tag used for "
 "gateway IP addresses."
 msgstr ""
 
-#: network_map/coverage.py:466
+#: network_map/coverage.py:467
 msgid "Setting"
 msgstr ""
 
-#: network_map/coverage.py:479
+#: network_map/coverage.py:480
 msgid "Gateway search failed"
 msgstr ""
 
-#: network_map/coverage.py:481 network_map/coverage.py:497
-#: network_map/coverage.py:513
+#: network_map/coverage.py:482 network_map/coverage.py:498
+#: network_map/coverage.py:514
 msgid "Tag"
 msgstr ""
 
-#: network_map/coverage.py:492
+#: network_map/coverage.py:493
 msgid "No gateway-tagged objects were found"
 msgstr ""
 
-#: network_map/coverage.py:494
+#: network_map/coverage.py:495
 msgid ""
 "The logical connection view starts from objects tagged with the configured "
 "gateway tag."
 msgstr ""
 
-#: network_map/coverage.py:508
+#: network_map/coverage.py:509
 msgid "Gateway search tag does not match a tag object"
 msgstr ""
 
-#: network_map/coverage.py:510
+#: network_map/coverage.py:511
 msgid ""
 "The search found text matches, but no tag with this exact name exists. Check "
 "the plugin setting or create the tag."
 msgstr ""
 
-#: network_map/coverage.py:529
+#: network_map/coverage.py:530
 msgid "Gateway-tagged object is not usable on the logical map"
 msgstr ""
 
-#: network_map/coverage.py:531
+#: network_map/coverage.py:532
 msgid "The logical map needs an IP address whose prefix has a VLAN assigned."
 msgstr ""
 
@@ -367,7 +367,7 @@ msgstr ""
 
 #: network_map/svg_render/logical_tree.py:56
 #: network_map/svg_render/logical_tree.py:73
-#: network_map/svg_render/logical_tree.py:118 network_map/views.py:655
+#: network_map/svg_render/logical_tree.py:118 network_map/views.py:656
 msgid "Name"
 msgstr ""
 
@@ -379,11 +379,11 @@ msgstr ""
 #: network_map/svg_render/machine_list.py:83
 #: network_map/templates/network_map/vlan_element_list.html:56
 #: network_map/templates/network_map/vlan_element_list.html:70
-#: network_map/views.py:650
+#: network_map/views.py:651
 msgid "Description"
 msgstr ""
 
-#: network_map/svg_render/logical_tree.py:59 network_map/views.py:653
+#: network_map/svg_render/logical_tree.py:59 network_map/views.py:654
 msgid "IP-Address"
 msgstr ""
 
@@ -391,28 +391,28 @@ msgstr ""
 #: network_map/svg_render/logical_tree.py:77
 #: network_map/svg_render/logical_tree.py:90
 #: network_map/svg_render/logical_tree.py:106
-#: network_map/svg_render/logical_tree.py:121 network_map/views.py:658
+#: network_map/svg_render/logical_tree.py:121 network_map/views.py:659
 msgid "Type"
 msgstr ""
 
-#: network_map/svg_render/logical_tree.py:74 network_map/views.py:651
+#: network_map/svg_render/logical_tree.py:74 network_map/views.py:652
 msgid "Gateway"
 msgstr ""
 
 #: network_map/svg_render/logical_tree.py:75
-#: network_map/svg_render/logical_tree.py:102 network_map/views.py:649
+#: network_map/svg_render/logical_tree.py:102 network_map/views.py:650
 msgid "DNS Name"
 msgstr ""
 
-#: network_map/svg_render/logical_tree.py:89 network_map/views.py:652
+#: network_map/svg_render/logical_tree.py:89 network_map/views.py:653
 msgid "ID"
 msgstr ""
 
-#: network_map/svg_render/logical_tree.py:101 network_map/views.py:647
+#: network_map/svg_render/logical_tree.py:101 network_map/views.py:648
 msgid "Address"
 msgstr ""
 
-#: network_map/svg_render/logical_tree.py:104 network_map/views.py:648
+#: network_map/svg_render/logical_tree.py:104 network_map/views.py:649
 msgid "Comments"
 msgstr ""
 
@@ -421,7 +421,7 @@ msgstr ""
 #: network_map/svg_render/machine_list.py:84
 #: network_map/templates/network_map/vlan_element_list.html:57
 #: network_map/templates/network_map/vlan_element_list.html:69
-#: network_map/views.py:657
+#: network_map/views.py:658
 msgid "Role"
 msgstr ""
 
