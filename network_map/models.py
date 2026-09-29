@@ -88,6 +88,7 @@ class PrefixElement:
     id: int
     prefix: str
     ip_addresses: list[IpDetailsElement] = field(default_factory=list)
+    url: str = ""
     type: str = "Prefix"
 
 

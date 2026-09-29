@@ -69,7 +69,8 @@ and each plan is then drawn by its own address:
 
 | URL                                                | Answers                                       |
 | -------------------------------------------------- | --------------------------------------------- |
-| `/api/plugins/networkmap/floor-plans/`             | JSON `{"count", "city", "site", "plans"}`; the two filters are echoed back, and each plan carries a `city` read off its address |
+| `/api/plugins/networkmap/floor-plans/`             | JSON `{"count", "city", "site", "picture", "subnet-map", "plans"}`; the two filters are echoed back, `picture` links one drawing of every listed plan, `subnet-map` the whole network map those sites sit on, and each plan carries a `city` read off its address |
+| `/api/plugins/networkmap/floor-plans/all/`         | every listed plan in one picture, as SVG or PNG (same `city`/`site` filters) |
 | `/api/plugins/networkmap/floor-plan/<site-slug>/`  | the site's logical floor map, as SVG or PNG   |
 
 ```bash
@@ -90,6 +91,11 @@ curl -H "Authorization: Token <token>" \
   and every plan carries its own `city`, read off its address whether the place
   stands before the street (`Bern, Musterweg 5`) or after a postal code
   (`Musterweg 5, 3000 Bern`).
+- Besides the list, `picture` carries the `svg` and `png` addresses of a single
+  drawing holding every listed plan one under the other, at `/floor-plans/all/`
+  with the same filters applied.
+- `subnet-map` carries the `svg` and `png` addresses of the whole network map,
+  the geographic picture those sites stand on, at `/subnet-map/`.
 - The plan carries its machines the way the browser export of the map does:
   every dot is numbered in the machine's colour, virtual ones hollow, and under
   the picture the machines are listed with their name, description and address.

@@ -1,6 +1,7 @@
 from django.urls import path, re_path
 
 from .views import (
+    FloorPlanAllPictureView,
     FloorPlanIndexView,
     FloorPlanPictureView,
     MapSvgView,
@@ -14,6 +15,12 @@ urlpatterns = [
         "floor-plans/",
         FloorPlanIndexView.as_view(),
         name="floor-plan-list",
+    ),
+    # One picture of every plan; its own path, since the patterns below match only a single segment.
+    path(
+        "floor-plans/all/",
+        FloorPlanAllPictureView.as_view(),
+        name="floor-plan-all",
     ),
     re_path(
         r"^floor-plan/(?P<slug>[\w-]+)/?$",

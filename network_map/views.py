@@ -619,6 +619,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             id=prefix.pk,
             prefix=str(prefix.prefix),
             ip_addresses=child_ips,
+            url=prefix.get_absolute_url(),
             type="Prefix",
         )
 

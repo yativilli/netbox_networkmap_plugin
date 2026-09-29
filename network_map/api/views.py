@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from dcim.models import Site
 from drf_spectacular.types import OpenApiTypes
@@ -232,6 +233,42 @@ def _map_floor_plans():
     return view.build_floor_plans(view.build_map_data(elements))
 
 
+def _floor_plan_filters(request):
+    """The plans the index and the whole-map picture both work from."""
+    plans = _map_floor_plans()
+    city = request.query_params.get("city")
+    if city:
+        # The place is read out of the text that names where the site stands.
+        plans = [p for p in plans if site_names_the_place(p["site"], city)]
+    site = request.query_params.get("site")
+    if site:
+        plans = [p for p in plans if p["site"].slug == site]
+    return plans, city, site
+
+
+def _floor_plan_picture(request, city, site):
+    """The addresses of one picture holding every listed plan, filters kept."""
+    params = {}
+    if city:
+        params["city"] = city
+    if site:
+        params["site"] = site
+    base = reverse("plugins-api:network_map-api:floor-plan-all", request=request)
+    query = f"?{urlencode(params)}" if params else ""
+    join = "&" if params else "?"
+    return {"svg": f"{base}{query}", "png": f"{base}{query}{join}format=png"}
+
+
+def _subnet_map_picture(request):
+    """The addresses of the whole network map, where these plans sit."""
+    base = reverse(
+        "plugins-api:network_map-api:svg-export",
+        kwargs={"kind": "subnet-map"},
+        request=request,
+    )
+    return {"svg": base, "png": f"{base}?format=png"}
+
+
 def _floor_plan_entry(request, plan):
     """One plan as the index lists it, with the addresses of its picture."""
     site = plan["site"]
@@ -248,9 +285,6 @@ def _floor_plan_entry(request, plan):
             "id": site.pk,
             "name": str(site.name),
             "slug": site.slug,
-            # NetBox has no city field; the place is the text in the name or address.
-            "address": str(site.physical_address or ""),
-            "description": str(site.description or ""),
         },
         "machines": plan["machines"],
         "rooms": len([name for name in plan["rooms"] if name]),
@@ -289,20 +323,17 @@ class FloorPlanIndexView(PictureAccessMixin, APIView):
         ],
     )
     def get(self, request):
-        plans = _map_floor_plans()
-        city = request.query_params.get("city")
-        if city:
-            # The place is read out of the text that names where the site stands.
-            plans = [p for p in plans if site_names_the_place(p["site"], city)]
-        site = request.query_params.get("site")
-        if site:
-            plans = [p for p in plans if p["site"].slug == site]
+        plans, city, site = _floor_plan_filters(request)
         return Response(
             {
                 "count": len(plans),
                 # The filters as they were asked for, so a caller sees what was applied.
                 "city": city,
                 "site": site,
+                # One picture of the whole map: every listed plan in a single drawing.
+                "picture": _floor_plan_picture(request, city, site),
+                # Where the plans stand: the whole network map the sites sit on.
+                "subnet-map": _subnet_map_picture(request),
                 "plans": [_floor_plan_entry(request, p) for p in plans],
             }
         )
@@ -355,4 +386,56 @@ class FloorPlanPictureView(PictureAccessMixin, APIView):
         svg = floor_plan.render_logical(site.name, plan["pins"], plan["rooms"])
         if svg is None:
             return Response(f"The plan of {site.name} cannot be read", status=404)
+        return Response(svg)
+
+
+class FloorPlanAllPictureView(PictureAccessMixin, APIView):
+    """
+    The whole map at once: every floor plan the index lists, one site under the
+    other, in a single picture. The city and site filters narrow it like the index.
+    """
+
+    renderer_classes = (SvgRenderer, PngRenderer)
+
+    @extend_schema(
+        tags=["network-map"],
+        operation_id="floor_plan_all",
+        summary="Render every floor plan in one picture as SVG or PNG",
+        parameters=[
+            OpenApiParameter(
+                name="city",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Only the plans of sites whose name, address or description "
+                    "mentions this place, whatever it is spelled as."
+                ),
+            ),
+            OpenApiParameter(
+                name="site",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Only the plans of the site with this slug.",
+            ),
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["svg", "png"],
+                description="Picture format; SVG without it, PNG as ?format=png.",
+            ),
+        ],
+        responses={
+            (200, "image/svg+xml"): OpenApiTypes.BINARY,
+            (200, "image/png"): OpenApiTypes.BINARY,
+        },
+    )
+    def get(self, request):
+        plans, _city, _site = _floor_plan_filters(request)
+        svg = floor_plan.render_all(plans)
+        if svg is None:
+            return Response("No site has a floor plan", status=404)
         return Response(svg)

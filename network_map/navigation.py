@@ -8,11 +8,6 @@ menu_items = (
         permissions=["network_map.view_vlanelement"],
     ),
     PluginMenuItem(
-        link="plugins:network_map:vlan_connections",
-        link_text=_("Logical Map"),
-        permissions=["network_map.view_vlanelement"],
-    ),
-    PluginMenuItem(
         link="plugins:network_map:vlan_topology",
         link_text=_("Topology Map"),
         permissions=["network_map.view_vlanelement"],
@@ -20,6 +15,11 @@ menu_items = (
     PluginMenuItem(
         link="plugins:network_map:subnet_map",
         link_text=_("Site Map"),
+        permissions=["network_map.view_vlanelement"],
+    ),
+    PluginMenuItem(
+        link="plugins:network_map:vlan_connections",
+        link_text=_("Logical Map"),
         permissions=["network_map.view_vlanelement"],
     ),
     PluginMenuItem(

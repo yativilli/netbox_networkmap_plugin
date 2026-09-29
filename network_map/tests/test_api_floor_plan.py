@@ -228,3 +228,53 @@ class FloorPlanApiTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(f"/api/plugins/{self.prefix}/")
         self.assertIn(b"floor-plans", response.content)
+
+    def test_the_index_links_the_whole_map_picture(self):
+        self.client.force_login(self.user)
+        picture = self.index("city=Bern")["picture"]
+        self.assertEqual(set(picture), {"svg", "png"})
+        self.assertIn("floor-plans/all/", picture["svg"])
+        self.assertIn("city=Bern", picture["svg"])
+        self.assertTrue(picture["png"].startswith(picture["svg"]))
+        self.assertIn("format=png", picture["png"])
+
+    def test_the_index_references_the_subnet_map(self):
+        self.client.force_login(self.user)
+        subnet_map = self.index("city=Bern")["subnet-map"]
+        self.assertEqual(set(subnet_map), {"svg", "png"})
+        self.assertIn("subnet-map", subnet_map["svg"])
+        self.assertEqual(subnet_map["png"], f"{subnet_map['svg']}?format=png")
+        self.assertEqual(
+            self.get_plan(
+                subnet_map["svg"].split(f"/api/plugins/{self.prefix}/")[-1]
+            ).status_code,
+            200,
+        )
+
+    def test_the_whole_map_picture_holds_every_listed_plan(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plans/all/?city=Bern")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response["Content-Type"].startswith("image/svg+xml"))
+        body = response.content.decode()
+        self.assertIn("Musterweg 30", body)
+        self.assertIn("Beispielweg 4", body)
+
+    def test_the_whole_map_picture_narrows_to_one_site(self):
+        self.client.force_login(self.user)
+        body = self.get_plan("floor-plans/all/?site=musterweg-30").content.decode()
+        self.assertIn("Musterweg 30", body)
+        self.assertNotIn("Beispielweg 4", body)
+
+    def test_the_whole_map_picture_without_a_plan_is_answered(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plans/all/?city=Nowhere")
+        self.assertEqual(response.status_code, 404)
+
+    @unittest.skipUnless(png_render.available(), "needs cairosvg or ImageMagick")
+    def test_the_whole_map_picture_can_be_a_raster(self):
+        self.client.force_login(self.user)
+        response = self.get_plan("floor-plans/all/?city=Bern&format=png")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("image/png"))
+        self.assertTrue(response.content.startswith(png_render.PNG_MAGIC))

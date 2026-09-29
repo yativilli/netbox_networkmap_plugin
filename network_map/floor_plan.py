@@ -616,16 +616,52 @@ def _draw_key(key, entries, legend_x):
     return "".join(parts)
 
 
-def render_logical(site_name, pins, room_names):
-    """The logical floor map of one site, framed like the other pictures."""
-    layout = build_layout(site_name, pins, room_names)
-    if layout is None:
-        return None
-    body = (
+ALL_GAP = 60  # the space between two sites stacked into one picture
+
+
+def _frame(layout):
+    """A single site's layout, ground and border drawn round it."""
+    return (
         f'<rect x="0" y="0" width="{layout["w"]}" height="{layout["h"]}" '
         'fill="#f8f5ec"/>'
         f'<rect x="4" y="4" width="{layout["w"] - 8}" height="{layout["h"] - 8}" '
         'fill="none" stroke="#555" stroke-width="4"/>'
         f"{layout['body']}"
     )
-    return build_svg(layout["w"], layout["h"], body, style=PLAN_STYLE)
+
+
+def render_logical(site_name, pins, room_names):
+    """The logical floor map of one site, framed like the other pictures."""
+    layout = build_layout(site_name, pins, room_names)
+    if layout is None:
+        return None
+    return build_svg(layout["w"], layout["h"], _frame(layout), style=PLAN_STYLE)
+
+
+def render_all(plans):
+    """
+    The whole map at once: every site's floor plan one under the other, each
+    framed on its own, in a single picture. Returns None when no site has a plan.
+    """
+    layouts = []
+    for plan in plans:
+        site = plan["site"]
+        layout = build_layout(str(site.name), plan["pins"], plan["rooms"])
+        if layout:
+            layouts.append(layout)
+    if not layouts:
+        return None
+    if len(layouts) == 1:
+        only = layouts[0]
+        return build_svg(only["w"], only["h"], _frame(only), style=PLAN_STYLE)
+    width = max(layout["w"] for layout in layouts)
+    height = (
+        2 * PAD + sum(layout["h"] for layout in layouts) + ALL_GAP * (len(layouts) - 1)
+    )
+    parts = []
+    y = PAD
+    for layout in layouts:
+        x = (width - layout["w"]) / 2
+        parts.append(f'<g transform="translate({x:.1f}, {y:.1f})">{_frame(layout)}</g>')
+        y += layout["h"] + ALL_GAP
+    return build_svg(width, height, "".join(parts), style=PLAN_STYLE)
