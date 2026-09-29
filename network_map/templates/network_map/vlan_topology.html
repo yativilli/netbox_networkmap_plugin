@@ -5,6 +5,7 @@
 
 {% block head %}
     <link rel="stylesheet" href="{% static_url 'network_map/vlan_topology/vlan_topology.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/shared/export_dialog.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Topology" %}{% endblock %}
@@ -24,8 +25,8 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="in" title="{% trans 'Zoom in' %}">+</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="out" title="{% trans 'Zoom out' %}">&minus;</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-zoom="reset">{% trans "Fit" %}</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-export-svg>
-                    {% trans "Export as .SVG" %}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-export-picture>
+                    {% trans "Export as picture" %}
                 </button>
             </div>
         </div>
@@ -43,5 +44,6 @@
         </div>
     </div>
 
+    {% include 'network_map/includes/_export_dialog.html' %}
     <script src="{% static_url 'network_map/vlan_topology/vlan_topology.js' %}"></script>
 {% endblock %}

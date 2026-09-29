@@ -115,13 +115,11 @@
         });
     }
 
-    // The regional map is exported as a raster picture, a building's floor plan as a scalable drawing that stays sharp when printed large.
-    function setExportCaption(inHouse) {
-        const exportButton = document.querySelector('[data-export-svg]');
+    // The regional map is a raster picture, a building's floor plan a scalable drawing; the export dialog preselects what suits the view.
+    function suggestExportFormat(inHouse) {
+        const exportButton = document.querySelector('[data-export-picture]');
         if (exportButton) {
-            exportButton.textContent = inHouse
-                ? t('export_svg', 'Export as .SVG')
-                : t('export_png', 'Export as .PNG');
+            exportButton.dataset.exportFormat = inHouse ? 'svg' : 'png';
         }
     }
 
@@ -949,7 +947,7 @@
     function enterHouse(key, group) {
         const map = currentMap;
         collapseAll(map);
-        setExportCaption(true);
+        suggestExportFormat(true);
         const plan = housePlanOf(group);
         const footprint = houseFootprint(plan);
         const bounds = houseBounds(group.lat, group.lon, footprint.w, footprint.h);
@@ -1024,7 +1022,7 @@
         if (marker) {
             marker.addTo(map);
         }
-        setExportCaption(false);
+        suggestExportFormat(false);
     }
 
     function updateHouseMode() {

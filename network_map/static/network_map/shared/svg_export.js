@@ -1,5 +1,5 @@
 (function () {
-    const button = document.querySelector('[data-export-svg]');
+    const button = document.querySelector('[data-export-picture]');
     if (!button) return;
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1098,42 +1098,8 @@
         'subnet-map': drawSubnetMap,
     };
 
-    // Rasterising multiplies the canvas, because a canton map printed at its natural size has labels too small to read; browsers cap canvas.
-    const PNG_SCALE = 2;
-    const PNG_MAX_EDGE = 2400;
-
-    function rasterize(source, width, height) {
-        const scale = Math.min(PNG_SCALE, PNG_MAX_EDGE / Math.max(width, height, 1));
-        return new Promise((resolve, reject) => {
-            const image = new Image();
-            const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
-            image.onload = () => {
-                try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.max(1, Math.round(width * scale));
-                    canvas.height = Math.max(1, Math.round(height * scale));
-                    const ctx = canvas.getContext('2d');
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.scale(scale, scale);
-                    ctx.drawImage(image, 0, 0);
-                    URL.revokeObjectURL(url);
-                    canvas.toBlob(
-                        (blob) => (blob ? resolve(blob) : reject(new Error('PNG encoding failed'))),
-                        'image/png'
-                    );
-                } catch (error) {
-                    URL.revokeObjectURL(url);
-                    reject(error);
-                }
-            };
-            image.onerror = () => {
-                URL.revokeObjectURL(url);
-                reject(new Error('SVG could not be rasterised'));
-            };
-            image.src = url;
-        });
-    }
+    // The shared dialog asks for the format; the helpers rasterise and hand the file over.
+    const shared = window.NetworkMapExport;
 
     // Sizes live in the stylesheet, so plan and text share one scale.
     function styleSheet(scale) {
@@ -1155,13 +1121,13 @@
         }
     }
 
-    async function exportSvg() {
+    async function exportPicture(format) {
         const target = document.querySelector(button.dataset.exportTarget || 'body');
         const draw = RENDERERS[button.dataset.exportRenderer];
         if (!target || !draw) return;
         button.disabled = true;
         try {
-            const { width, height, markup, format } = await draw(target);
+            const { width, height, markup } = await draw(target);
             const source = '<?xml version="1.0" encoding="UTF-8"?>\n' +
                 `<svg xmlns="${SVG_NS}" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
                 `width="${Math.round(width)}" height="${Math.round(height)}" ` +
@@ -1169,27 +1135,21 @@
                 `<style>${styleSheet(TF)}</style>` +
                 `<rect x="0" y="0" width="${Math.round(width)}" height="${Math.round(height)}" fill="#ffffff"/>` +
                 markup + '</svg>';
-            let blob = null;
+            let blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
             let extension = 'svg';
             if (format === 'png') {
                 try {
-                    blob = await rasterize(source, width, height);
+                    blob = await shared.rasterize(source, width, height);
                     extension = 'png';
                 } catch (error) {
                     // Some browsers refuse to rasterise very large pictures; the vector file holds the identical content.
                     console.error('PNG export failed', error);
                 }
             }
-            if (!blob) {
-                blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-            }
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = url;
-            anchor.download = `${button.dataset.exportName || 'export'}_` +
-                `${new Date().toISOString().slice(0, 10)}.${extension}`;
-            anchor.click();
-            URL.revokeObjectURL(url);
+            shared.download(
+                blob,
+                `${button.dataset.exportName || 'export'}_${shared.today()}.${extension}`
+            );
         } catch (error) {
             console.error('export failed', error);
             window.alert((dataExportFailed() || 'The export could not be created') +
@@ -1199,5 +1159,16 @@
         }
     }
 
-    button.addEventListener('click', exportSvg);
+    async function askAndExport() {
+        if (!shared) {
+            console.error('the export dialog script is missing');
+            return;
+        }
+        const recommended = button.dataset.exportFormat === 'png' ? 'png' : 'svg';
+        const chosen = await shared.chooseFormat({ button, recommended });
+        if (!chosen) return;
+        await exportPicture(chosen);
+    }
+
+    button.addEventListener('click', askAndExport);
 })();

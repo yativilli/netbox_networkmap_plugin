@@ -399,7 +399,9 @@
         }, { passive: false });
     }
 
-    const exportButton = document.querySelector('[data-export-svg]');
+    const exportButton = document.querySelector('[data-export-picture]');
+    // The shared dialog asks for the format; the helpers rasterise and hand the file over.
+    const shared = window.NetworkMapExport;
 
     async function svgStyles() {
         // Inline the plugin stylesheet so the downloaded file renders styled; falls back to unstyled if the fetch fails.
@@ -413,9 +415,7 @@
         }
     }
 
-    async function exportSvg() {
-        const svg = stage ? stage.querySelector('svg.vlan-topo-svg') : null;
-        if (!svg) return;
+    async function exportClone(svg) {
         const clone = svg.cloneNode(true);
         clone.setAttribute('xmlns', SVG_NS);
         // Static export: unwrap links into plain groups (keeping their classes for the fills/strokes) and drop hover tooltips.
@@ -436,16 +436,49 @@
             }),
             clone.firstChild.nextSibling
         );
-        const source = `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
-        const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `vlan_topology_${new Date().toISOString().slice(0, 10)}.svg`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        return clone;
     }
 
-    if (exportButton) exportButton.addEventListener('click', exportSvg);
+    async function exportPicture(format) {
+        const svg = stage ? stage.querySelector('svg.vlan-topo-svg') : null;
+        if (!svg) return;
+        exportButton.disabled = true;
+        try {
+            const clone = await exportClone(svg);
+            const source = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+                `${new XMLSerializer().serializeToString(clone)}`;
+            let blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+            let extension = 'svg';
+            if (format === 'png') {
+                try {
+                    blob = await shared.rasterize(
+                        source,
+                        Number(svg.getAttribute('width')) || svg.clientWidth,
+                        Number(svg.getAttribute('height')) || svg.clientHeight
+                    );
+                    extension = 'png';
+                } catch (error) {
+                    // Some browsers refuse to rasterise a very large picture; the vector file holds the identical content.
+                    console.error('PNG export failed', error);
+                }
+            }
+            shared.download(blob, `vlan_topology_${shared.today()}.${extension}`);
+        } finally {
+            exportButton.disabled = false;
+        }
+    }
+
+    async function askAndExport() {
+        if (!shared) {
+            console.error('the export dialog script is missing');
+            return;
+        }
+        const chosen = await shared.chooseFormat({ button: exportButton, recommended: 'svg' });
+        if (!chosen) return;
+        await exportPicture(chosen);
+    }
+
+    if (exportButton) exportButton.addEventListener('click', askAndExport);
 
     buildGraph();
     fitToViewport();

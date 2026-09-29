@@ -537,7 +537,7 @@ class PageExportButtonTests(TestCase):
                 return self.client.get(reverse(f"plugins:network_map:{page_name}"))
         return self.client.get(reverse(f"plugins:network_map:{page_name}"))
 
-    def test_pages_offer_svg_export(self):
+    def test_pages_offer_picture_export(self):
         for page_name in self.PAGES:
             with self.subTest(page=page_name):
                 map_data = (
@@ -547,9 +547,10 @@ class PageExportButtonTests(TestCase):
                 )
                 response = self.get_page(page_name, map_data)
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, "data-export-svg")
+                self.assertContains(response, "data-export-picture")
+                self.assertContains(response, "network-map-export-dialog")
 
     def test_no_export_button_without_pins(self):
         self.assertNotContains(
-            self.get_page("subnet_map", EMPTY_MAP_DATA), "data-export-svg"
+            self.get_page("subnet_map", EMPTY_MAP_DATA), "data-export-picture"
         )

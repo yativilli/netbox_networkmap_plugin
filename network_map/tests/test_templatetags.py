@@ -40,3 +40,8 @@ class ExportDialogParityTests(TestCase):
         template = _template("includes/_export_dialog.html")
         node_id = re.search(r"const LABELS_ID = '([^']+)'", script).group(1)
         self.assertIn(f'json_script:"{node_id}"', template)
+
+    def test_the_exporters_ask_the_dialog_before_drawing(self):
+        for name in ("shared/svg_export.js", "vlan_topology/vlan_topology.js"):
+            with self.subTest(script=name):
+                self.assertIn("chooseFormat", _static(name))

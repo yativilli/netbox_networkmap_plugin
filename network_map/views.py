@@ -439,8 +439,6 @@ class SubnetLocationView(VlanElementListView):
             "ui": {
                 "labels_show": _("Show labels"),
                 "labels_hide": _("Hide labels"),
-                "export_svg": _("Export as .SVG"),
-                "export_png": _("Export as .PNG"),
                 "export_failed": _("The export could not be created"),
                 "machine": _("machine"),
                 "machines": _("machines"),

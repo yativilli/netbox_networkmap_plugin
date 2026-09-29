@@ -5,6 +5,7 @@
 
 {% block head %}
   <link rel="stylesheet" href="{% static_url 'network_map/vlan_element_list/vlan_element_list.css' %}">
+  <link rel="stylesheet" href="{% static_url 'network_map/shared/export_dialog.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "VLAN Elements" %}{% endblock %}
@@ -38,10 +39,10 @@
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h2 class="card-title">{% trans "VLAN Elements" %}</h2>
-        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-export-svg
+        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-export-picture
                 data-export-target=".vlan-element-list" data-export-renderer="machine-list"
                 data-export-name="vlan_elements">
-          {% trans "Export as .SVG" %}
+          {% trans "Export as picture" %}
         </button>
       </div>
       <div class="card-body">
@@ -84,5 +85,6 @@
     </div>
   </div>
 
+  {% include 'network_map/includes/_export_dialog.html' %}
   <script src="{% static_url 'network_map/shared/svg_export.js' %}"></script>
 {% endblock content %}

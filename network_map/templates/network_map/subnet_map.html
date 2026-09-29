@@ -6,6 +6,7 @@
 {% block head %}
     <link rel="stylesheet" href="{% static_url 'network_map/vendor/leaflet/leaflet.css' %}">
     <link rel="stylesheet" href="{% static_url 'network_map/subnet_map/subnet_map.css' %}">
+    <link rel="stylesheet" href="{% static_url 'network_map/shared/export_dialog.css' %}">
 {% endblock %}
 
 {% block title %}{% trans "Subnet Locations" %}{% endblock %}
@@ -41,10 +42,10 @@
                     {% trans "Hide labels" %}
                 </button>
                 {% if map_data.pins %}
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-export-svg
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-export-picture
                             data-export-target="#subnet-map" data-export-renderer="subnet-map"
-                            data-export-name="subnet_map">
-                        {% trans "Export as .PNG" %}
+                            data-export-name="subnet_map" data-export-format="png">
+                        {% trans "Export as picture" %}
                     </button>
                 {% endif %}
             </div>
@@ -86,5 +87,6 @@
     <script src="{% static_url 'network_map/vendor/leaflet/leaflet.js' %}"></script>
     <script src="{% static_url 'network_map/subnet_map/lv03_grid.js' %}"></script>
     <script src="{% static_url 'network_map/subnet_map/subnet_map.js' %}"></script>
+    {% include 'network_map/includes/_export_dialog.html' %}
     <script src="{% static_url 'network_map/shared/svg_export.js' %}"></script>
 {% endblock %}

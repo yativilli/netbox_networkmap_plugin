@@ -229,9 +229,10 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 | `api/views.py`                         | The picture and floor-plan endpoints and their permission gate.    |
 | `api/urls.py`                          | The API routes, with the path parts constrained by regex.          |
 | `templatetags/network_map_static.py`   | The `static_url` tag keeping cached scripts honest.                |
+| `templatetags/network_map_export.py`   | The `export_dialog_labels` tag behind the format dialog.           |
 | `templates/network_map/*.html`         | The pages' markup, data included as JSON.                          |
-| `templates/network_map/includes/`      | `_info_item.html`, a detail-panel row of the connection page.      |
-| `static/network_map/shared/`           | `svg_export.js`, the browser's own picture export.                 |
+| `templates/network_map/includes/`      | `_info_item.html` rows and the `_export_dialog.html` dialog.       |
+| `static/network_map/shared/`           | `svg_export.js` and the `export_dialog.js` format dialog.          |
 | `static/network_map/data_coverage/`    | Styles for the Data Coverage page.                                 |
 | `static/network_map/subnet_map/`       | Subnet-map script and styles, plus the generated LV03 grid.        |
 | `static/network_map/vlan_connection/`  | Styles for the VLAN connection page.                               |
