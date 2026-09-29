@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: network_map_plugin 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 06:14+0000\n"
+"POT-Creation-Date: 2026-09-29 11:46+0000\n"
 "PO-Revision-Date: 2026-09-28 12:00+0200\n"
 "Last-Translator: Yannick Wernle <yannick@wernle.net>\n"
 "Language-Team: fr\n"
@@ -119,7 +119,7 @@ msgstr ""
 "un VLAN sans préfixe reste donc vide."
 
 #: network_map/coverage.py:204 network_map/svg_render/logical_tree.py:72
-#: network_map/views.py:660
+#: network_map/views.py:659
 msgid "VLAN"
 msgstr "VLAN"
 
@@ -137,8 +137,8 @@ msgstr ""
 
 #: network_map/coverage.py:239 network_map/svg_render/logical_tree.py:86
 #: network_map/svg_render/logical_tree.py:88
-#: network_map/templates/network_map/vlan_connection.html:72
-#: network_map/views.py:657
+#: network_map/templates/network_map/vlan_connection.html:73
+#: network_map/views.py:656
 msgid "Prefix"
 msgstr "Préfixe"
 
@@ -195,7 +195,7 @@ msgstr ""
 "des sous-réseaux ne pourra pas le placer."
 
 #: network_map/coverage.py:328 network_map/coverage.py:380
-#: network_map/templates/network_map/vlan_topology.html:20
+#: network_map/templates/network_map/vlan_topology.html:21
 msgid "Machine"
 msgstr "Machine"
 
@@ -243,8 +243,8 @@ msgstr ""
 #: network_map/svg_render/logical_tree.py:58
 #: network_map/svg_render/logical_tree.py:120
 #: network_map/svg_render/machine_list.py:26
-#: network_map/templates/network_map/vlan_element_list.html:67
-#: network_map/views.py:655
+#: network_map/templates/network_map/vlan_element_list.html:68
+#: network_map/views.py:654
 msgid "Location"
 msgstr "Emplacement"
 
@@ -321,61 +321,61 @@ msgid "The logical map needs an IP address whose prefix has a VLAN assigned."
 msgstr ""
 "La carte logique a besoin d'une adresse IP dont le préfixe a un VLAN assigné."
 
-#: network_map/floor_plan.py:98 network_map/views.py:461
+#: network_map/floor_plan.py:98 network_map/views.py:459
 msgid "Other rooms"
 msgstr "Autres salles"
 
-#: network_map/floor_plan.py:148 network_map/views.py:462
+#: network_map/floor_plan.py:148 network_map/views.py:460
 msgid "VM"
 msgstr "VM"
 
-#: network_map/floor_plan.py:148 network_map/views.py:463
+#: network_map/floor_plan.py:148 network_map/views.py:461
 msgid "VMs"
 msgstr "VM"
 
-#: network_map/floor_plan.py:149 network_map/views.py:445
+#: network_map/floor_plan.py:149 network_map/views.py:443
 msgid "machine"
 msgstr "machine"
 
-#: network_map/floor_plan.py:149 network_map/views.py:446
+#: network_map/floor_plan.py:149 network_map/views.py:444
 msgid "machines"
 msgstr "machines"
 
-#: network_map/floor_plan.py:264 network_map/views.py:459
+#: network_map/floor_plan.py:264 network_map/views.py:457
 msgid "Physical machine"
 msgstr "Machine physique"
 
-#: network_map/floor_plan.py:266 network_map/views.py:460
+#: network_map/floor_plan.py:266 network_map/views.py:458
 msgid "Virtual machine"
 msgstr "Machine virtuelle"
 
 #: network_map/floor_plan.py:295
-#: network_map/templates/network_map/subnet_map.html:18
-#: network_map/templates/network_map/vlan_topology.html:17
-#: network_map/views.py:458
+#: network_map/templates/network_map/subnet_map.html:19
+#: network_map/templates/network_map/vlan_topology.html:18
+#: network_map/views.py:456
 msgid "Legend"
 msgstr "Légende"
 
 #: network_map/floor_plan.py:340 network_map/svg_render/machine_list.py:85
-#: network_map/templates/network_map/vlan_element_list.html:58
-#: network_map/views.py:456
+#: network_map/templates/network_map/vlan_element_list.html:59
+#: network_map/views.py:454
 msgid "Machines"
 msgstr "Machines"
 
-#: network_map/floor_plan.py:340 network_map/views.py:454
+#: network_map/floor_plan.py:340 network_map/views.py:452
 msgid "No location"
 msgstr "Aucun emplacement"
 
-#: network_map/floor_plan.py:346 network_map/views.py:457
+#: network_map/floor_plan.py:346 network_map/views.py:455
 msgid "Virtual"
 msgstr "Virtuel"
 
 #: network_map/floor_plan.py:368 network_map/views.py:270
-#: network_map/views.py:452
+#: network_map/views.py:450
 msgid "logical floor map"
 msgstr "plan d'étage logique"
 
-#: network_map/floor_plan.py:372 network_map/views.py:453
+#: network_map/floor_plan.py:372 network_map/views.py:451
 msgid "generated from NetBox locations"
 msgstr "généré à partir des emplacements NetBox"
 
@@ -384,16 +384,16 @@ msgid "Machine List"
 msgstr "Liste des machines"
 
 #: network_map/navigation.py:12
-msgid "Logical Map"
-msgstr "Vue logique"
-
-#: network_map/navigation.py:17
 msgid "Topology Map"
 msgstr "Carte de topologie"
 
-#: network_map/navigation.py:22
+#: network_map/navigation.py:17
 msgid "Site Map"
 msgstr "Carte des sites"
+
+#: network_map/navigation.py:22
+msgid "Logical Map"
+msgstr "Vue logique"
 
 #: network_map/navigation.py:27
 #: network_map/templates/network_map/data_coverage.html:9
@@ -403,7 +403,7 @@ msgstr "Couverture des données"
 
 #: network_map/svg_render/logical_tree.py:56
 #: network_map/svg_render/logical_tree.py:73
-#: network_map/svg_render/logical_tree.py:118 network_map/views.py:656
+#: network_map/svg_render/logical_tree.py:118 network_map/views.py:655
 msgid "Name"
 msgstr "Nom"
 
@@ -413,13 +413,13 @@ msgstr "Nom"
 #: network_map/svg_render/logical_tree.py:119
 #: network_map/svg_render/machine_list.py:29
 #: network_map/svg_render/machine_list.py:83
-#: network_map/templates/network_map/vlan_element_list.html:56
-#: network_map/templates/network_map/vlan_element_list.html:70
-#: network_map/views.py:651
+#: network_map/templates/network_map/vlan_element_list.html:57
+#: network_map/templates/network_map/vlan_element_list.html:71
+#: network_map/views.py:650
 msgid "Description"
 msgstr "Description"
 
-#: network_map/svg_render/logical_tree.py:59 network_map/views.py:654
+#: network_map/svg_render/logical_tree.py:59 network_map/views.py:653
 msgid "IP-Address"
 msgstr "Adresse IP"
 
@@ -427,75 +427,75 @@ msgstr "Adresse IP"
 #: network_map/svg_render/logical_tree.py:77
 #: network_map/svg_render/logical_tree.py:90
 #: network_map/svg_render/logical_tree.py:106
-#: network_map/svg_render/logical_tree.py:121 network_map/views.py:659
+#: network_map/svg_render/logical_tree.py:121 network_map/views.py:658
 msgid "Type"
 msgstr "Type"
 
-#: network_map/svg_render/logical_tree.py:74 network_map/views.py:652
+#: network_map/svg_render/logical_tree.py:74 network_map/views.py:651
 msgid "Gateway"
 msgstr "Passerelle"
 
 #: network_map/svg_render/logical_tree.py:75
-#: network_map/svg_render/logical_tree.py:102 network_map/views.py:650
+#: network_map/svg_render/logical_tree.py:102 network_map/views.py:649
 msgid "DNS Name"
 msgstr "Nom DNS"
 
-#: network_map/svg_render/logical_tree.py:89 network_map/views.py:653
+#: network_map/svg_render/logical_tree.py:89 network_map/views.py:652
 msgid "ID"
 msgstr "ID"
 
-#: network_map/svg_render/logical_tree.py:101 network_map/views.py:648
+#: network_map/svg_render/logical_tree.py:101 network_map/views.py:647
 msgid "Address"
 msgstr "Adresse"
 
-#: network_map/svg_render/logical_tree.py:104 network_map/views.py:649
+#: network_map/svg_render/logical_tree.py:104 network_map/views.py:648
 msgid "Comments"
 msgstr "Commentaires"
 
 #: network_map/svg_render/logical_tree.py:105
 #: network_map/svg_render/machine_list.py:28
 #: network_map/svg_render/machine_list.py:84
-#: network_map/templates/network_map/vlan_element_list.html:57
-#: network_map/templates/network_map/vlan_element_list.html:69
-#: network_map/views.py:658
+#: network_map/templates/network_map/vlan_element_list.html:58
+#: network_map/templates/network_map/vlan_element_list.html:70
+#: network_map/views.py:657
 msgid "Role"
 msgstr "Rôle"
 
 #: network_map/svg_render/machine_list.py:27
-#: network_map/templates/network_map/vlan_element_list.html:68
+#: network_map/templates/network_map/vlan_element_list.html:69
 msgid "IP"
 msgstr "IP"
 
 #: network_map/svg_render/machine_list.py:49
-#: network_map/templates/network_map/vlan_element_list.html:17
+#: network_map/templates/network_map/vlan_element_list.html:18
 msgid "VLAN Overview"
 msgstr "Aperçu des VLAN"
 
 #: network_map/svg_render/machine_list.py:74
-#: network_map/templates/network_map/vlan_element_list.html:10
-#: network_map/templates/network_map/vlan_element_list.html:40
+#: network_map/templates/network_map/vlan_element_list.html:11
+#: network_map/templates/network_map/vlan_element_list.html:41
 msgid "VLAN Elements"
 msgstr "Éléments VLAN"
 
 #: network_map/svg_render/machine_list.py:82
-#: network_map/templates/network_map/vlan_element_list.html:55
+#: network_map/templates/network_map/vlan_element_list.html:56
 msgid "Group"
 msgstr "Groupe"
 
 #: network_map/svg_render/machine_list.py:86
-#: network_map/templates/network_map/vlan_element_list.html:59
+#: network_map/templates/network_map/vlan_element_list.html:60
 msgid "Range"
 msgstr "Plage"
 
-#: network_map/svg_render/subnet_map.py:391 network_map/views.py:464
+#: network_map/svg_render/subnet_map.py:391 network_map/views.py:462
 msgid "… further subnets not listed"
 msgstr "… d'autres sous-réseaux non représentés"
 
-#: network_map/svg_render/subnet_map.py:413 network_map/views.py:465
+#: network_map/svg_render/subnet_map.py:413 network_map/views.py:463
 msgid "site(s) outside the drawn area"
 msgstr "site(s) hors de la zone représentée"
 
-#: network_map/svg_render/subnet_map.py:422 network_map/views.py:466
+#: network_map/svg_render/subnet_map.py:422 network_map/views.py:464
 msgid "Map data: © swisstopo"
 msgstr "Données cartographiques : © swisstopo"
 
@@ -582,35 +582,38 @@ msgstr "Problème"
 msgid "Showing the first 50 issues in this category."
 msgstr "Affichage des 50 premiers problèmes de cette catégorie."
 
-#: network_map/templates/network_map/subnet_map.html:11
-#: network_map/templates/network_map/subnet_map.html:16
+#: network_map/templates/network_map/subnet_map.html:12
+#: network_map/templates/network_map/subnet_map.html:17
 msgid "Subnet Locations"
 msgstr "Emplacements des sous-réseaux"
 
-#: network_map/templates/network_map/subnet_map.html:25
+#: network_map/templates/network_map/subnet_map.html:26
 msgid "Subnet machines at a site (one pin per subnet &times; site)"
 msgstr ""
 "Machines de sous-réseau sur un site (un repère par sous-réseau &times; site)"
 
-#: network_map/templates/network_map/subnet_map.html:29
+#: network_map/templates/network_map/subnet_map.html:30
 msgid "Multiple subnets at one address (click to expand)"
 msgstr "Plusieurs sous-réseaux à une même adresse (cliquer pour développer)"
 
-#: network_map/templates/network_map/subnet_map.html:40
+#: network_map/templates/network_map/subnet_map.html:41
 msgid "Show or hide the labels below the pins"
 msgstr "Afficher ou masquer les libellés sous les repères"
 
-#: network_map/templates/network_map/subnet_map.html:41
+#: network_map/templates/network_map/subnet_map.html:42
 #: network_map/views.py:441
 msgid "Hide labels"
 msgstr "Masquer les libellés"
 
-#: network_map/templates/network_map/subnet_map.html:47
-#: network_map/views.py:443
-msgid "Export as .PNG"
-msgstr "Exporter en .PNG"
+#: network_map/templates/network_map/subnet_map.html:48
+#: network_map/templates/network_map/vlan_connection.html:26
+#: network_map/templates/network_map/vlan_element_list.html:45
+#: network_map/templates/network_map/vlan_topology.html:29
+#: network_map/templatetags/network_map_export.py:19
+msgid "Export as picture"
+msgstr "Exporter en image"
 
-#: network_map/templates/network_map/subnet_map.html:56
+#: network_map/templates/network_map/subnet_map.html:57
 msgid ""
 "Could not locate the following subnets. Check the site coordinates under "
 "DCIM &rarr; Sites:"
@@ -618,43 +621,36 @@ msgstr ""
 "Impossible de localiser les sous-réseaux suivants. Vérifiez les coordonnées "
 "des sites sous DCIM &rarr; Sites :"
 
-#: network_map/templates/network_map/subnet_map.html:71
+#: network_map/templates/network_map/subnet_map.html:72
 msgid "Pin details"
 msgstr "Détails du repère"
 
-#: network_map/templates/network_map/subnet_map.html:74
+#: network_map/templates/network_map/subnet_map.html:75
 msgid "Close details"
 msgstr "Fermer les détails"
 
-#: network_map/templates/network_map/subnet_map.html:81
+#: network_map/templates/network_map/subnet_map.html:82
 msgid "No locatable subnet machines found."
 msgstr "Aucune machine de sous-réseau localisable trouvée."
 
-#: network_map/templates/network_map/vlan_connection.html:10
+#: network_map/templates/network_map/vlan_connection.html:11
 msgid "VLAN Connections"
 msgstr "Connexions VLAN"
 
-#: network_map/templates/network_map/vlan_connection.html:15
-#: network_map/templates/network_map/vlan_topology.html:23
+#: network_map/templates/network_map/vlan_connection.html:16
+#: network_map/templates/network_map/vlan_topology.html:24
 msgid "Diagram controls"
 msgstr "Contrôles du diagramme"
 
-#: network_map/templates/network_map/vlan_connection.html:17
+#: network_map/templates/network_map/vlan_connection.html:18
 msgid "Collapse All"
 msgstr "Tout replier"
 
-#: network_map/templates/network_map/vlan_connection.html:20
+#: network_map/templates/network_map/vlan_connection.html:21
 msgid "Unfold All"
 msgstr "Tout déplier"
 
-#: network_map/templates/network_map/vlan_connection.html:25
-#: network_map/templates/network_map/vlan_element_list.html:44
-#: network_map/templates/network_map/vlan_topology.html:28
-#: network_map/views.py:442
-msgid "Export as .SVG"
-msgstr "Exporter en .SVG"
-
-#: network_map/templates/network_map/vlan_element_list.html:20
+#: network_map/templates/network_map/vlan_element_list.html:21
 msgid ""
 "Overview of machines per VLAN. Press on a VLAN to scroll to the details. The "
 "individual machines are colored according to their locations."
@@ -662,72 +658,102 @@ msgstr ""
 "Aperçu des machines par VLAN. Cliquez sur un VLAN pour atteindre les "
 "détails. Les machines individuelles sont colorées selon leur emplacement."
 
-#: network_map/templates/network_map/vlan_element_list.html:31
-#: network_map/templates/network_map/vlan_element_list.html:74
-#: network_map/views.py:455
+#: network_map/templates/network_map/vlan_element_list.html:32
+#: network_map/templates/network_map/vlan_element_list.html:75
+#: network_map/views.py:453
 msgid "No machines"
 msgstr "Aucune machine"
 
-#: network_map/templates/network_map/vlan_element_list.html:80
+#: network_map/templates/network_map/vlan_element_list.html:81
 msgid "No VLAN elements found."
 msgstr "Aucun élément VLAN trouvé."
 
-#: network_map/templates/network_map/vlan_topology.html:10
-#: network_map/templates/network_map/vlan_topology.html:15
+#: network_map/templates/network_map/vlan_topology.html:11
+#: network_map/templates/network_map/vlan_topology.html:16
 msgid "VLAN Topology"
 msgstr "Topologie VLAN"
 
-#: network_map/templates/network_map/vlan_topology.html:18
+#: network_map/templates/network_map/vlan_topology.html:19
 msgid "Gateway / Firewall"
 msgstr "Passerelle / Pare-feu"
 
-#: network_map/templates/network_map/vlan_topology.html:19
+#: network_map/templates/network_map/vlan_topology.html:20
 msgid "Subnet"
 msgstr "Sous-réseau"
 
-#: network_map/templates/network_map/vlan_topology.html:24
+#: network_map/templates/network_map/vlan_topology.html:25
 msgid "Zoom in"
 msgstr "Zoom avant"
 
-#: network_map/templates/network_map/vlan_topology.html:25
+#: network_map/templates/network_map/vlan_topology.html:26
 msgid "Zoom out"
 msgstr "Zoom arrière"
 
-#: network_map/templates/network_map/vlan_topology.html:26
+#: network_map/templates/network_map/vlan_topology.html:27
 msgid "Fit"
 msgstr "Ajuster"
 
-#: network_map/templates/network_map/vlan_topology.html:39
+#: network_map/templates/network_map/vlan_topology.html:40
 msgid "No VLAN topology data available."
 msgstr "Aucune donnée de topologie VLAN disponible."
+
+#: network_map/templatetags/network_map_export.py:20
+msgid "In which format should the picture be saved?"
+msgstr "Dans quel format l'image doit-elle être enregistrée ?"
+
+#: network_map/templatetags/network_map_export.py:21
+msgid "PNG"
+msgstr "PNG"
+
+#: network_map/templatetags/network_map_export.py:22
+msgid "Bitmap picture with a fixed number of pixels"
+msgstr "Image bitmap au nombre de pixels fixe"
+
+#: network_map/templatetags/network_map_export.py:23
+msgid "SVG"
+msgstr "SVG"
+
+#: network_map/templatetags/network_map_export.py:24
+msgid "Vector drawing that stays sharp when it is printed large"
+msgstr "Dessin vectoriel qui reste net même imprimé en grand"
+
+#: network_map/templatetags/network_map_export.py:25
+msgid "Cancel"
+msgstr "Annuler"
 
 #: network_map/views.py:440
 msgid "Show labels"
 msgstr "Afficher les libellés"
 
-#: network_map/views.py:444
+#: network_map/views.py:442
 msgid "The export could not be created"
 msgstr "L’export n’a pas pu être créé"
 
-#: network_map/views.py:447
+#: network_map/views.py:445
 msgid "subnet"
 msgstr "sous-réseau"
 
-#: network_map/views.py:448
+#: network_map/views.py:446
 msgid "subnets"
 msgstr "sous-réseaux"
 
-#: network_map/views.py:449
+#: network_map/views.py:447
 msgid "Details"
 msgstr "Détails"
 
-#: network_map/views.py:450
+#: network_map/views.py:448
 msgid "Floor map"
 msgstr "Plan d'étage"
 
-#: network_map/views.py:451
+#: network_map/views.py:449
 msgid "scroll out to return to the map"
 msgstr "dézoomer pour revenir à la carte"
+
+#~ msgid "recommended"
+#~ msgstr "recommandé"
+
+#~ msgid "Export as .SVG"
+#~ msgstr "Exporter en .SVG"
 
 #~ msgid "House plan"
 #~ msgstr "Plan du bâtiment"
