@@ -1,0 +1,6 @@
+{% load network_map_static %}
+{% load network_map_export %}
+
+{% export_dialog_labels as export_dialog_words %}
+{{ export_dialog_words|json_script:"network-map-export-dialog" }}
+<script src="{% static_url 'network_map/shared/export_dialog.js' %}"></script>

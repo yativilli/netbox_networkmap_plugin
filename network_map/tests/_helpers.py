@@ -14,6 +14,14 @@ def _static(name):
         return handle.read()
 
 
+def _template(name):
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "templates", "network_map", name
+    )
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
 def _lv03_extent(corners):
     """The LV03 box around lon/lat corners, as map_tiles is handed one."""
     points = [lv03.to_lv03(lat, lon) for lon, lat in corners]
