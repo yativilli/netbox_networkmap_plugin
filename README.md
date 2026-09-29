@@ -249,6 +249,12 @@ Should the cantonal boundary become a rectangle with a rectangular cutout that i
 written; a new NetBox release needs `min_version`/`max_version` widened there, or
 NetBox disables the plugin.
 
+Bumping it and merging to `main` releases the plugin: once lint, types and tests
+pass, CI opens the GitHub Release named `v<version>` - the tag must stay `v`
+followed by the version, or the run cannot match the two. Every later run on
+`main` finds the existing release and does nothing, so a release can also be
+re-attempted by hand from the CI workflow's "Run workflow" button.
+
 ## Translations
 
 Catalogs are `network_map/locale/<lang>/LC_MESSAGES/django.po` (`de`, `fr`); the

@@ -6,6 +6,7 @@ on:
   pull_request:
   schedule:
     - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -153,3 +154,27 @@ jobs:
         with:
           languages: python
       - uses: github/codeql-action/analyze@v4
+
+  release:
+    name: Release
+    # Only main carries a released version; a version bump releases itself once
+    # its checks are green, and every later run sees its tag and stands down.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [lint, types, tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Release the version from network_map/__init__.py
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' network_map/__init__.py)
+          test -n "$version"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released"
+            exit 0
+          fi
+          gh release create "v$version" --target "$GITHUB_SHA" --generate-notes \
+            --title "v$version"
