@@ -81,7 +81,6 @@ def render_machine_list(elements):
         fields = (
             (f"{_('Group')}:", _ph(element.group)),
             (f"{_('Description')}:", _ph(element.description)),
-            (f"{_('Role')}:", _ph(element.role)),
             (f"{_('Machines')}:", element.machine_count),
             (f"{_('Range')}:", _ph(element.prefix)),
         )
