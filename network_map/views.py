@@ -1,4 +1,5 @@
 from collections import Counter
+from typing import Any
 
 from dcim.models import Device, Location, Site
 from django.contrib.auth.mixins import PermissionRequiredMixin
@@ -15,6 +16,7 @@ from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
 from . import svg_render
+from .bulk import ips_for_prefixes, resolve_assigned_objects
 from .colors import (
     BASE_COLORS,
     color_for_location,
@@ -60,24 +62,30 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
 
     def build_elements(self, queryset):
         """
-        Build VLAN elements without machine data.
+        Build VLAN elements without machine data. The IP addresses and their
+        assigned devices arrive in two bulk queries, not one per prefix and
+        machine.
         """
+        vlans = list(queryset)
+        related_prefixes = [prefix for vlan in vlans for prefix in vlan.prefixes.all()]
+        ips_by_prefix = ips_for_prefixes(
+            related_prefixes,
+            status__in=["active", "reserved"],
+            dns_name__isnull=False,
+        )
+        owners = resolve_assigned_objects(
+            [ip for ips in ips_by_prefix.values() for ip in ips]
+        )
+
         elements = []
         locations = []
-        for vlan in queryset:
+        for vlan in vlans:
             machines = []
             vlan_element = VlanInfo.from_vlan(vlan, machines=[])
-            related_prefixes = list(vlan.prefixes.all())
             machine_count = 0
-            for prefix in related_prefixes:
-                active_ips = IPAddress.objects.filter(
-                    status__in=["active", "reserved"],
-                    address__net_contained_or_equal=prefix.prefix,
-                    dns_name__isnull=False,
-                ).order_by("address")
-
-                for ip in active_ips:
-                    assigned_object = getattr(ip, "assigned_object", None)
+            for prefix in vlan.prefixes.all():
+                for ip in ips_by_prefix.get(prefix.pk, []):
+                    assigned_object = owners.get(ip.pk)
                     device = getattr(assigned_object, "device", None)
                     vm = getattr(assigned_object, "virtual_machine", None)
 
@@ -283,8 +291,10 @@ class SubnetLocationView(VlanElementListView):
         """
         if not sites:
             return {}
-        locations = Location.objects.filter(site__in=sites).order_by(
-            "site__name", "name"
+        locations = (
+            Location.objects.filter(site__in=sites)
+            .select_related("site")
+            .order_by("site__name", "name")
         )
         tree = {}
         for location in locations:
@@ -510,8 +520,6 @@ class DataCoverageView(NetworkMapPermissionRequiredMixin, View):
 
 class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, View):
     def build_elements(self) -> list[dict]:
-        element_obj = []
-
         results = search_backend.search(
             get_plugin_config(
                 "network_map", "gateway_search_tag", DEFAULT_GATEWAY_SEARCH_TAG
@@ -519,6 +527,10 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             lookup=LookupTypes.EXACT,
         )
 
+        # Collect every child IP first, so the machines behind them are
+        # resolved in a handful of bulk queries instead of one per IP.
+        collected = []
+        child_ips: list[IPAddress] = []
         for res in results:
             res_obj = res.object
 
@@ -541,25 +553,36 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                 vlan = current_prefix.vlan
 
                 # Get ALL prefixes belonging to this VLAN
-                prefix = Prefix.objects.filter(vlan=vlan)
-
                 prefixes = []
-                for pref in prefix:
-                    if pref is None:
-                        continue
+                for pref in Prefix.objects.filter(vlan=vlan):
+                    ips = list(pref.get_child_ips())
+                    child_ips.extend(ips)
+                    prefixes.append((pref, ips))
 
-                    child_ips = []
+                collected.append((res_obj, vlan, prefixes))
 
-                    for ip in pref.get_child_ips():
-                        child_ips.append(self._get_ip_details(ip))
+        owners = resolve_assigned_objects(child_ips)
 
-                    prefixes.append(self._get_prefix_details(pref, child_ips))
-
-                element_obj.append(self._get_gateway_details(res_obj, vlan, prefixes))
+        element_obj = []
+        for res_obj, vlan, prefixes in collected:
+            element_obj.append(
+                self._get_gateway_details(
+                    res_obj,
+                    vlan,
+                    [
+                        self._get_prefix_details(
+                            pref,
+                            [self._get_ip_details(ip, owners.get(ip.pk)) for ip in ips],
+                        )
+                        for pref, ips in prefixes
+                    ],
+                )
+            )
         return element_obj
 
-    def _get_device_vm_ip_details(self, ip: IPAddress) -> DetailsElement:
-        assigned_object = getattr(ip, "assigned_object", None)
+    def _get_device_vm_ip_details(
+        self, ip: IPAddress, assigned_object: Any
+    ) -> DetailsElement:
         device = getattr(assigned_object, "device", None)
         vm = getattr(assigned_object, "virtual_machine", None)
 
@@ -596,7 +619,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
 
         return details
 
-    def _get_ip_details(self, ip: IPAddress) -> IpDetailsElement:
+    def _get_ip_details(self, ip: IPAddress, assigned_object: Any) -> IpDetailsElement:
         address = getattr(ip.address, "ip", "")
         return IpDetailsElement(
             id=ip.pk,
@@ -605,7 +628,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             description=str(ip.description or ""),
             comments=str(ip.comments or ""),
             role=str(ip.role or ""),
-            details=self._get_device_vm_ip_details(ip),
+            details=self._get_device_vm_ip_details(ip, assigned_object),
             url=ip.get_absolute_url(),
             type="IP-Address",
         )

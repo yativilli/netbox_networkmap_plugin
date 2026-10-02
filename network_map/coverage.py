@@ -15,11 +15,12 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from extras.models import Tag
-from ipam.models import VLAN, IPAddress, Prefix
+from ipam.models import VLAN, Prefix
 from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
+from .bulk import ips_for_prefixes, resolve_assigned_objects
 from .defaults import DEFAULT_GATEWAY_SEARCH_TAG
 from .floor_plan import logical_floor
 from .places import site_city
@@ -58,6 +59,11 @@ class CoverageFinding:
     label: str
     url: str
     site: str = ""
+
+    @property
+    def severity_label(self) -> str:
+        """What the severity is called in the page's language; the key itself is English."""
+        return str(SEVERITY_LABELS[self.severity])
 
 
 def build_coverage(category: str = "", site: str = "", severity: str = "") -> dict:
@@ -217,15 +223,13 @@ def _vlan_findings() -> list[CoverageFinding]:
 
 def _prefix_findings() -> list[CoverageFinding]:
     findings = []
-    prefixes = Prefix.objects.filter(vlan__isnull=False).order_by("prefix")[
-        :MAX_SCAN_ROWS
-    ]
+    prefixes = list(
+        Prefix.objects.filter(vlan__isnull=False).order_by("prefix")[:MAX_SCAN_ROWS]
+    )
+    # One query for every prefix; whatever holds no machine gets reported.
+    populated = set(ips_for_prefixes(prefixes, status__in=MACHINE_STATUSES))
     for prefix in prefixes:
-        has_ips = IPAddress.objects.filter(
-            status__in=MACHINE_STATUSES,
-            address__net_contained_or_equal=prefix.prefix,
-        ).exists()
-        if has_ips:
+        if prefix.pk in populated:
             continue
         findings.append(
             CoverageFinding(
@@ -248,20 +252,23 @@ def _prefix_findings() -> list[CoverageFinding]:
 def _ip_findings() -> list[CoverageFinding]:
     findings = []
     seen_ips: set[int] = set()
-    prefixes = Prefix.objects.filter(vlan__isnull=False).order_by("prefix")[
-        :MAX_SCAN_ROWS
-    ]
+    prefixes = list(
+        Prefix.objects.filter(vlan__isnull=False).order_by("prefix")[:MAX_SCAN_ROWS]
+    )
+    # Fetch all in-prefix addresses and their assigned machines in bulk
+    # rather than one query per prefix and owner.
+    ips_by_prefix = ips_for_prefixes(prefixes, status__in=MACHINE_STATUSES)
+    owners = resolve_assigned_objects(
+        [ip for ips in ips_by_prefix.values() for ip in ips]
+    )
 
     for prefix in prefixes:
-        for ip in IPAddress.objects.filter(
-            status__in=MACHINE_STATUSES,
-            address__net_contained_or_equal=prefix.prefix,
-        ).order_by("address")[:MAX_SCAN_ROWS]:
+        for ip in ips_by_prefix.get(prefix.pk, [])[:MAX_SCAN_ROWS]:
             if ip.pk in seen_ips:
                 continue
             seen_ips.add(ip.pk)
 
-            owner = getattr(ip, "assigned_object", None)
+            owner = owners.get(ip.pk)
             site_name = _assigned_site_name(owner)
 
             if ip.dns_name is None:

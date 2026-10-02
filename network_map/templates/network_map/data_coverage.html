@@ -111,7 +111,7 @@
                       <tr>
                         <td>
                           <span class="badge text-bg-{% if finding.severity == 'blocking' %}danger{% elif finding.severity == 'warning' %}warning{% else %}info{% endif %}">
-                            {{ finding.severity }}
+                            {{ finding.severity_label }}
                           </span>
                         </td>
                         <td>
