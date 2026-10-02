@@ -77,7 +77,17 @@ class IpsForPrefixesTests(TestCase):
                 )
             ],
         )
-        self.assertNotIn(self.outside.pk, grouped)
+        self.assertEqual(
+            [ip.pk for ip in grouped[self.outside.pk]],
+            [
+                ip.pk
+                for ip in _naive_ips(
+                    self.outside,
+                    status__in=["active", "reserved"],
+                    dns_name__isnull=False,
+                )
+            ],
+        )
 
     def test_applies_filters(self):
         grouped = ips_for_prefixes([self.prefix])
