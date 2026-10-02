@@ -155,17 +155,42 @@ jobs:
           languages: python
       - uses: github/codeql-action/analyze@v4
 
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: pip install "build==1.5.0" "twine==6.1.0"
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Validate the distributions
+        run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   release:
     name: Release
     # Only main carries a released version; a version bump releases itself once
     # its checks are green, and every later run sees its tag and stands down.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: [lint, types, tests]
+    needs: [lint, types, tests, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
       - name: Release the version from network_map/__init__.py
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -177,4 +202,4 @@ jobs:
             exit 0
           fi
           gh release create "v$version" --target "$GITHUB_SHA" --generate-notes \
-            --title "v$version"
+            --title "v$version" dist/*
