@@ -5,7 +5,9 @@ a topology map and a geographic subnet map, each also handed out as a picture.
 Some views are Swiss-centric - the map shows a canton and draws on swisstopo
 tiles.
 
-## Install
+## Install from a checkout
+
+For a development install against the NetBox checkout this plugin lives next to:
 
 ```bash
 cd /opt/netbox/network_map_plugin
@@ -15,6 +17,50 @@ cd /opt/netbox/network_map_plugin
 The pages live under `/plugins/networkmap/` (`vlan-list/`, `vlan-topology/`,
 `vlan-connections/`, `subnet-map/`, `coverage/`) and are linked from the NetBox
 menu. In production, collect static files before restarting.
+
+## Build
+
+```bash
+cd /opt/netbox/network_map_plugin
+python -m pip install build
+python -m build
+```
+
+The sdist and the wheel land in `dist/`; CI builds the same way and attaches
+both to the GitHub Release of the version in `network_map/__init__.py`, so the
+wheel of any release can be downloaded from there instead of built.
+
+## Deploy on a NetBox instance
+
+1. Get the wheel, from the GitHub Release or from a local `dist/` after
+   [building](#build).
+2. Install it into NetBox's virtualenv - with the `png` extra if the instance
+   should answer `?format=png` through cairosvg (ImageMagick on the server
+   works instead and needs no extra):
+
+   ```bash
+   /opt/netbox/venv/bin/python -m pip install \
+     "./network_map-<version>-py3-none-any.whl[png]"
+   ```
+
+3. Enable the plugin in `netbox/netbox/configuration.py`:
+
+   ```python
+   PLUGINS = ["network_map"]
+   ```
+
+   Options go in the same file under `PLUGINS_CONFIG`, see
+   [Configuration](#configuration).
+
+4. Apply the plugin's migrations and collect its static files:
+
+   ```bash
+   /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py migrate
+   /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py collectstatic --no-input
+   ```
+
+5. Restart NetBox (and its RQ workers, if it has them), then open any page
+   under `/plugins/networkmap/` from the NetBox menu.
 
 ## Testing
 
@@ -201,7 +247,27 @@ makes, so the two never disagree about what belongs in them. A restart is needed
 and a page already open has to be reloaded, because it carries the numbers it was
 served.
 
-Should the cantonal boundary become a rectangle with a rectangular cutout that is roughly centered on Basel, this is a problem with Netbox - you will need to restart netbox.
+Should the canton come out as a plain rectangle roughly centred on Basel - Bern
+squeezed into its own bounding box - the map is drawing a stale geometry, not the
+canton. The border is fetched once and then kept in NetBox's cache for
+`canton_boundary_cache_seconds`, so the map shows whatever that cache holds, not
+what the services answer now.
+
+A restart clears it only while the cache lives in memory (`LocMemCache`), which is
+the usual development setup. Once NetBox caches in Redis - the usual production
+choice - the entry is persisted to `dump.rdb` and reloaded when Redis starts, so
+restarting NetBox, or even `redis-server`, brings the same rectangle back. Drop
+the cache entry itself, and the next call fetches the true border:
+
+```
+python /opt/netbox/netbox/manage.py shell -c \
+  'from django.core.cache import cache; cache.delete("network_map:canton_boundary:2")'
+```
+
+The key ends in the BFS id of the canton (`2` is Bern, `11` Solothurn, and so on;
+`CH` for the national border). Removing it through the cache backend does the same
+- `redis-cli UNLINK ':1:network_map:canton_boundary:2'` - while `FLUSHDB` on the
+caching database also clears it, but discards every other cached value with it.
 
 ## Code structure
 
