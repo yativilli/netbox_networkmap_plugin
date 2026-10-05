@@ -4,6 +4,8 @@
 {% load network_map_static %}
 
 {% block head %}
+    {# Tile servers answer a page that names where it calls from; Django asks the browser to keep its origin to itself. #}
+    <meta name="referrer" content="origin">
     <link rel="stylesheet" href="{% static_url 'network_map/vendor/leaflet/leaflet.css' %}">
     <link rel="stylesheet" href="{% static_url 'network_map/subnet_map/subnet_map.css' %}">
     <link rel="stylesheet" href="{% static_url 'network_map/shared/export_dialog.css' %}">

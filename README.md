@@ -206,23 +206,46 @@ is also served on its own at `/plugins/networkmap/subnet-map/canton-boundary/`.
 
 ### Map background
 
-The served subnet map stands on the same swisstopo tiles, in the same LV03 grid,
-as the page's own map, which is why the two show the same ground. Tiles are
+The served subnet map stands by default on the same swisstopo tiles, in the same
+LV03 grid, as the page's own map, which is why the two show the same ground;
+`map_background_source` moves the ground to OpenStreetMap instead. Tiles are
 fetched side by side and cached, so the first caller pays for a canton, and a
 tile that cannot be had simply stays out of the picture.
 
-| Setting                   | Default                                    | Meaning                                               |
-| ------------------------- | ------------------------------------------ | ----------------------------------------------------- |
-| `map_background`          | `True`                                     | Draw tiles behind the served subnet map.              |
-| `map_tile_url_template`   | swisstopo `pixelkarte-farbe`, `21781` grid | Tile address; `{z}/{y}/{x}` are zoom, row and column. |
-| `map_tile_zoom`           | chosen from the picture                    | Force one zoom instead of the fitting one.            |
-| `map_tile_max`            | `64`                                       | Tiles per picture; the zoom comes down to pay for it. |
-| `map_tile_cache_seconds`  | 30 days                                    | How long a tile is kept.                              |
-| `map_tile_budget_seconds` | `20`                                       | What one picture waits for its tiles, all together.   |
-| `map_attribution`         | empty                                      | Credit under the picture, if the source wants naming. |
+| Setting                          | Default                 | Meaning                                               |
+| -------------------------------- | ----------------------- | ----------------------------------------------------- |
+| `map_background`                 | `True`                  | Draw tiles behind the served subnet map.              |
+| `map_background_source`          | `"SWISSTOPO"`           | Page and pictures alike: `"SWISSTOPO"` or `"OSM"`.    |
+| `map_tile_url_template`          | the named source's      | Tile address, in the grid of whoever is named.        |
+| `map_tile_fallback`              | empty                   | Second source asked for a tile the first lacks.       |
+| `map_tile_fallback_url_template` | the second source's     | That source's tile address.                           |
+| `map_tile_zoom`                  | chosen from the picture | Force one zoom instead of the fitting one.            |
+| `map_tile_max`                   | `64`                    | Tiles per picture; the zoom comes down to pay for it. |
+| `map_tile_cache_seconds`         | 30 days                 | How long a tile is kept.                              |
+| `map_tile_budget_seconds`        | `20`                    | What one picture waits for its tiles, all together.   |
+| `map_attribution`                | what the source asks    | Credit under the picture, naming the ground.          |
 
-A different source has to answer in the LV03 grid, which leaves mirrors of the
-swisstopo tiles rather than OpenStreetMap.
+`map_background_source` says who the ground comes from, for the page's own map
+and for every picture the server draws. `SWISSTOPO` - the default - numbers its
+tiles in the LV03 grid, so `{z}/{y}/{x}` are zoom, row and column and a mirror
+has to answer in that grid; the page maps on that grid too, through the CRS its
+script builds from `lv03_grid.js`. `OSM` numbers them as the rest of the mapping
+world does, `{z}/{x}/{y}` on the Web Mercator pyramid, and the page falls back to
+Leaflet's own Mercator projection. A served picture is still planned in the
+Swiss grid and each of its patches is handed over to the pyramid step covering
+it, so the same ground shows either way - only coarser where the pyramid's steps
+are wider. A source's own address is a setting, which is how a mirror is asked
+instead; `map_attribution` then names whoever the ground came from, which
+OpenStreetMap asks for and swisstopo does not. A change needs a restart, because
+both the page and its tiles are handed over when the page is built.
+
+`map_tile_fallback` names the source asked for a tile the first one cannot give
+- `"OSM"` behind a swisstopo mirror that covers only part of the country, or
+`"SWISSTOPO"` behind OpenStreetMap, whose public server sometimes turns a caller
+away. It is empty by default, because a tile the Swiss server lacks is usually
+ground outside the country, and asking twice for every one of those costs time.
+Naming the source that is already named, or handing out the same address twice,
+asks once.
 
 ### Room around the border
 
@@ -281,9 +304,10 @@ caching database also clears it, but discards every other cached value with it.
 | `places.py`                            | Reading the city/place out of site names and addresses.            |
 | `coverage.py`                          | Read-only map-readiness checks for the Data Coverage page.         |
 | `lv03.py`                              | WGS84 to LV03 conversion and the swisstopo tile-grid maths.         |
+| `web_mercator.py`                      | The Web Mercator pyramid OpenStreetMap numbers its tiles in.        |
 | `geocoding.py`                         | Nominatim lookup for Sites that have no coordinates yet.           |
 | `swisstopo.py`                         | Fetching the canton border, with fallbacks, from public services.  |
-| `map_tiles.py`                         | Fetching and caching the swisstopo tiles a served map stands on.   |
+| `map_tiles.py`                         | Fetching and caching the tiles a served map stands on.             |
 | `svg_render/`                          | Package entry re-exporting the server-side SVG renderers.          |
 | `svg_render/base.py`                   | Shared SVG primitives: text helpers, wrapping, and shared styles.  |
 | `svg_render/machine_list.py`           | Machine-list picture rendering.                                    |

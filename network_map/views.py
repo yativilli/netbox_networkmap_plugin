@@ -15,7 +15,7 @@ from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
-from . import svg_render
+from . import map_tiles, svg_render
 from .bulk import ips_for_prefixes, resolve_assigned_objects
 from .colors import (
     BASE_COLORS,
@@ -439,6 +439,8 @@ class SubnetLocationView(VlanElementListView):
             "locations": self.build_site_locations(sites),
             "canton_boundary_url": canton_url,
             "canton_label": get_canton_label(canton_code()) if canton_url else None,
+            # The ground the page draws on is the ground the pictures stand on, so one setting decides both.
+            "tiles": map_tiles.page_source(),
             # The exporter gets the room from the server, so both pictures agree on what belongs in them.
             "export_room": {
                 "border": border_room,
@@ -471,7 +473,7 @@ class SubnetLocationView(VlanElementListView):
                 "vms": _("VMs"),
                 "export_further_subnets": _("… further subnets not listed"),
                 "export_outside_area": _("site(s) outside the drawn area"),
-                "attribution": _("Map data: © swisstopo"),
+                "attribution": map_tiles.attribution() or _("Map data: © swisstopo"),
             },
         }
 

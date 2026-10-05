@@ -49,3 +49,15 @@ def float_setting(name, default, minimum=None):
     outside requests: a value that is no number falls back to the default.
     """
     return _setting(name, float, default, minimum)
+
+
+def choice_setting(name, default, choices):
+    """
+    A plugin setting that names one of a few known values, as the settings which
+    say where the map's ground comes from do: read upper case, so `osm` and
+    `OSM` mean the same, and the default when it names nothing known - a typo
+    costs the picture the source it picked, not the request.
+    """
+    value = get_plugin_config("network_map", name, default)
+    text = str(value if value is not None else default).strip().upper()
+    return text if text in choices else str(default)

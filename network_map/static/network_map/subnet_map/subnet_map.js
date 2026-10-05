@@ -7,8 +7,16 @@
     const UI = mapData.ui || {};
     const t = (key, fallback) => UI[key] || fallback;
 
-    const SWISSSTOPO_URL =
+    // The server says where the ground comes from, so the page and the pictures it serves stand on the same map; swisstopo's LV03 grid when nothing is said.
+    const TILES = mapData.tiles || {};
+    const TILE_URL = TILES.url ||
         'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/21781/{z}/{y}/{x}.jpeg';
+    const TILE_GRID = TILES.grid || 'lv03';
+    const TILE_MIN = Number.isFinite(TILES.min_zoom) ? TILES.min_zoom : 8;
+    const TILE_MAX = Number.isFinite(TILES.max_zoom) ? TILES.max_zoom : 27;
+    // The view goes a few steps past the last step a tile exists at, so a logical floor plan can still be read at close range.
+    const OVERZOOM = 3;
+    const TILE_CREDIT = TILES.credit || '&copy; <a href="https://www.swisstopo.ch/">swisstopo</a>';
     const EMPTY_TILE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=';
     // Switzerland plus a margin; also keeps the view inside the area covered by the LV03 tile grid.
     const COVERAGE_BOUNDS = L.latLngBounds([[45.82, 6.0], [47.9, 10.75]]);
@@ -1109,26 +1117,28 @@
             window.__subnetMapTiles = null;
             cantonLayers = [];
         }
-        const map = typeof window.LV03 !== 'undefined'
-            ? L.map('subnet-map', {
-                crs: LV03_CRS,
-                minZoom: 6,
-                // Tiles go natively to 27 (0.25 m/px); the view overzooms to 30 so the vector floor plan can be inspected at close range.
-                maxZoom: 30,
-                zoomAnimation: false,
-                maxBounds: COVERAGE_BOUNDS.pad(0.15),
-                maxBoundsViscosity: 0.8
-            })
-            : L.map('subnet-map', {maxBounds: COVERAGE_BOUNDS.pad(0.15)});
+        // The Swiss grid needs the CRS its tiles are numbered in; a Mercator pyramid is what Leaflet already speaks.
+        const swissGrid = TILE_GRID === 'lv03' && typeof window.LV03 !== 'undefined';
+        const view = {
+            minZoom: 6,
+            maxZoom: TILE_MAX + OVERZOOM,
+            maxBounds: COVERAGE_BOUNDS.pad(0.15),
+            maxBoundsViscosity: 0.8
+        };
+        if (swissGrid) {
+            view.crs = LV03_CRS;
+            view.zoomAnimation = false;
+        }
+        const map = L.map('subnet-map', view);
         currentMap = map;
 
-        const layer = L.tileLayer(SWISSSTOPO_URL, {
+        const layer = L.tileLayer(TILE_URL, {
             minZoom: 0,
-            maxZoom: 30,
-            minNativeZoom: 8,
-            maxNativeZoom: 27,
+            maxZoom: TILE_MAX + OVERZOOM,
+            minNativeZoom: TILE_MIN,
+            maxNativeZoom: TILE_MAX,
             bounds: COVERAGE_BOUNDS,
-            attribution: '&copy; <a href="https://www.swisstopo.ch/">swisstopo</a>'
+            attribution: TILE_CREDIT
         });
         layer.getTileUrl = function (coords) {
             // The LV03 grid starts at tile 0/0 at its origin; the WMTS server answers 400 for negative indices, which happens at wide zooms.
@@ -1141,7 +1151,7 @@
         tileLayer = layer;
         // The exporter fetches the tile grid itself (see svg_export.js), so its picture is not limited to the tiles this view happens to hold.
         window.__subnetMapTiles = {
-            url: SWISSSTOPO_URL,
+            url: TILE_URL,
             tileSize: layer.options.tileSize || 256,
             minNativeZoom: layer.options.minNativeZoom,
             maxNativeZoom: layer.options.maxNativeZoom

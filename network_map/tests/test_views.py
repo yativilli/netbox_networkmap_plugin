@@ -85,6 +85,14 @@ class ViewAccessTests(TestCase):
                 response = self.client.get(reverse(f"plugins:network_map:{name}"))
                 self.assertEqual(response.status_code, 200, name)
 
+    def test_the_subnet_map_says_where_it_calls_from(self):
+        # A tile server that asks who is calling answers a page that stays anonymous with its "blocked" picture instead of a tile.
+        self.client.force_login(self._viewer("referrer", "test-view-referrer"))
+        response = self.client.get(reverse("plugins:network_map:subnet_map"))
+        self.assertIn(
+            '<meta name="referrer" content="origin">', response.content.decode()
+        )
+
 
 class TopologyDescriptionTests(TestCase):
     def test_serialize_topology_handles_machine_description(self):

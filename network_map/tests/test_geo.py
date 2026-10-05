@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from users.models import ObjectPermission, User
 
-from .. import lv03, map_tiles, swisstopo
+from .. import lv03, map_tiles, swisstopo, web_mercator
 from ..defaults import (
     DEFAULT_CANTON_BOUNDARY_CODE,
     canton_code,
@@ -76,6 +76,19 @@ class LV03Tests(TestCase):
                 )
                 self.assertLess(round(drift, 1), 50, f"{lat}, {lon}")
 
+    def test_a_point_comes_back_to_where_it_went(self):
+        # A source outside the Swiss grid is asked in degrees, so the way back has to find the point it left from.
+        for lat, lon in (
+            (46.9514, 7.4396),
+            (45.82, 5.96),
+            (47.81, 10.49),
+            (46.2, 6.14),
+        ):
+            with self.subTest(point=f"{lat}, {lon}"):
+                back_lat, back_lon = lv03.to_wgs84(*lv03.to_lv03(lat, lon))
+                self.assertAlmostEqual(back_lat, lat, delta=1e-6)
+                self.assertAlmostEqual(back_lon, lon, delta=1e-6)
+
     def test_the_ladder_is_the_one_the_page_tiles_with(self):
         source = _static("subnet_map/subnet_map.js")
         ladder = re.search(r"\[([\d.,\s]+)\]\.forEach\(\(res\)", source).group(1)
@@ -115,6 +128,45 @@ class LV03Tests(TestCase):
         self.assertLessEqual(lv03.zoom_for(0.01), lv03.MAX_ZOOM)
 
 
+class WebMercatorTests(TestCase):
+    """
+    The pyramid OpenStreetMap serves, which a picture planned in LV03 has to be
+    asked in when the settings put the ground there.
+    """
+
+    def test_a_tile_covers_the_ground_it_is_asked_for(self):
+        for zoom in (0, 6, 10, web_mercator.MAX_ZOOM):
+            with self.subTest(zoom=zoom):
+                x, y = web_mercator.tile_of(46.95, 7.44, zoom)
+                west, south, east, north = web_mercator.tile_rect(x, y, zoom)
+                self.assertLess(west, 7.44)
+                self.assertLess(south, 46.95)
+                self.assertGreater(east, 7.44)
+                self.assertGreater(north, 46.95)
+                self.assertAlmostEqual(east - west, 360.0 / 2**zoom)
+
+    def test_the_step_shows_the_ground_the_picture_needs(self):
+        self.assertEqual(web_mercator.zoom_for(100.0, 46.95), 10)
+        self.assertLess(
+            web_mercator.zoom_for(1000.0, 46.95), web_mercator.zoom_for(10.0, 46.95)
+        )
+        self.assertEqual(web_mercator.zoom_for(0.01, 46.95), web_mercator.MAX_ZOOM)
+
+    def test_the_step_covers_the_ground_it_is_asked_for(self):
+        # Every step the pictures are planned at, from the coaviest overview to the finest patch of the Swiss ladder: the pyramid step asked for it covers that ground without leaving any of it short.
+        for zoom in range(lv03.MIN_ZOOM, lv03.MAX_ZOOM + 1):
+            with self.subTest(zoom=zoom):
+                patch = lv03.TILE_SIZE * lv03.resolution(zoom)
+                step = web_mercator.zoom_for(lv03.resolution(zoom), 46.95)
+                tile = web_mercator.TILE_SIZE * web_mercator.resolution(step, 46.95)
+                self.assertLessEqual(step, web_mercator.MAX_ZOOM)
+                self.assertGreaterEqual(tile, patch)
+                self.assertLess(tile, 2 * patch)
+
+
+@override_settings(
+    PLUGINS_CONFIG={"network_map": {"map_background_source": "SWISSTOPO"}}
+)
 class MapTileTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -193,6 +245,126 @@ class MapTileTests(TestCase):
             PLUGINS_CONFIG={"network_map": {"map_attribution": "© OpenStreetMap"}}
         ):
             self.assertEqual(map_tiles.attribution(), "© OpenStreetMap")
+
+    @staticmethod
+    def _picture(request, *args, **kwargs):
+        """A tile answer of the shape whoever is asked would hand out."""
+        if request.full_url.startswith("https://tile.openstreetmap.org/"):
+            return _FakeTileResponse(b"\x89PNG\r\n\x1a\npng")
+        return _FakeTileResponse()
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_the_settings_can_put_the_ground_on_openstreetmap(self, urlopen):
+        urlopen.side_effect = self._picture
+        extent = _lv03_extent(TILE_AREA)
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_background_source": "osm"}}
+        ):
+            tiles = map_tiles.background(extent, 100.0)
+            # The pyramid the tiles come from asks to be named under the picture.
+            self.assertTrue(map_tiles.attribution().startswith("© OpenStreetMap"))
+        self.assertTrue(tiles)
+        url = urlopen.call_args.args[0].full_url
+        self.assertTrue(url.startswith("https://tile.openstreetmap.org/"))
+        # The ground under the picture lies under it: the centre of the ground asked for is covered, and every tile says so of ground of its own.
+        centre_east = (extent[0] + extent[2]) / 2
+        centre_north = (extent[1] + extent[3]) / 2
+        covered = [tile["rect"] for tile in tiles]
+        self.assertTrue(
+            any(
+                west < centre_east < east and south < centre_north < north
+                for west, south, east, north in covered
+            )
+        )
+        for tile in tiles:
+            self.assertTrue(tile["href"].startswith("data:image/png;base64,"))
+            # A Mercator tile is laid where its own corners fall, which the Swiss grid has to be told.
+            west, south, east, north = tile["rect"]
+            self.assertLess(west, east)
+            self.assertLess(south, north)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_second_provider_answers_for_a_tile_the_first_lacks(self, urlopen):
+        def answer(request, *args, **kwargs):
+            if request.full_url.startswith("https://wmts.geo.admin.ch/"):
+                raise OSError("no route to the tile server")
+            return self._picture(request)
+
+        urlopen.side_effect = answer
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_tile_fallback": "OSM"}}
+        ):
+            tiles = map_tiles.background(_lv03_extent(TILE_AREA), 100.0)
+        asked = [call.args[0].full_url for call in urlopen.call_args_list]
+        self.assertTrue(
+            any(url.startswith("https://wmts.geo.admin.ch/") for url in asked)
+        )
+        self.assertTrue(
+            any(url.startswith("https://tile.openstreetmap.org/") for url in asked)
+        )
+        self.assertTrue(tiles)
+        self.assertTrue(tiles[0]["href"].startswith("data:image/png;base64,"))
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_second_provider_named_twice_is_one_provider(self, urlopen):
+        urlopen.side_effect = OSError("no route to the tile server")
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_tile_fallback": "swisstopo"}}
+        ):
+            self.assertEqual(map_tiles.background(_lv03_extent(ONE_ADDRESS), 100.0), [])
+        # One patch of ground, asked of one provider, which is the named one twice over.
+        self.assertEqual(urlopen.call_count, 1)
+
+    @mock.patch("network_map.map_tiles.urllib.request.urlopen")
+    def test_a_ground_that_is_told_off_falls_back_on_the_other(self, urlopen):
+        def answer(request, *args, **kwargs):
+            if request.full_url.startswith("https://tile.openstreetmap.org/"):
+                return _FakeTileResponse(b"<html>no tile here</html>")
+            return self._picture(request)
+
+        urlopen.side_effect = answer
+        with override_settings(
+            PLUGINS_CONFIG={
+                "network_map": {
+                    "map_background_source": "OSM",
+                    "map_tile_fallback": "swisstopo",
+                }
+            }
+        ):
+            tiles = map_tiles.background(_lv03_extent(TILE_AREA), 100.0)
+        self.assertTrue(tiles)
+        self.assertTrue(tiles[0]["href"].startswith("data:image/jpeg;base64,"))
+
+    def test_the_page_is_told_where_its_ground_comes_from(self):
+        source = map_tiles.page_source()
+        self.assertEqual(source["grid"], "lv03")
+        self.assertTrue(source["url"].startswith("https://wmts.geo.admin.ch/"))
+        self.assertIn("swisstopo", source["credit"])
+        self.assertEqual(source["max_zoom"], 27)
+        with override_settings(
+            PLUGINS_CONFIG={"network_map": {"map_background_source": "OSM"}}
+        ):
+            source = map_tiles.page_source()
+        self.assertEqual(source["grid"], "mercator")
+        self.assertTrue(source["url"].startswith("https://tile.openstreetmap.org/"))
+        self.assertIn("OpenStreetMap", source["credit"])
+        self.assertEqual(source["max_zoom"], 19)
+
+    def test_a_swiss_patch_is_asked_of_the_pyramid_where_it_lies(self):
+        # A patch of the Swiss grid is asked at the pyramid step that shows as much ground, and is laid where that tile really lies.
+        zoom = lv03.zoom_for(100.0)
+        rect = lv03.tile_rect(7, 5, zoom)
+        centre_east = (rect[0] + rect[2]) / 2
+        centre_north = (rect[1] + rect[3]) / 2
+        centre_lat = lv03.to_wgs84(centre_east, centre_north)[0]
+        address, (west, south, east, north) = map_tiles._mercator_address(rect, zoom)
+        self.assertEqual(
+            address["z"], web_mercator.zoom_for(lv03.resolution(zoom), centre_lat)
+        )
+        self.assertLess(west, centre_east)
+        self.assertLess(south, centre_north)
+        self.assertGreater(east, centre_east)
+        self.assertGreater(north, centre_north)
 
 
 SAMPLE_BORDER = {
@@ -558,6 +730,25 @@ class MapDataCantonBoundaryTests(TestCase):
             data = view.build_map_data([])
         self.assertIsNone(data["canton_boundary_url"])
         self.assertIsNone(data["canton_label"])
+
+    def test_the_page_is_handed_the_ground_it_draws_on(self):
+        view = SubnetLocationView()
+        with (
+            mock.patch(
+                "network_map.views.get_plugin_config",
+                side_effect=lambda name, key, default=None: default,
+            ),
+            mock.patch("network_map.views.boundary_configured", return_value=False),
+        ):
+            data = view.build_map_data([])
+        self.assertEqual(
+            set(data["tiles"]), {"url", "grid", "min_zoom", "max_zoom", "credit"}
+        )
+        # The script asks the page how its grid is numbered instead of knowing one grid.
+        script = _static("subnet_map/subnet_map.js")
+        self.assertIn("mapData.tiles", script)
+        self.assertIn("TILES.grid", script)
+        self.assertIn("TILES.max_zoom", script)
 
 
 class SettingGettersTests(TestCase):

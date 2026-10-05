@@ -69,6 +69,34 @@ def to_lv03(lat, lon):
     return east, north
 
 
+def to_wgs84(east, north):
+    """
+    LV03 (east, north) in metres back to a WGS84 (lat, lon) in degrees, which
+    is what a source outside the Swiss grid has to be asked in. The published
+    approximate formulas only run forwards, so the inverse is walked towards
+    the answer from the country's centre: three steps of the forward
+    transformation's own slope land inside a millimetre anywhere in Switzerland.
+    """
+    lat = _CENTER_LAT / 3600.0
+    lon = _CENTER_LON / 3600.0
+    step = 1e-6
+    for _ in range(3):
+        got_east, got_north = to_lv03(lat, lon)
+        up_east, up_north = to_lv03(lat + step, lon)
+        right_east, right_north = to_lv03(lat, lon + step)
+        d_east_lat = (up_east - got_east) / step
+        d_north_lat = (up_north - got_north) / step
+        d_east_lon = (right_east - got_east) / step
+        d_north_lon = (right_north - got_north) / step
+        slope = d_east_lat * d_north_lon - d_east_lon * d_north_lat
+        if not slope:
+            break
+        want_east, want_north = east - got_east, north - got_north
+        lat += (d_north_lon * want_east - d_east_lon * want_north) / slope
+        lon += (d_east_lat * want_north - d_north_lat * want_east) / slope
+    return lat, lon
+
+
 def resolution(zoom):
     """Metres per pixel of a zoom step."""
     return RESOLUTIONS[min(max(zoom, 0), len(RESOLUTIONS) - 1)]
