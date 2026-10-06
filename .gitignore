@@ -1,6 +1,6 @@
 __pycache__/
 /network_map/migrations/
-/network_map.egg-info
+*.egg-info
 /.vscode/
 network_map/.vscode/
 

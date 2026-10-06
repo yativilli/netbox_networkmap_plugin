@@ -4,7 +4,7 @@ from netbox.plugins import PluginConfig
 
 from .defaults import DEFAULT_CANTON_BOUNDARY_CODE, DEFAULT_GATEWAY_SEARCH_TAG
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 class NetworkMapConfig(PluginConfig):

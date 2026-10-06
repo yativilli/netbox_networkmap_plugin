@@ -39,8 +39,8 @@ wheel of any release can be downloaded from there instead of built.
    works instead and needs no extra):
 
    ```bash
-   /opt/netbox/venv/bin/python -m pip install \
-     "./network_map-<version>-py3-none-any.whl[png]"
+    /opt/netbox/venv/bin/python -m pip install \
+      "./netbox_plugin_network_map_yativilli-<version>-py3-none-any.whl[png]"
    ```
 
 3. Enable the plugin in `netbox/netbox/configuration.py`:

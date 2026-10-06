@@ -1,5 +1,5 @@
 [project]
-name = "network_map"
+name = "netbox-plugin-network-map-yativilli"
 dynamic = ["version"]
 requires-python = ">=3.12.0"
 authors = [
@@ -7,7 +7,7 @@ authors = [
 ]
 description = "A network_map plugin for netbox"
 license = "GPL-3.0"
-readme = "README.md"
+readme = "PYPI.md"
 
 [project.optional-dependencies]
 # Only needed to answer `?format=png`: NetBox itself never rasterises SVG.
