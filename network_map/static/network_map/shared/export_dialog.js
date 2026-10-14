@@ -5,7 +5,9 @@
 (function () {
     // Rasterising multiplies the canvas, because a canton map printed at its natural size has labels too small to read; browsers cap canvas.
     const PNG_SCALE = 2;
-    const PNG_MAX_EDGE = 2400;
+    // A PNG is lossless, so only downscaling hurts readability: cap at the browser canvas limits (like the server-side cairosvg render does), not at a fixed picture size.
+    const PNG_MAX_EDGE = 16384;
+    const PNG_MAX_AREA = 64e6;
 
     const LABELS_ID = 'network-map-export-dialog';
     const FALLBACK_LABELS = {
@@ -143,7 +145,11 @@
     }
 
     function rasterize(source, width, height) {
-        const scale = Math.min(PNG_SCALE, PNG_MAX_EDGE / Math.max(width, height, 1));
+        const scale = Math.min(
+            PNG_SCALE,
+            PNG_MAX_EDGE / Math.max(width, height, 1),
+            Math.sqrt(PNG_MAX_AREA / Math.max(width * height, 1))
+        );
         return new Promise((resolve, reject) => {
             const image = new Image();
             const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));

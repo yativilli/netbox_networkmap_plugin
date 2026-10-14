@@ -4,6 +4,7 @@
     const controls = Array.from(document.querySelectorAll('[data-zoom]'));
 
     const state = { scale: 1, tx: 0, ty: 0, dragging: false, dragStartX: 0, dragStartY: 0, startTx: 0, startTy: 0 };
+    let baseSize = null;
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -319,25 +320,31 @@
         }
         svg.appendChild(hub);
 
+        baseSize = { width, height };
         stage.insertBefore(svg, stage.firstChild);
     }
 
+    // Resizing the <svg> keeps zoom vector-crisp; a CSS scale on this layer would stretch a cached bitmap.
     function applyTransform() {
-        if (stage) stage.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+        if (!stage) return;
+        const svg = stage.querySelector('svg.vlan-topo-svg');
+        if (svg && baseSize) {
+            svg.style.width = `${baseSize.width * state.scale}px`;
+            svg.style.height = `${baseSize.height * state.scale}px`;
+        }
+        stage.style.transform = `translate(${state.tx}px, ${state.ty}px)`;
     }
 
     function fitToViewport() {
-        if (!stage || !viewport) return;
-        const stageWidth = stage.offsetWidth || 1;
-        const stageHeight = stage.offsetHeight || 1;
+        if (!stage || !viewport || !baseSize) return;
         const viewWidth = viewport.clientWidth;
         const viewHeight = viewport.clientHeight;
 
-        const fitScale = Math.min((viewWidth - 24) / stageWidth, (viewHeight - 24) / stageHeight);
+        const fitScale = Math.min((viewWidth - 24) / baseSize.width, (viewHeight - 24) / baseSize.height);
         state.scale = clamp(fitScale, 0.03, 1);
 
-        state.tx = (viewWidth - stageWidth * state.scale) / 2;
-        state.ty = (viewHeight - stageHeight * state.scale) / 2;
+        state.tx = (viewWidth - baseSize.width * state.scale) / 2;
+        state.ty = (viewHeight - baseSize.height * state.scale) / 2;
         applyTransform();
     }
 
