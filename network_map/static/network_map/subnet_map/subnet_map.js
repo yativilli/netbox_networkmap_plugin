@@ -67,6 +67,19 @@
         infinite: true
     });
 
+    // Meters per pixel the view draws one zoom step at: the LV03 grid says it
+    // straight from its resolutions, a Mercator pyramid from its world
+    // circumference shrunk by the latitude - so house mode reads the ground,
+    // whichever grid the background came from.
+    function resolutionAt(map, zoom) {
+        const crs = map.options.crs;
+        if (crs && crs.code === 'EPSG:21781') {
+            return 1 / LV03_CRS.scale(Math.round(zoom));
+        }
+        return 40075016.686 * Math.cos(map.getCenter().lat * Math.PI / 180) /
+            (256 * Math.pow(2, zoom));
+    }
+
     const pins = mapData.pins || [];
     const groups = {};
     pins.forEach((pin) => {
@@ -80,8 +93,11 @@
     // House mode: deep zoom onto a site swaps the map for the building's floor plan and scatters that site's machines on it.
     const siteLocations = mapData.locations || {};
     const layoutCache = {};
-    const HOUSE_ENTER_ZOOM = 24;
-    const HOUSE_EXIT_ZOOM = 23;
+    // The swap reads the ground the view shows, not the zoom step it is named at:
+    // meters per pixel is where LV03 zoom 24 and 23 stand, so entering a site
+    // happens on the same ground in every grid - swisstopo's and OSM's alike.
+    const HOUSE_ENTER_RES = 1.5;
+    const HOUSE_LEAVE_RES = 2;
     const HOUSE_ENTER_M = 150;
     const HOUSE_LEAVE_M = 400;
     const house = {
@@ -995,10 +1011,10 @@
         // Frame the plan once on entry: zoom in as far as the plan still fits within the fill fraction of the viewport.
         const size = map.getSize();
         const fill = 0.75;
-        let zoom = HOUSE_ENTER_ZOOM;
-        for (let z = HOUSE_ENTER_ZOOM; z <= map.getMaxZoom(); z++) {
-            const res = LV03_RESOLUTIONS[z];
-            if (footprint.w > res * size.x * fill || footprint.h > res * size.y * fill) {
+        let zoom = map.getZoom();
+        for (let z = Math.round(zoom); z <= map.getMaxZoom(); z++) {
+            const res = resolutionAt(map, z);
+            if (!Number.isFinite(res) || footprint.w > res * size.x * fill || footprint.h > res * size.y * fill) {
                 break;
             }
             zoom = z;
@@ -1038,16 +1054,16 @@
         if (!map || isNaN(map.getZoom())) {
             return;
         }
-        const zoom = map.getZoom();
+        const res = resolutionAt(map, map.getZoom());
         if (house.activeKey) {
             const far = map.distance(map.getCenter(),
                 [house.group.lat, house.group.lon]) > HOUSE_LEAVE_M;
-            if (zoom < HOUSE_EXIT_ZOOM || far) {
+            if (res > HOUSE_LEAVE_RES || far) {
                 exitHouse();
             }
             return;
         }
-        if (zoom < HOUSE_ENTER_ZOOM) {
+        if (res > HOUSE_ENTER_RES) {
             return;
         }
         const center = map.getCenter();
@@ -1123,11 +1139,15 @@
             minZoom: 6,
             maxZoom: TILE_MAX + OVERZOOM,
             maxBounds: COVERAGE_BOUNDS.pad(0.15),
-            maxBoundsViscosity: 0.8
+            maxBoundsViscosity: 0.8,
+            // Leaflet's zoom transition stretches the tiles while the machine pins are
+            // placed anew at once, so the machines would run ahead of their ground and
+            // the background only catch up afterwards; without the transition both
+            // move together - on OSM as it already stands on the Swiss grid.
+            zoomAnimation: false
         };
         if (swissGrid) {
             view.crs = LV03_CRS;
-            view.zoomAnimation = false;
         }
         const map = L.map('subnet-map', view);
         currentMap = map;
