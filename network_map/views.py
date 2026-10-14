@@ -16,7 +16,13 @@ from netbox.search.backends import search_backend
 from utilities.views import ConditionalLoginRequiredMixin
 
 from . import map_tiles, svg_render
-from .bulk import ips_for_prefixes, resolve_assigned_objects
+from .bulk import (
+    contact_key,
+    contacts_for_objects,
+    ips_for_prefixes,
+    machine_of_assigned,
+    resolve_assigned_objects,
+)
 from .colors import (
     BASE_COLORS,
     color_for_location,
@@ -73,8 +79,15 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
             status__in=["active", "reserved"],
             dns_name__isnull=False,
         )
-        owners = resolve_assigned_objects(
-            [ip for ips in ips_by_prefix.values() for ip in ips]
+        all_ips = [ip for ips in ips_by_prefix.values() for ip in ips]
+        owners = resolve_assigned_objects(all_ips)
+        # Contacts are their own rows in NetBox; they arrive in their own
+        # queries, beside the ones above rather than growing those.
+        contacts = contacts_for_objects(
+            [
+                *all_ips,
+                *(machine_of_assigned(owner) for owner in owners.values()),
+            ]
         )
 
         elements = []
@@ -137,6 +150,12 @@ class VlanElementListView(NetworkMapPermissionRequiredMixin, View):
                             "description": description,
                             "color": color,
                             "role": role,
+                            # The machine's contact people: the assigned device
+                            # or VM when there is one, the IP address when the
+                            # address is the machine itself.
+                            "contact": contacts.get(
+                                contact_key(device or vm or ip), ""
+                            ),
                         }
                     )
                     machine_count += 1
@@ -564,6 +583,15 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                 collected.append((res_obj, vlan, prefixes))
 
         owners = resolve_assigned_objects(child_ips)
+        # The contact people of gateways, machines, and bare addresses arrive
+        # in their own contact queries, leaving the queries above as they are.
+        contacts = contacts_for_objects(
+            [
+                *child_ips,
+                *(res_obj for res_obj, _vlan, _prefixes in collected),
+                *(machine_of_assigned(owner) for owner in owners.values()),
+            ]
+        )
 
         element_obj = []
         for res_obj, vlan, prefixes in collected:
@@ -574,19 +602,27 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                     [
                         self._get_prefix_details(
                             pref,
-                            [self._get_ip_details(ip, owners.get(ip.pk)) for ip in ips],
+                            [
+                                self._get_ip_details(ip, owners.get(ip.pk), contacts)
+                                for ip in ips
+                            ],
                         )
                         for pref, ips in prefixes
                     ],
+                    contacts,
                 )
             )
         return element_obj
 
     def _get_device_vm_ip_details(
-        self, ip: IPAddress, assigned_object: Any
+        self, ip: IPAddress, assigned_object: Any, contacts: dict
     ) -> DetailsElement:
         device = getattr(assigned_object, "device", None)
         vm = getattr(assigned_object, "virtual_machine", None)
+
+        # The machine's contact people: the device or VM when the address has
+        # one, the address itself when it stands for a machine on its own.
+        contact = contacts.get(contact_key(device or vm or ip), "")
 
         details: DetailsElement
         if device:
@@ -597,6 +633,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                 url=device.get_absolute_url(),
                 description=str(device.description or device.role or ip.comments or ""),
                 type="Device",
+                contact=contact,
             )
 
         elif vm:
@@ -607,6 +644,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                 url=vm.get_absolute_url(),
                 description=vm.description or vm.comments or "",
                 type="Virtual Machine",
+                contact=contact,
             )
 
         else:
@@ -617,11 +655,14 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
                 url=ip.get_absolute_url(),
                 description=str(ip.description or ""),
                 type="IP-Address",
+                contact=contact,
             )
 
         return details
 
-    def _get_ip_details(self, ip: IPAddress, assigned_object: Any) -> IpDetailsElement:
+    def _get_ip_details(
+        self, ip: IPAddress, assigned_object: Any, contacts: dict
+    ) -> IpDetailsElement:
         address = getattr(ip.address, "ip", "")
         return IpDetailsElement(
             id=ip.pk,
@@ -630,9 +671,10 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             description=str(ip.description or ""),
             comments=str(ip.comments or ""),
             role=str(ip.role or ""),
-            details=self._get_device_vm_ip_details(ip, assigned_object),
+            details=self._get_device_vm_ip_details(ip, assigned_object, contacts),
             url=ip.get_absolute_url(),
             type="IP-Address",
+            contact=contacts.get(contact_key(ip), ""),
         )
 
     def _get_prefix_details(
@@ -647,7 +689,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
         )
 
     def _get_gateway_details(
-        self, result_object, vlan, prefixes: list[PrefixElement]
+        self, result_object, vlan, prefixes: list[PrefixElement], contacts: dict
     ) -> GatewayElement:
         return GatewayElement(
             address=result_object.address,
@@ -657,6 +699,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             prefixes=prefixes,
             url=result_object.get_absolute_url(),
             type="VLAN / IP-Address",
+            contact=contacts.get(contact_key(result_object), ""),
         )
 
     def get(self, request):
@@ -671,6 +714,7 @@ class VlanConnectionView(NetworkMapPermissionRequiredMixin, CenterDeviceMixin, V
             "labels": {
                 "address": _("Address"),
                 "comments": _("Comments"),
+                "contact": _("Contact"),
                 "dns_name": _("DNS Name"),
                 "description": _("Description"),
                 "gateway": _("Gateway"),

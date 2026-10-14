@@ -74,6 +74,7 @@ def render_logical_tree(elements, center_device):
                 (_("Gateway"), gateway.address),
                 (_("DNS Name"), gateway.dns_name),
                 (_("Description"), gateway.description),
+                (_("Contact"), getattr(gateway, "contact", "")),
                 (_("Type"), gateway.type),
             ),
         )
@@ -103,6 +104,7 @@ def render_logical_tree(elements, center_device):
                         (_("Description"), ip.description),
                         (_("Comments"), ip.comments),
                         (_("Role"), ip.role),
+                        (_("Contact"), getattr(ip, "contact", "")),
                         (_("Type"), ip.type),
                     ),
                 )
@@ -118,6 +120,7 @@ def render_logical_tree(elements, center_device):
                             (_("Name"), details.name),
                             (_("Description"), details.description),
                             (_("Location"), details.location),
+                            (_("Contact"), getattr(details, "contact", "")),
                             (_("Type"), details.type),
                         ),
                     )

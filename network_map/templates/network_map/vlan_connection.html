@@ -62,6 +62,7 @@
                                 {% include 'network_map/includes/_info_item.html' with label=labels.gateway value=element.address url=element.url %}
                                 {% include 'network_map/includes/_info_item.html' with label=labels.dns_name value=element.dns_name %}
                                 {% include 'network_map/includes/_info_item.html' with label=labels.description value=element.description %}
+                                {% include 'network_map/includes/_info_item.html' with label=labels.contact value=element.contact %}
                                 {% include 'network_map/includes/_info_item.html' with label=labels.type value=element.type %}
                             </div>
 
@@ -95,6 +96,7 @@
                                                         {% include 'network_map/includes/_info_item.html' with label=labels.description value=ip.description %}
                                                         {% include 'network_map/includes/_info_item.html' with label=labels.comments value=ip.comments %}
                                                         {% include 'network_map/includes/_info_item.html' with label=labels.role value=ip.role %}
+                                                        {% include 'network_map/includes/_info_item.html' with label=labels.contact value=ip.contact %}
                                                         {% include 'network_map/includes/_info_item.html' with label=labels.type value=ip.type %}
                                                     </div>
 
@@ -110,6 +112,7 @@
                                                                     {% include 'network_map/includes/_info_item.html' with label=labels.name value=ip.details.name url=ip.details.url %}
                                                                     {% include 'network_map/includes/_info_item.html' with label=labels.description value=ip.details.description %}
                                                                     {% include 'network_map/includes/_info_item.html' with label=labels.location value=ip.details.location %}
+                                                                    {% include 'network_map/includes/_info_item.html' with label=labels.contact value=ip.details.contact %}
                                                                     {% include 'network_map/includes/_info_item.html' with label=labels.type value=ip.details.type %}
                                                                 </div>
                                                             </div>

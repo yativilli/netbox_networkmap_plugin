@@ -15,6 +15,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from django.urls import reverse
 from ipam.models import VLAN, IPAddress, Prefix
+from tenancy.models import Contact, ContactAssignment, ContactRole
 from users.models import ObjectPermission, User
 
 from .. import views as plugin_views
@@ -142,6 +143,52 @@ class CoverageServiceTests(TestCase):
                 "rooms",
                 "Floor cannot be inferred from the room name",
                 site="Floor site",
+            )
+        )
+
+    def test_reports_machines_without_a_contact(self):
+        site = Site.objects.create(
+            name="Contactless", slug="contactless", latitude=46.9, longitude=7.4
+        )
+        self._device_with_ip(
+            site=site,
+            address="10.94.0.10/24",
+            dns_name="nocontact.example.com",
+            vlan_vid=994,
+        )
+        self.assertTrue(
+            self.has_issue(
+                self.coverage(),
+                "contacts",
+                "Device/IP-Address has no contact",
+                site="Contactless",
+            )
+        )
+
+    def test_contact_on_the_machine_silences_the_missing_contact_report(self):
+        site = Site.objects.create(
+            name="Contacted", slug="contacted", latitude=46.9, longitude=7.4
+        )
+        device = self._device_with_ip(
+            site=site,
+            address="10.95.0.10/24",
+            dns_name="contacted.example.com",
+            vlan_vid=995,
+        )
+        contact_role = ContactRole.objects.create(name="Ops", slug="ops")
+        contact = Contact.objects.create(name="Jane Ops")
+        ContactAssignment.objects.create(
+            object_type=ContentType.objects.get_for_model(Device),
+            object_id=device.pk,
+            contact=contact,
+            role=contact_role,
+        )
+        self.assertFalse(
+            self.has_issue(
+                self.coverage(),
+                "contacts",
+                "Device/IP-Address has no contact",
+                site="Contacted",
             )
         )
 

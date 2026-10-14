@@ -104,6 +104,7 @@
                       <th scope="col">{% trans "Object" %}</th>
                       <th scope="col">{% trans "Issue" %}</th>
                       <th scope="col">{% trans "Site" %}</th>
+                      <th scope="col">{% trans "Contact" %}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -127,6 +128,7 @@
                           <div class="text-muted small">{{ finding.detail }}</div>
                         </td>
                         <td>{{ finding.site|default:"-" }}</td>
+                        <td>{{ finding.contact|default:"-" }}</td>
                       </tr>
                     {% endfor %}
                   </tbody>

@@ -14,6 +14,7 @@ import netaddr
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from ipam.models import IPAddress
+from tenancy.models import ContactAssignment
 
 # One query per assigned-object model resolves the whole page; the joined
 # tables are exactly what views.py and coverage.py read off the owner.
@@ -87,3 +88,50 @@ def resolve_assigned_objects(ips):
         ip.pk: objects_by_pk.get((ip.assigned_object_type_id, ip.assigned_object_id))
         for ip in ips
     }
+
+
+def contact_key(obj):
+    """The key contacts_for_objects stores an object's contact names under."""
+    return obj._meta.app_label, obj._meta.model_name, obj.pk
+
+
+def contacts_for_objects(objects):
+    """
+    Map {contact_key(obj): "Name1, Name2"} of the NetBox contacts assigned to
+    the objects, in one contact query per involved model. The assignments are
+    their own rows in the database, so these pages fetch them beside the
+    existing queries instead of growing those.
+    """
+    pks_by_model = defaultdict(set)
+    for obj in objects:
+        if obj is None:
+            continue
+        app_label, model_name, pk = contact_key(obj)
+        pks_by_model[(app_label, model_name)].add(pk)
+
+    contacts = {}
+    for (app_label, model_name), pks in pks_by_model.items():
+        content_type = ContentType.objects.get_by_natural_key(app_label, model_name)
+        names_by_pk = defaultdict(list)
+        for assignment in ContactAssignment.objects.filter(
+            object_type=content_type, object_id__in=pks
+        ).select_related("contact"):
+            names = names_by_pk[assignment.object_id]
+            name = str(assignment.contact.name)
+            if name not in names:
+                names.append(name)
+        for pk, names in names_by_pk.items():
+            contacts[(app_label, model_name, pk)] = ", ".join(names)
+    return contacts
+
+
+def machine_of_assigned(assigned_object):
+    """
+    The device or virtual machine behind an IP's assigned interface, or None
+    when the address stands for a machine on its own.
+    """
+    if assigned_object is None:
+        return None
+    return getattr(assigned_object, "device", None) or getattr(
+        assigned_object, "virtual_machine", None
+    )

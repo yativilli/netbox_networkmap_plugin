@@ -27,6 +27,7 @@ def _machine_fields(machine):
         (f"{_('IP')}:", machine.get("ip", "")),
         (f"{_('Role')}:", _ph(machine.get("role"))),
         (f"{_('Description')}:", _ph(machine.get("description"))),
+        (f"{_('Contact')}:", _ph(machine.get("contact"))),
     )
 
 

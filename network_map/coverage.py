@@ -20,7 +20,13 @@ from netbox.plugins import get_plugin_config
 from netbox.search import LookupTypes
 from netbox.search.backends import search_backend
 
-from .bulk import ips_for_prefixes, resolve_assigned_objects
+from .bulk import (
+    contact_key,
+    contacts_for_objects,
+    ips_for_prefixes,
+    machine_of_assigned,
+    resolve_assigned_objects,
+)
 from .defaults import DEFAULT_GATEWAY_SEARCH_TAG
 from .floor_plan import logical_floor
 from .places import site_city
@@ -37,6 +43,7 @@ CATEGORY_LABELS = {
     "sites": gettext_lazy("Sites and coordinates"),
     "vlans": gettext_lazy("VLANs and prefixes"),
     "ips": gettext_lazy("IP addresses"),
+    "contacts": gettext_lazy("Contacts"),
     "placements": gettext_lazy("Machine placement"),
     "rooms": gettext_lazy("Rooms and floors"),
     "gateways": gettext_lazy("Gateways"),
@@ -59,6 +66,7 @@ class CoverageFinding:
     label: str
     url: str
     site: str = ""
+    contact: str = ""
 
     @property
     def severity_label(self) -> str:
@@ -261,6 +269,14 @@ def _ip_findings() -> list[CoverageFinding]:
     owners = resolve_assigned_objects(
         [ip for ips in ips_by_prefix.values() for ip in ips]
     )
+    # The contact people come from their own assignment queries, so the
+    # queries above stay as they are.
+    contacts = contacts_for_objects(
+        [
+            *[ip for ips in ips_by_prefix.values() for ip in ips],
+            *(machine_of_assigned(owner) for owner in owners.values()),
+        ]
+    )
 
     for prefix in prefixes:
         for ip in ips_by_prefix.get(prefix.pk, [])[:MAX_SCAN_ROWS]:
@@ -270,6 +286,9 @@ def _ip_findings() -> list[CoverageFinding]:
 
             owner = owners.get(ip.pk)
             site_name = _assigned_site_name(owner)
+            # Whose phone number to call: the machine behind the address
+            # when there is one, the address itself otherwise.
+            contact = contacts.get(contact_key(machine_of_assigned(owner) or ip), "")
 
             if ip.dns_name is None:
                 findings.append(
@@ -285,6 +304,7 @@ def _ip_findings() -> list[CoverageFinding]:
                         label=str(ip.address.ip),
                         url=_object_url(ip),
                         site=site_name,
+                        contact=contact,
                     )
                 )
             elif not str(ip.dns_name).strip():
@@ -300,6 +320,30 @@ def _ip_findings() -> list[CoverageFinding]:
                         object_type=_("IP address"),
                         label=str(ip.address.ip),
                         url=_object_url(ip),
+                        site=site_name,
+                        contact=contact,
+                    )
+                )
+
+            if not contact:
+                # Who to ask: the device or VM behind the address, or the
+                # address itself when it stands for a machine on its own.
+                machine = machine_of_assigned(owner)
+                findings.append(
+                    CoverageFinding(
+                        category="contacts",
+                        severity=WARNING,
+                        issue=_("Device/IP-Address has no contact"),
+                        detail=_(
+                            "The map pages show a contact for every machine, but "
+                            "neither the assigned device or virtual machine nor "
+                            "the IP address itself has one assigned."
+                        ),
+                        object_type=_("Device/IP-Address"),
+                        label=(
+                            _assigned_label(owner) if machine else str(ip.address.ip)
+                        ),
+                        url=_object_url(machine or ip),
                         site=site_name,
                     )
                 )
@@ -318,6 +362,7 @@ def _ip_findings() -> list[CoverageFinding]:
                         label=str(ip.address.ip),
                         url=_object_url(ip),
                         site=site_name,
+                        contact=contact,
                     )
                 )
                 continue
@@ -336,6 +381,7 @@ def _ip_findings() -> list[CoverageFinding]:
                         label=_assigned_label(owner),
                         url=_object_url(owner),
                         site="",
+                        contact=contact,
                     )
                 )
 
@@ -354,6 +400,7 @@ def _ip_findings() -> list[CoverageFinding]:
                         label=str(device.name or ""),
                         url=_object_url(device),
                         site=_site_name(device),
+                        contact=contacts.get(contact_key(device), ""),
                     )
                 )
 
@@ -388,6 +435,7 @@ def _placement_findings(elements) -> list[CoverageFinding]:
                         label=label,
                         url=url or _list_url("ipam:ipaddress_list"),
                         site="",
+                        contact=str(machine.get("contact") or ""),
                     )
                 )
     return findings
@@ -526,6 +574,11 @@ def _gateway_findings() -> list[CoverageFinding]:
 
     usable = 0
     findings = []
+    # Gateway objects are IP addresses or machines; their contact people come
+    # from their own assignment queries, not from the search above.
+    contacts = contacts_for_objects(
+        [getattr(result, "object", None) for result in results[:MAX_SCAN_ROWS]]
+    )
     for result in results[:MAX_SCAN_ROWS]:
         obj = getattr(result, "object", None)
         address = getattr(obj, "address", None)
@@ -543,6 +596,9 @@ def _gateway_findings() -> list[CoverageFinding]:
                     label=_gateway_label(obj),
                     url=_object_url(obj),
                     site=_site_name(obj),
+                    contact=contacts.get(contact_key(obj), "")
+                    if obj is not None
+                    else "",
                 )
             )
             continue

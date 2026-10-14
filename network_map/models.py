@@ -68,6 +68,7 @@ class DetailsElement:
     url: str
     description: str
     type: str
+    contact: str = ""
 
 
 @dataclass
@@ -81,6 +82,7 @@ class IpDetailsElement:
     details: DetailsElement
     url: str
     type: str
+    contact: str = ""
 
 
 @dataclass
@@ -101,3 +103,4 @@ class GatewayElement:
     prefixes: list[PrefixElement] = field(default_factory=list)
     url: str = ""
     type: str = ""
+    contact: str = ""
